@@ -1,5 +1,7 @@
 # Plan: the `:` command line
 
+> **2026-11-12 (v2.3): fullscreen per rex v2.** Settings, help and the new-pipeline wizard are full-screen pages ([spec §18.1.1](../spec/18-tui.md#1811-pages), ADR-055). On a page the `:` line and `/` search take the help bar's row; `:help commands`, `:help <command>` and `:help <code>` open the help page ([§18.5.1](../spec/18-tui.md#1851-help-page)). Everything else here stands.
+
 Status: **decided and merged into spec v2.2** (§18.2, §18.4, §18.5, §18.6, §18.7.14, §18.12, §17.5, §29) on 2026-11-12. The spec wins; section 8 is kept as history. Decisions: ADR-051 to ADR-053.
 Spec: §18.1 (rules), §18.2 (board, the `λ` prompt), §18.4 (focus modes), §18.5 (keys), §18.6 (run), §18.7.4 and §18.7.14 (editor modes and `:`), §18.8 (wizard), §17.5 (TUI ↔ CLI), §29.4 and §29.8 (errors).
 Prototype: `mockups/v2/index.html`: press `:` anywhere; `:help commands` lists every command.

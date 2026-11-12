@@ -121,11 +121,12 @@ Each TUI screen has a CLI equivalent:
 | Log (in the run popup) | `mill logs <run> [-f] [--node n]` |
 | Agent screen | `mill attach <run>/<node>` (view-only) |
 | Editor | `mill show <p> --outline`, `mill node …`, `mill edge …`, `mill pipeline set`, `mill wrap`, `mill extract`, `mill pattern`, `mill lint --fix`, `mill refs`, `mill estimate`, `mill edit` (the full map is §18.7.16) |
-| Wizard | `mill new` (prompts in the terminal, or flags; `--from -` reads stdin) |
+| New pipeline page | `mill new` (prompts in the terminal, or flags; `--from -` reads stdin) |
 | `:run`, `:pipe` | `mill run <p> --input k=v`, `mill pipe '…'` |
 | `:` commands | Each lists its CLI in `:help commands` |
 | Plugins | `mill plugin ls`, `mill part ls`, `mill agent ls`, `mill mcp ls` |
-| Settings | `mill config` |
+| Settings page | `mill config list`, `get`, `set`, `reset` (the inspector shows each row's `mill config set <id>`) |
+| Help page | `mill <command> --help`, `mill explain <code>` (§29.5) |
 | Stats | `mill stats` |
 
 ### 17.6 Output modes

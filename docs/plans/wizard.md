@@ -1,5 +1,7 @@
 # Plan: the new-pipeline wizard (v2)
 
+> **2026-11-12 (v2.3): fullscreen per rex v2.** The wizard is now the full-screen new-pipeline page with a step rail and a graph preview at 110+ columns ([spec §18.8](../spec/18-tui.md#188-wizards), [§18.1.1](../spec/18-tui.md#1811-pages), ADR-055). The square-overlay screens and rule-10 notes below are history; the steps, keys and semantics are unchanged.
+
 Status: **decided and merged into spec v2.2** (§18.8, §17, §19.6, §29) on 2026-11-12. The spec wins; sections 13–15 are kept as history. Decisions: ADR-045 to ADR-050.
 Spec: §18.8 (wizards), §18.1 (design rules), §18.4 (focus modes), §18.7.4 (modal model), §18.7.6 (patterns), §17.1 and §17.8 (`mill new`), §9.9–9.10 (export, import), §23.3 (n8n), §29 (errors).
 Prototype: `mockups/v2/index.html`: press `n` on the board, or the **Import file…** button, or drop a file on the terminal. `?` inside the wizard lists every key.

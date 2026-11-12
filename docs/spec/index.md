@@ -12,7 +12,7 @@ mill — Machine Intelligence Logistics Layer
 >
 > **Companion:** built to be used alongside [rex](https://github.com/TristanBietsch/rex), the terminal board for agent sessions you work with directly. rex handles the work that needs a person; mill runs the work that needs no one. mill doesn't depend on rex, though, and works with anything (§23.6).
 >
-> **Status:** specification draft, **v2.2** (v2 plus the decisions of 2026-11-11 and 2026-11-12, below). v2 keeps everything the engine does and redesigns the surface around rex's design rules: one board, one line per pipeline, everything readable at a glance (§18.1). No code yet. When this spec and the eventual source disagree, the source wins, and this document gets fixed.
+> **Status:** specification draft, **v2.3** (v2 plus the decisions of 2026-11-11 and 2026-11-12, below). v2 keeps everything the engine does and redesigns the surface around rex's design rules: one board, one line per pipeline, everything readable at a glance (§18.1). No code yet. When this spec and the eventual source disagree, the source wins, and this document gets fixed.
 
 ---
 
@@ -59,6 +59,16 @@ The wizard and command-line plans (`docs/plans/wizard.md`, `docs/plans/command-l
 - **Wizard:** four steps (start › shape › run › review), the editor's NORMAL/INSERT keys, sources describe, template (with plugin templates and patterns), duplicate, import a file and blank; the name is chosen last, on review; create runs a dry run, then opens the editor (§18.8, §17.1).
 - **Drafter:** *describe it* drafts with a local model through Ollama by default (`drafter.*` settings, a Drafter section in settings, model resolved against pulled models), a headless agent when opted in, keyword rules when off or unavailable (`M2212`, `M2213`); the reply is validated against the schema and lint before it shows (§18.8, §18.10, §19.6, §16.3, §29.10).
 - **Import:** type detection for n8n, `.millpkg`, mill pipelines and pipe expressions with a preview; n8n steps that waited for a person become a `handoff` (`M2307`); new codes `M2301`–`M2309`, `M3050` (§18.8, §18.7.9). A duplicate's triggers start as `manual`.
+
+## v2.3 (2026-11-12): full-screen pages, following rex v2
+
+Settings, help and the new-pipeline wizard become full-screen pages in the style of rex v2's settings, help and new-agent pages. The record is ADR-055 in `docs/agents/DECISIONS.md`; the rex proposals that would change a decided mill behavior are open questions 13–21 (§30).
+
+- **Rules:** rule 1 (pages replace the board, `esc` leads back) and rule 10 (popups are square and sized to fit; pages own the screen) are rewritten with their reason (§18.1). A shared page frame: `≋ mill › <page>` in the board header's place, two panes with a list of at most 24 columns, an inspector on settings, the status line and the five-key help bar; `tab` switches panes, `1`–`9` and `[`/`]` jump; a one-line strip under 60 columns; every state in a word or glyph (§18.1.1).
+- **Settings:** sections left with changed-count badges, rows right with values flush right and `•` for changed, an inspector with id, default, when it applies, options and help (`K` for all of it), search across sections with an empty state; `u`, `p`, `gd`, `i` and the Drafter section with its status row are kept (§18.10).
+- **Help:** the eight groups left, rows right at full height (nothing dropped), `/` filter across groups, a live legend, `(off)` rows, `?` opens the current screen's group, `:help <topic|command|code>` and `:help commands` open the page on the right row (§18.5.1).
+- **New pipeline:** a page with a step rail (`start › shape › run › review` with marks and words), the step pane and, at 110+ columns, the graph preview; errors and loading lines stay on the page and keep the draft; the agent list shows missing agents dimmed. The four steps, name last, dry run then edit, the drafter, import, duplicates starting manual and the modal keys are unchanged (§18.8).
+- **CLI parity:** §17.5 names the pages and adds help (`mill <command> --help`, `mill explain`).
 
 ## Contents
 

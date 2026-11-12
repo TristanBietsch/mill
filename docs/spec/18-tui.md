@@ -1,6 +1,6 @@
 ## 18. TUI reference
 
-The TUI starts when you run `mill` with no subcommand. It boots in front of you (the boot splash, §18.13), connects to the daemon and shows **the board**: every pipeline, one line each, sorted by what deserves a look. Everything else (a run, the editor, the wizard, plugins, settings) opens over the board and closes back to it. There are no tabs.
+The TUI starts when you run `mill` with no subcommand. It boots in front of you (the boot splash, §18.13), connects to the daemon and shows **the board**: every pipeline, one line each, sorted by what deserves a look. Everything else opens over the board as a popup (a run, plugins, stats) or in its place as a full-screen page (the editor, new pipeline, settings, help), and closes back to it. There are no tabs.
 
 ### 18.1 Design rules
 
@@ -8,7 +8,7 @@ These rules come from rex and apply to every mill screen. A change that breaks o
 
 | # | Rule | In practice |
 |---|---|---|
-| 1 | **One screen.** | The board is home. Everything else is a popup or a focus mode over it, and `esc` always returns to it. |
+| 1 | **One screen.** | The board is home. Everything else is a popup over it or a page in its place (§18.1.1), and `esc` always leads back to it: from a page opened from another page (`?` on settings), back to that page first. *Changed in v2.3 (ADR-055): pages replace the board instead of covering it, following rex v2.* |
 | 2 | **A row shows what you need to decide, nothing more.** | State, name, text, recent runs, age. Everything else is one `v` away. |
 | 3 | **Columns appear only when a row needs them.** | The cost, long-run badge and budget columns, and the tag filter row, are hidden until some row has something to show in them. |
 | 4 | **The header is the summary.** | `1 failed · 2 running · 14 ok today · $6.20 today`. If you read one line, read that one. |
@@ -17,11 +17,46 @@ These rules come from rex and apply to every mill screen. A change that breaks o
 | 7 | **Long sections fold.** | READY with more than 5 rows folds into its title line: `READY  12 hidden · 3 show`. |
 | 8 | **Color is state, and only state.** | Red failed · amber retrying, running long, or a health warning (`disk low`, `restart needed`, `stalled`) · blue running · green ok · grey everything else. At most one colored word per row. |
 | 9 | **Numbers are compact and aligned.** | `12m`, `812K`, `$4.10`, right-aligned in their column. Relative times on screen, absolute times in JSON. |
-| 10 | **Overlays are square, sized to fit, and swallow the mouse.** | Width `clamp(w-8, 60, 110)`. A click never changes the selection behind an overlay. |
+| 10 | **Popups are square and sized to fit; pages own the screen. Both swallow the mouse.** | Popups (run, plugins, stats, confirms): width `clamp(w-8, 60, 110)`. Pages (new pipeline, settings, help in the page frame of §18.1.1; the editor with its own header, §18.7.2): the whole terminal. A click never changes the selection behind either. *Why (v2.3, ADR-055):* in a 60–110-column box, setting help and help rows were cut, help dropped whole groups on small terminals, the wizard's preview went away below 90 columns, and the dimmed board behind them was noise. rex v2 made the same change for the same reasons. |
 | 11 | **Nothing moves unless it's running.** | Spinners only on running work. `reduce_motion` stops them, and the screensaver's drift. |
-| 12 | **Every screen has a command.** | Each popup and overlay maps to a CLI command (§17.5). Nothing needs the TUI. |
+| 12 | **Every screen has a command.** | Each popup and page maps to a CLI command (§17.5). Nothing needs the TUI. |
 
 **Simple surface, deep engine.** The board stays one line per pipeline however much happens underneath. Scheduling, retries, budgets, plugins, MCP and crash recovery all happen in `milld` and only reach the screen as a state, a word of text, or a square in the run history.
+
+#### 18.1.1 Pages
+
+*Influences: rex v2.* The frame, panes, size classes and keys follow rex's full-screen settings and help pages (`rex/docs/plans/r2/R04-fullscreen-settings-help.md`, `rex/docs/tui.md` "Page look") and its new-agent page (`rex/docs/plans/r2/R16-new-agent-flow.md`). mill keeps its own status line, five-key help bar and `:` line.
+
+Settings (§18.10), help (§18.5.1) and new pipeline (§18.8) are **pages**: they take the whole terminal and the board isn't drawn behind them. They share one frame so they read as part of mill, not as boxes on top of it:
+
+```
+ ≋ mill › settings        Drafter › Model                               ~/.config/mill/settings.lua   header
+────────────────────────────────────────────────────────────────────────────────────────────────────  divider
+ SECTIONS        │ rows of the selected section                                                       body
+   …             │ …
+─────────────────┴──────────────────────────────────────────────────────────────────────────────────  divider
+ detail of the selected row (settings only)                                                           inspector
+ SETTINGS  drafter.model                                                     9 sections · 4 changed   status line
+ j/k move · h/l change · / search · u reset · ? more                                                  help bar
+```
+
+| Region | What it shows |
+|---|---|
+| **Header** | ` ≋ mill › <page>` in the board header's place, so the logo doesn't move between the board and a page. In the middle the breadcrumb (`Drafter › Model`), or the active search or filter (`/model · 4 hits`). On the right what the page writes to or works in (`~/.config/mill/settings.lua`, `~/code/app · draft`), or `mill <version>` on help. |
+| **Body** | Two panes split by `│`: a list on the left (sections, groups or steps; at most 24 columns, as wide as its longest entry plus a badge) and the content on the right. The new-pipeline page adds a third pane, the preview, at 110 columns or more. |
+| **Inspector** | Settings only: four rows under the panes for the selected row (two under 30 rows). Help and new pipeline give the space to the panes. |
+| **Status line** | The mode name at the left (`SETTINGS`, `HELP`, `NEW · INSERT`; §18.4), then the page's context, then a short summary on the right. |
+| **Help bar** | Five keys for the focused pane and mode (rule 5). The last row also takes `/` search, the `:` command line and echoes, as on every screen. |
+
+**Panes and keys.** A page opens with the content pane focused. `tab` / `shift+tab` move focus between the panes (on new pipeline: between steps, which the rail follows). `1`–`9` jump to a section, group or step; on settings and help `[` / `]` step to the previous / next one (they wrap). On the left pane `j`/`k` move and `l` or `enter` focuses the content; on the content pane `h` only changes a value and never jumps back to the list, so moving can't change a setting by accident. `?` opens help on the page's keys; `esc` clears a search or filter first, then leaves (settings and help also close with `q`).
+
+**Size classes.** 60 columns or more: panes side by side. Under 60: the left pane folds into a one-line strip under the header (`‹ Drafter ›`, `‹ start · [shape] · run · review ›`); the number keys (and `[` / `]`) still switch, and `tab` does nothing on settings and help. Lists window around the cursor with `↑ more` / `↓ more`, so every row is reachable at 80×24 without horizontal clipping. A resize reflows the panes on the next frame and keeps the cursor.
+
+**States in words.** Every state has a glyph or a word besides its color (rule 8): `▸` on the cursor, `•` before a changed value, `[bracketed]` current option, `✓` `·` `!` `✗` marks, `(off)` on rows behind a switch that is off. A search or filter with no hit says so (`no setting matches “…”`) instead of showing an empty pane. Errors start with `✗` and warnings with `!`; they stay until the next key, never close the page and never drop what you typed.
+
+**Mouse.** The wheel moves the focused pane. A click selects a section, group, step or row (as on the board, §18.5); rex's pages take the wheel only. A click on the last row opens the command line.
+
+**Never over an agent.** `:settings` and `:help` typed on an agent screen (§18.6) leave it first, then open the page.
 
 ### 18.2 The board
 
@@ -122,20 +157,20 @@ By default a row shows five things: **state, name, text, runs, age**.
 |---|---|---|
 | Boot | launching `mill` | hands off to the board (or setup on first launch); `q`, `esc`, `ctrl+c` quit |
 | Board | default | |
-| Search | `/` (board, log, plugins, settings, wizard lists, editor) | `enter` keeps it, `esc` clears it |
+| Search | `/` (board, log, plugins, settings, help, new-pipeline lists, editor) | `enter` keeps it, `esc` clears it (on a page a second `esc` leaves the page) |
 | Command | `:` from any screen or mode except a text field or a pending confirm, or a click on the last row | `esc` (back to exactly where you were), or after the command runs |
 | Run | `enter` on a pipeline | `esc` |
 | Log | `L` in a run | `L` or `esc` |
 | Agent screen | `enter` on an agent node in a run | `esc`, `qq`, `ctrl+]` |
 | Editor | `e` | `esc` unwinds one layer, then asks to save if changed; `:w`, `:q`. Inside: `NORMAL`, `VISUAL`, `CONNECT`, `INSERT` (§18.7.4) |
-| Wizard | `n` or `:new` | `esc` cancels, `enter` on review creates |
+| New pipeline (page) | `n` or `:new` | `esc` leaves the pane, then the page (nothing written; the draft is kept for the next `n`), or `enter` on review creates |
 | Plugins | `:plugins` | `esc` |
-| Settings | `S` or `:settings` | `esc` |
+| Settings (page) | `S` or `:settings` | `esc` (clears a search first), `q` |
 | Stats | `:stats` | `esc` |
-| Help | `?` | `esc`, `?` |
+| Help (page) | `?`, `:help [topic]` | `esc` (clears a filter first), `?`, `q`; back to the screen it was opened from |
 | Confirm | `dd`, `:disable`, `:q` | `y` / `n` (`esc` is `n`). It takes nothing else: `:` and a click on the last row do nothing until it is answered, as in nvim's `confirm()` |
 
-The mode name shows the way vim shows `-- INSERT --`: at the left of the status line on screens that have one (popups, overlays, the editor, the wizard: `RUN`, `LOG`, `NORMAL`, `NEW · INSERT`), and at the left of the help bar on the board, which has no status line (the default board mode shows no name). The last row belongs to the help bar, the echo of the last command, or the command line and `/` search while you type, always starting at column 0.
+The mode name shows the way vim shows `-- INSERT --`: at the left of the status line on screens that have one (popups and pages: `RUN`, `LOG`, `NORMAL`, `NEW · INSERT`, `SETTINGS`, `HELP`), and at the left of the help bar on the board, which has no status line (the default board mode shows no name). The last row belongs to the help bar, the echo of the last command, or the command line and `/` search while you type, always starting at column 0.
 
 ### 18.5 Keys and mouse
 
@@ -151,7 +186,7 @@ The mode name shows the way vim shows `-- INSERT --`: at the left of the status 
 | `R` | Run now (a dry run if it has never run) |
 | `F` | Rerun the latest failed run from the node that failed |
 | `e` | Open in the editor (§18.7) |
-| `n` | New pipeline wizard (§18.8) |
+| `n` | New pipeline page (§18.8) |
 | `v` | Simple / detailed rows |
 | `t` | Cycle the tag filter |
 | `/` | Search |
@@ -161,21 +196,108 @@ The mode name shows the way vim shows `-- INSERT --`: at the left of the status 
 | `x` | Disable / enable the selected pipeline's triggers (confirm) |
 | `dd` | Delete the selected pipeline (confirm; the file goes to `.mill/trash/`) |
 | `:` | Command line on the last row (below) |
-| `?` | Help |
-| `S` | Settings |
+| `?` | Help page (§18.5.1) |
+| `S` | Settings page (§18.10) |
 | `q`, `ctrl+c` | Quit (confirm with `:q`) |
 
-**Mouse.** With `mouse_enabled` on (the default): click a row to select it, double-click to open its run, scroll to move the selection, click a filter chip to set the filter. Overlays swallow mouse events, except a click on the last row, which opens the command line (not while a confirm waits). Hold Option (iTerm2, Terminal.app) or Shift (Ghostty, kitty) to select text natively, or turn `mouse_enabled` off.
+**Mouse.** With `mouse_enabled` on (the default): click a row to select it, double-click to open its run, scroll to move the selection, click a filter chip to set the filter. Popups and pages swallow mouse events (pages handle their own clicks, §18.1.1), except a click on the last row, which opens the command line (not while a confirm waits). Hold Option (iTerm2, Terminal.app) or Shift (Ghostty, kitty) to select text natively, or turn `mouse_enabled` off.
 
-**Command line.** `:` opens one command line, vim-style, on the terminal's last row with `:` in the bottom-left corner. It works from every screen except a pending y/n confirm: the boot screen, the board, every popup and overlay, the editor's NORMAL, VISUAL and CONNECT, the wizard. In INSERT and other text fields (the wizard's fields, the inspector, the prompt and YAML editors, the palette's query, any `/` search, the settings value editor) `:` types a colon. A confirm takes only `y`, `n` and `esc`, as nvim's `confirm()` does. Overlays don't move; the line draws below them.
+**Command line.** `:` opens one command line, vim-style, on the terminal's last row with `:` in the bottom-left corner. It works from every screen except a pending y/n confirm: the boot screen, the board, every popup and page, the editor's NORMAL, VISUAL and CONNECT, the new-pipeline page in NORMAL. In INSERT and other text fields (the new-pipeline page's fields, the inspector, the prompt and YAML editors, the palette's query, any `/` search, the settings value editor) `:` types a colon. A confirm takes only `y`, `n` and `esc`, as nvim's `confirm()` does. Popups don't move; the line draws below them, and on a page it takes the help bar's row.
 
 - Commands are `:[count]name[!] [args]`. Unique prefixes and vim's short forms work (`:q :w :wq :x :e! :mes :se`); an ambiguous prefix is `M1304`, and abbreviations never resolve by context. `!` forces (`:q!`, `:w!`, `:e!`, `:new!`). A number alone jumps to that row, node, step or line; before a command it repeats it (`:3undo`).
 - `tab` completes commands (this screen's first, then global ones, alphabetical within each), pipelines, node ids, settings keys and values, `k=v` inputs and paths; several matches open a one-row wildmenu above the line (`<` `>` scroll it). `↑`/`↓` walk the history entries that start with what's typed (200 lines per user, `~/.local/state/mill/cmdline_history`, shared by every screen); `ctrl+r` searches it. `esc` cancels, `enter` runs.
 - The result or error echoes on the same row in the usual shape (`error[M1305]: unknown sort "bogus" · help: …`) until the next key (12 s at most), and goes to `:messages`. A command from another screen echoes `M1307` naming where it works; global commands work everywhere.
-- `:help commands` lists every command with its CLI equivalent; `:help <command>` and `:help <code>` explain one. `/` is search only, on the same row; no command starts with `/`.
+- `:help commands` opens the help page on every command with its CLI equivalent; `:help <command>` and `:help <code>` open it on one (§18.5.1). `/` is search only, on the same row; no command starts with `/`.
 - Codes: `M1302` an input isn't `key=value` · `M1303` no such input · `M1304` ambiguous abbreviation · `M1305` an argument isn't one of its values · `M1306` unknown command (with `did you mean`) · `M1307` the command works on another screen · `M1308` the command needs an argument.
 
-**Help overlay.** `?` opens a square panel. At 96+ columns it has two columns: Navigation, Actions, Mouse, Modes on the left; Commands, Run, Editor, Badges on the right. Narrower terminals get one column. If it doesn't fit, the badges and then the mouse groups are dropped with a dim `(truncated, enlarge terminal)` note. It lists every `:` command.
+#### 18.5.1 Help page
+
+*Influences: rex v2.* Layout, filter, scrolling and the live legend follow rex's help page (`rex/docs/plans/r2/R04-fullscreen-settings-help.md`, `rex/docs/tui.md` "Help page"). The eight groups, `:help <topic|command|code>` and `:help commands` are mill's.
+
+`?` (or `:help`) opens help as a page (§18.1.1). Nothing is dropped any more: a group that doesn't fit scrolls. The left pane lists the eight groups, the right pane shows the selected group's rows at full height. `?` on any screen opens help on that screen's group, and `esc` goes back to that screen.
+
+124 columns, opened from the board:
+
+```
+ ≋ mill › help                                                                                                   mill 0.3.0
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ GROUPS          │ ── Navigation ─────────────────────────────────────────────────────────────────────────────────────────
+ ▸ Navigation    │ j k ↓ ↑     move the selection
+   Actions       │ g G         first / last row
+   Mouse         │ 1 2 3       jump to Failed / Running / Ready; on a long Ready, 3 shows and hides it
+   Modes         │ tab         next failed pipeline (wraps)
+   Commands      │ /           search names, descriptions and tags; state:failed tag:code trigger:cron uses:linear ok:<90
+   Run           │ t           cycle the tag filter
+   Editor        │ s -         cycle the sort inside each section / reverse it
+   Badges        │ V           cycle saved views
+                 │ v           simple / detailed rows
+                 │ p           preview line under the selected row: description, trigger, budget, last outputs
+                 │ :           command line on the last row; :help commands lists every command
+                 │
+                 │
+                 │
+                 │
+                 │
+                 │
+                 │
+                 │
+                 │
+                 │
+                 │
+─────────────────┴──────────────────────────────────────────────────────────────────────────────────────────────────────────
+ HELP  Navigation · 11 keys                                                                      :help <topic|command|code>
+ j/k scroll · 1-8 group · tab groups · / filter · esc back
+```
+
+80 columns, filtered with `/dry`:
+
+```
+ ≋ mill › help      /dry · 4 hits                                    mill 0.3.0
+────────────────────────────────────────────────────────────────────────────────
+ GROUPS          │ 4 rows match “dry”
+   Navigation    │ ── Actions ────────────────────────────────────────────────
+ ▸ Actions       │ R               run now (a dry run if it has never run)
+   Mouse         │ ── Commands ───────────────────────────────────────────────
+   Modes         │ :run --dry-run  dry run with inputs · mill run --dry-run
+   Commands      │ ── Editor ─────────────────────────────────────────────────
+   Run           │ R               dry run, states painted on the graph
+   Editor        │ m               pin a sample for dry runs
+   Badges        │
+                 │
+                 │
+                 │
+                 │
+                 │
+                 │
+                 │
+                 │
+                 │
+                 │
+─────────────────┴──────────────────────────────────────────────────────────────
+ HELP · FILTER                                                    3 of 8 groups
+ /dry▌
+```
+
+| Group | What it lists | `?` from here opens it |
+|---|---|---|
+| **1 Navigation** | Moving on the board: `j k g G 1 2 3 tab`, search and its tokens, `t s - V v p`, `:` | board |
+| **2 Actions** | `enter R F e n x dd S ? q` | |
+| **3 Mouse** | Clicks, double-click, wheel, the last row, native text selection | |
+| **4 Modes** | Every focus mode (§18.4) with how to enter and leave it, `NORMAL`/`INSERT`, and the keys of the new-pipeline and settings pages under their own headings | new pipeline, settings (scrolled to their heading) |
+| **5 Commands** | Every `:` command with its CLI equivalent | `:help commands` |
+| **6 Run** | The run popup and log (§18.6), the agent screen | run popup, log, agent screen |
+| **7 Editor** | Every editor key (§18.7.14) | editor |
+| **8 Badges** | The legend: state glyphs, the runs strip, long-run badges, lint marks, drawn with the board's own styles and a live spinner (still with `reduce_motion`), so it always matches the screen | |
+
+- **Groups.** `1`–`8` pick a group and `[` / `]` step through them; on the left pane `j`/`k` move and `enter` or `l` moves to the rows. A new group starts at the top.
+- **Scroll.** On the rows: `j`/`k`, `ctrl+d`/`ctrl+u`, `pgdn`/`pgup`, `g`/`G`, and the wheel. Long descriptions wrap under their key.
+- **Filter.** `/` (typed on the last row) keeps the rows whose key or description contains every word, from every group at once, under their group's heading. Groups with no hit are dimmed on the left; no hit at all reads `no match for “…”`. The header shows the query. `enter` keeps the filter, `esc` clears it, a second `esc` closes.
+- **`:help <topic|command|code>`.** A group name (`:help editor`) opens that group. A command (`:help pipe`) opens Commands on its row, with its arguments, CLI equivalent and full text. An error code (`:help M2212`) shows the code's page in the right pane, the same text as `mill explain` (§29.5). A word that is both resolves in that order (`:help run` is the Run group; `:help :run` the command). Unknown topics echo `M1306` with `did you mean`.
+- **Off rows.** Keys and commands behind a setting that is off (the Mouse group with `mouse_enabled` off, sound commands with `sound.set = off`) stay listed, dimmed and tagged `(off)`.
+- **Status line.** `HELP`, the group and its row count; on the right the `:help` forms. Help bar: `j/k scroll · 1-8 group · tab groups · / filter · esc back`.
+- **Narrow.** Under 60 columns the groups fold into the strip `‹ Navigation ›`.
+
+**CLI parity:** `mill <command> --help`, `mill explain <code>` (§17.5).
 
 ### 18.6 Run
 
@@ -238,7 +360,7 @@ The editor is the TUI face of the same edit operations the CLI exposes (§17.8, 
 | 1 `esc` returns to the board | `esc` unwinds one layer: completion list → field → inspector → panel → canvas → board | The editor nests (a field inside the inspector inside the editor). One `esc` per layer is predictable; a single `esc` that threw away a half-typed expression would not be. |
 | 5 Five keys in the help bar | Still five, but the five change with the mode and focus (canvas, inspector, connect, palette, panel) | Each mode has different first actions. The bar never shows more than five. |
 | 8 Color is state, and only state | Colors on the graph mean lint state (red error, amber warning) or, during a dry run, run state. The diff view uses green and red for added and removed lines. Selection is a background, never a color. | Lint and dry-run results *are* the states of an editor. Diff colors are a convention people read without thinking. |
-| 10 Overlays are square and centered | The completion list and pickers are square, but anchored next to the field or node they belong to | They must stay beside the text being typed or the port being chosen. |
+| 10 Popups are square and sized to fit | The completion list and pickers are square, but anchored next to the field or node they belong to | They must stay beside the text being typed or the port being chosen. |
 
 #### 18.7.2 Screen
 
@@ -809,7 +931,7 @@ A dry run in progress, after `gA` and `ga` cleaned up lint (states paint the bor
 | `+ - =` / `zz` / `zh zj zk zl` / `M` / `O` | Zoom / center / pan / minimap / outline |
 | `u` / `ctrl+r` | Undo / redo |
 | `:` | Command line (§18.5): `:w`, `:w!`, `:q`, `:q!`, `:wq`, `:x`, `:e!` (revert), `:lint`, `:copen`, `:cclose`, `:goto <node>`, `:refs`, `:wrap loop`, `:extract <name>`, `:layout reset`, `:pattern save <name>`, `:prompt file\|inline`, `:sample edit`, `:dry`, `:estimate`, `:[n]undo`, `:[n]redo`, `:<n>` (n-th node in run order). Editor commands complete first. `r` (rename), `gP` (extract) and `/` (jump) edit on the same last row |
-| `?` | Editor help (every key above) |
+| `?` | Help page on the Editor group (§18.5.1) |
 | `esc` | Leave the editor (asks to save if changed) |
 
 **Inspector**
@@ -835,7 +957,7 @@ A dry run in progress, after `gA` and `ga` cleaned up lint (states paint the bor
 - Drag a node to move it to another slot (a pin, as with `H J K L`). Drag from an output port to a node to connect.
 - Drag the empty canvas, or scroll, to pan.
 - Click a field in the inspector to select it, again to edit. Click a problem to jump to it.
-- Overlays swallow the mouse (§18.1 rule 10).
+- Popups swallow the mouse (§18.1 rule 10).
 
 #### 18.7.16 CLI parity
 
@@ -867,16 +989,104 @@ Every command edits through the daemon with the file's hash, keeps comments and 
 
 #### New pipeline (`n`)
 
-`n` on the board, `:new`, or `mill new` (the same steps as terminal prompts, or flags) opens a square overlay with four steps and a breadcrumb: `1 start › 2 shape › 3 run › 4 review`. Every field has a default, so `enter` goes all the way through. Nothing is written until review.
+*Influences: rex v2.* The page, the step rail with state words, the in-memory draft, errors that never close the page, and the agent list with missing agents dimmed follow rex's new-agent page (`rex/docs/plans/r2/R16-new-agent-flow.md`, `rex/docs/tui.md` "NEW-AGENT PAGE"). The four steps, the name chosen last, dry run then edit, the drafter, import and the modal keys are mill's decisions (ADR-045 to ADR-050) and are unchanged. Proposals from rex that would change them are open questions (§30, 13–17).
+
+`n` on the board, `:new`, or `mill new` (the same steps as terminal prompts, or flags) opens the new-pipeline page (§18.1.1), `≋ mill › new pipeline`. The left pane is a **step rail**, `start › shape › run › review`, that shows where you are and what each step holds; the right pane is the current step; at 110 columns or more a third pane previews the graph (`Y` for the YAML). Every field has a default, so `enter` goes all the way through. Nothing is written until review.
+
+124 columns, step 2 after *describe it*:
+
+```
+ ≋ mill › new pipeline    find-flaky-tests (suggested)                                                   ~/code/app · draft
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ STEPS              │ WHAT IT DOES · space turns a step on or off                │ GRAPH · Y yaml
+ ✓ start   describe │                                                            │
+ ▸ shape   4 steps  │ agent   ◂ claude/sonnet ▸            effort ◂ medium ▸     │ ⌁ on.cron 0 3 * * *
+ · run     cron     │                                                            │ └─ ⑂ ws git.worktree
+ · review  lint ✓   │ [ ] ⇄ fetch   fetch data from URLs or APIs                 │    └─ ◆ work agent · sonnet · medium
+                    │ [✓] ⑂ ws      changes code → its own branch                │       └─ ⊨ check check · make check
+                    │ [✓] ◆ work    does the task you described                  │          ├─ true ⇡ pr gh.pr · draft
+                    │ [ ] ⊢ scope   check the agent's plan before it runs        │          └─ false ↪ handoff
+                    │ [✓] $ check   “tests” → run make check; fail retries       │
+                    │ [ ] ◇ review  independent review by a second agent         │
+                    │ [✓] ⇡ pr      “draft pr” → open a draft PR                 │
+                    │ [ ] # notify  post the result to Slack                     │
+                    │                                                            │
+                    │ refine   also post the result to #dev                      │
+                    │                                                            │
+                    │ trigger  “night” → every day at 03:00                      │
+                    │                                                            │
+                    │                                                            │
+                    │ ollama · llama3.2:3b proposed 4 steps and a trigger · free │
+                    │                                                            │
+                    │                                                            │
+                    │                                                            │
+                    │                                                            │
+────────────────────┴────────────────────────────────────────────────────────────┴──────────────────────────────────────────
+ NEW · NORMAL  2/4 shape   4 steps · drafted by ollama                                      nothing is written until create
+ j/k move · space on/off · h/l agent · enter next · ? more
+```
+
+80 columns, step 1, typing the sentence (`INSERT`):
+
+```
+ ≋ mill › new pipeline                                       ~/code/app · draft
+────────────────────────────────────────────────────────────────────────────────
+ STEPS              │ HOW DO YOU WANT TO START?
+ ▸ start   describe │ ▸ ✎ describe it    say what it should do
+ · shape            │   ⊞ template       built-ins, plugins, patterns
+ · run              │   ⧉ duplicate      a copy; its triggers start manual
+ · review           │   ⇪ import a file  n8n, .millpkg, mill, pipe
+                    │   □ blank          an empty pipeline
+                    │
+                    │ IN A SENTENCE
+                    │ ┌───────────────────────────────────────────────────────┐
+                    │ │ every night find flaky tests, fix them, run the       │
+                    │ │ tests and open a draft PR▌                            │
+                    │ └───────────────────────────────────────────────────────┘
+                    │ enter drafts with ollama · llama3.2:3b · free, offline
+                    │
+                    │
+                    │
+                    │
+                    │
+                    │
+────────────────────┴───────────────────────────────────────────────────────────
+ NEW · INSERT  1/4 start                        nothing is written until create
+ type edit · tab complete · enter draft it · esc normal · ctrl+c discard
+```
+
+| Region | What it shows |
+|---|---|
+| **Header** | The suggested name once there is one (`find-flaky-tests (suggested)`; it's set on review), and on the right the project folder and `draft`. |
+| **Step rail** | One row per step with a mark and a word: `▸` current, `✓` done, `·` not visited, `!` a warning (keyword draft `M2212`, a handoff `M2307`), `✗` lint errors (they don't block create, §18.7.9). Words: start's source (`describe`, `template`, `copy`, `import`, `blank`), shape's step count, run's trigger kind, review's lint state. Under 60 columns: the strip `‹ start · [shape] · run · review ›`. |
+| **Step pane** | The step's form (table below). At 80 columns the start step stacks the source list over the source's pane. |
+| **Preview** | 110 columns or more: the live graph (§18.7.3), `Y` for the YAML. Narrower, `Y` swaps the step pane for a full-width preview and back. |
+| **Status line** | `NEW · NORMAL` or `NEW · INSERT`, the step (`2/4 shape`), what it holds, and `nothing is written until create`. |
+| **Help bar** | Five keys for the step and mode, as before. |
 
 | Step | You choose | Notes |
 |---|---|---|
 | **1 start** | Where it comes from: **describe it** (a sentence), **template** (built-ins, plugin templates and the editor's patterns, in a gallery), **duplicate** (a pipeline you have), **import a file**, or **blank** | A sentence goes to the drafter (below), which proposes the steps, trigger and agent, each with the words that caused it. A copy's triggers start as `manual`, so a copy never fires twice by accident (step 3 offers `as in <original>`). Import takes a path (`tab` completes; `o` opens a file picker; a path pasted by dropping a file on the terminal also works), a URL, `gh:owner/repo/path`, or a pipe expression; it detects n8n workflows, `.millpkg` bundles, mill pipelines and pipe expressions, and previews what it would create before anything is written. |
-| **2 shape** | What it does: the steps (`space` toggles), the agent and effort, a `refine` sentence that redrafts | A live graph beside it, `Y` for the YAML. A copy or an import shows its nodes instead of the checklist. |
+| **2 shape** | What it does: the steps (`space` toggles), the agent and effort, a `refine` sentence that redrafts | The preview pane follows every change. A copy or an import shows its nodes instead of the checklist. `enter` on the agent opens the agent list in the pane: signed-in agents with their models first (`/` filters models), then agents that are not signed in or not installed, dimmed and not selectable (`enter` on one opens `:plugins` on its agent, §18.9). |
 | **3 run** | Trigger (and its one setting), budget preset (`medium` by default), what happens on failure (nothing, a GitHub issue, a rex session; a GitHub issue by default when `mill/github` is installed) | `▸ advanced` folds max agents, the destructive steps it may run, and scope. The run never waits on you, so its limits are set here. |
 | **4 review** | The name (suggested from the source), then **dry run, then edit** (the default) or **open the editor** | Shows the files it writes, the estimate against the budget, and live lint. `enter` (or `:w`) creates, runs a dry run (once lint is clean; a dry run never runs destructive steps, §18.7.12) and opens the editor on the new pipeline; lint errors don't block create (§18.7.9). |
 
-**Modes and keys.** The editor's model (§18.7.4): `NORMAL` moves with `hjkl` (`j`/`k` rows, `h`/`l` change a `◂ value ▸` or move between the source list and its pane), `enter` uses the selection and goes on, `tab`/`shift+tab` and `1`–`4` change step, `space` toggles, `Y` switches the preview, `o` opens the file picker, `/` filters (on the last row), `gx` explains an error, `:` opens the command line, `?` lists every key, `esc` leaves the pane and then cancels (nothing written; `n` resumes the draft, `:new!` starts over). `i` (or `enter` on a text field) enters `INSERT`: `tab` completes paths, names and cron presets, `enter` finishes (and drafts, loads or checks), `esc` keeps the text, `ctrl+c` drops it, and `:` types a colon. The status line shows `NEW · NORMAL` or `NEW · INSERT` and the step.
+**Modes and keys.** The editor's model (§18.7.4): `NORMAL` moves with `hjkl` (`j`/`k` rows, `h`/`l` change a `◂ value ▸` or move between the source list and its pane), `enter` uses the selection and goes on, `tab`/`shift+tab` and `1`–`4` change step (the rail follows; on the rail itself `j`/`k` move and `l` enters the step), `space` toggles, `Y` switches the preview, `o` opens the file picker, `/` filters (on the last row), `gx` explains an error, `:` opens the command line, `?` opens the help page on these keys (§18.5.1), `esc` leaves the innermost thing (completion, picker, agent list, pane) and then the page (nothing written; `n` resumes the draft, `:new!` starts over). `i` (or `enter` on a text field) enters `INSERT`: `tab` completes paths, names and cron presets, `enter` finishes (and drafts, loads or checks), `esc` keeps the text, `ctrl+c` drops it, and `:` types a colon. The status line shows `NEW · NORMAL` or `NEW · INSERT` and the step.
+
+**Draft.** Leaving the page keeps the draft (source, sentence, choices) for the next `n` while the TUI runs; `:new!` drops it. It is never written to the project. Whether it should survive a restart is open question 17.
+
+**Working, empty and error states.** The page stays open and keeps the draft through all of them:
+
+```
+ ⠋ drafting with ollama · llama3.2:3b…                                              esc stops
+ ! ollama is unreachable · keyword rules drafted this (M2212)
+ ! the proposal didn't validate · keyword rules drafted this (M2213)
+ ⠋ reading export.json… n8n workflow · 14 nodes
+ ✗ M2306 export.zip is too large or binary (5 MB at most)
+ ✗ M2205 find-flaky-tests is taken · i renames
+ ✗ M6101 claude is not installed · :plugins shows how to add an agent
+   no pipelines to duplicate yet · pick template or describe it
+```
 
 **Drafter.** *describe it* and `mill new --describe` send the sentence to milld, which drafts with `drafter.backend` (§19.6):
 
@@ -884,9 +1094,9 @@ Every command edits through the daemon with the file's hash, keeps comments and 
 - **`agent`** (opt-in): a headless registry agent (`drafter.agent`, the cheapest signed-in model by default), run as a normal one-node run with its cost shown and counted in today's spend.
 - **`off`**: local keyword rules only.
 
-The sentence is untrusted input: it is put in a delimited block whose delimiter is defused, and it never reaches a shell. The reply is untrusted too: milld parses it into the fixed proposal shape (steps from the step catalog, trigger, agent and effort, name, description, a reason per choice), validates it against the pipeline schema and runs lint before the wizard shows it; anything that doesn't parse or validate is dropped. Optional never blocks (§2 principle 10): when Ollama is unreachable, has no usable model or times out, or the reply fails validation, the keyword rules draft instead and the wizard says so in one line (`M2212` drafter unavailable, `M2213` proposal invalid; both warnings, both in `:messages`). The pane names the drafter (`drafting with ollama · llama3.2:3b…`). The settings page has a **Drafter** section (§18.10) and `mill doctor` reports it (§29.10).
+The sentence is untrusted input: it is put in a delimited block whose delimiter is defused, and it never reaches a shell. The reply is untrusted too: milld parses it into the fixed proposal shape (steps from the step catalog, trigger, agent and effort, name, description, a reason per choice), validates it against the pipeline schema and runs lint before the page shows it; anything that doesn't parse or validate is dropped. Optional never blocks (§2 principle 10): when Ollama is unreachable, has no usable model or times out, or the reply fails validation, the keyword rules draft instead and the page says so in one line, with `!` on the rail (`M2212` drafter unavailable, `M2213` proposal invalid; both warnings, both in `:messages`). The pane names the drafter (`drafting with ollama · llama3.2:3b…`). The settings page has a **Drafter** section (§18.10) and `mill doctor` reports it (§29.10).
 
-**Import.** n8n workflows map as in §23.3; unmapped nodes become `n8n.call` stubs that run on your n8n (`M2304`, needs `N8N_URL`) and a node that waited for a person becomes a `handoff` that ends its branch (`M2307`). mill pipelines open as-is; a `.millpkg` shows the §9.10 summary and which of its pipelines to open. Imports are read by milld, capped at 5 MB, and refused with a code: `M2301` unknown kind, `M2302` newer `mill:` version, `M2303` unreadable source, `M2305` not a valid `.millpkg`, `M2306` too large or binary, `M2308` `-` outside a shell. A created import is trusted (§22). `mill import <src>` (§9.10) keeps its own summary and confirm for bundles; `mill new --from <src>` goes through the wizard's choices. In the TUI, files come from a path, the picker or a pasted path (terminals can't receive uploads).
+**Import.** n8n workflows map as in §23.3; unmapped nodes become `n8n.call` stubs that run on your n8n (`M2304`, needs `N8N_URL`) and a node that waited for a person becomes a `handoff` that ends its branch (`M2307`). mill pipelines open as-is; a `.millpkg` shows the §9.10 summary and which of its pipelines to open. Imports are read by milld, capped at 5 MB, and refused with a code: `M2301` unknown kind, `M2302` newer `mill:` version, `M2303` unreadable source, `M2305` not a valid `.millpkg`, `M2306` too large or binary, `M2308` `-` outside a shell. A created import is trusted (§22). `mill import <src>` (§9.10) keeps its own summary and confirm for bundles; `mill new --from <src>` goes through the page's choices. In the TUI, files come from a path, the picker or a pasted path (terminals can't receive uploads).
 
 **Errors** show inline and are echoed on the last row (§18.5), then kept in `:messages`: `M1210` bad name, `M2205` name taken, `M2211` no steps on, `M2212` drafter unavailable, `M2213` drafter proposal invalid, `M2309` unknown template, `M3050` invalid trigger setting, `M6101` agent CLI missing.
 
@@ -922,7 +1132,7 @@ The first `mill` on a new machine runs setup right after the boot splash (§18.1
 | `c` | Run its health check now |
 | `t` | Agents view: run `mill agent test` on the selected agent |
 | `gd` | Open its manifest, or the line in `init.lua` that declares it |
-| `/` | Filter installed plugins, or search the registry in Available (typed on the last row; the overlay shows the active filter) |
+| `/` | Filter installed plugins, or search the registry in Available (typed on the last row; the popup shows the active filter) |
 
 **Rules**
 - **Permissions are explicit.** Installing shows everything the plugin asks for. An update that asks for *new* permissions shows only what changed and needs a confirm; an update that asks for nothing new applies with one key.
@@ -936,32 +1146,107 @@ The first `mill` on a new machine runs setup right after the boot splash (§18.1
 
 ### 18.10 Settings
 
-`S` (or `:settings`) opens the settings page over the board. It's a view of the settings registry (§19.6), so every setting appears here automatically, with its type, default, help text and validation. Nothing is hidden in a file you have to find.
+*Influences: rex v2.* The two-pane page, section badges, search across sections, the inspector and the empty states follow rex's settings page (`rex/docs/plans/r2/R04-fullscreen-settings-help.md`, `rex/docs/tui.md` "Settings page", `rex/docs/settings.md`). The registry, the sections, the editing keys and the Drafter section are mill's.
+
+`S` (or `:settings`) opens the settings page (§18.1.1). It's a view of the settings registry (§19.6), so every setting appears here automatically, with its type, default, help text and validation. Nothing is hidden in a file you have to find.
+
+124 columns, the Drafter section:
+
+```
+ ≋ mill › settings        Drafter › Model                                                       ~/.config/mill/settings.lua
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ SECTIONS        │ Drafter
+   General       │ ollama ✓ 127.0.0.1:11434 · qwen2.5:3b · 3 models pulled                                     c check now
+   Runs        2 │
+   Agents        │   Backend                                                                                        ollama
+ ▸ Drafter     1 │ ▸ Model                                                                                ◂ • qwen2.5:3b ▸
+   Plugins       │   Base URL                                                                       http://127.0.0.1:11434
+   Appearance    │   Agent                                                                                    claude/haiku
+   Sound       1 │   Timeout                                                                                           20s
+   Gateway       │
+   Advanced      │
+                 │
+                 │
+                 │
+                 │
+                 │
+                 │
+                 │
+                 │
+                 │
+─────────────────┴──────────────────────────────────────────────────────────────────────────────────────────────────────────
+ id drafter.model · default llama3.2:3b · • changed · applies to the next draft · mill config set drafter.model
+ pulled   llama3.2:3b 2.0 GB   [qwen2.5:3b 1.9 GB]   gemma2:2b 1.6 GB                       h/l cycle · enter list · K more
+ The local model that drafts a pipeline from a sentence (the new-pipeline page's describe it). If it isn't pulled, the first
+ pulled one of llama3.2:3b, qwen2.5:3b, gemma2:2b, llama3.2:1b, phi3:mini is used and logged, never an arbitrary model.
+ SETTINGS  drafter.model                                                         9 sections · 4 changed · changes apply now
+ j/k move · h/l change · / search · u reset · ? more
+```
+
+80 columns, searching with `/model`:
+
+```
+ ≋ mill › settings      /model · 4 hits                            settings.lua
+────────────────────────────────────────────────────────────────────────────────
+ SECTIONS        │ 4 settings match “model”
+   General       │ Agents
+   Runs        2 │   Extraction                           same agent, cheapest
+   Agents        │ Drafter
+ ▸ Drafter     1 │   Backend                                            ollama
+   Plugins       │ ▸ Model                                    ◂ • qwen2.5:3b ▸
+   Appearance    │   Agent                                        claude/haiku
+   Sound       1 │
+   Gateway       │
+   Advanced      │
+                 │
+                 │
+                 │
+                 │
+                 │
+─────────────────┴──────────────────────────────────────────────────────────────
+ id drafter.model · default llama3.2:3b · • changed · next draft
+ pulled   llama3.2:3b   [qwen2.5:3b]   gemma2:2b             h/l cycle · K more
+ The local model that drafts a pipeline from a sentence. If it isn't pulled,
+ the first pulled one of a short list of small models is used. … K more
+ SETTINGS · SEARCH  drafter.model                          4 hits in 2 sections
+ /model▌
+```
 
 **Layout**
-- **Left:** sections, navigated like the board (`j`/`k`, relative line numbers): General, Runs, Agents, Drafter, Plugins, Appearance, Sound, Gateway, Advanced.
-- **Right:** one row per setting: name, current value, and a short note of the choices. The selected row's help text, default and source sit on the bottom line.
-- **Statusline:** the `SETTINGS` mode, the setting id under the cursor (`sound.set`), and the file changes are written to.
+- **Left:** the sections, `1`–`9` in order: General, Runs, Agents, Drafter, Plugins, Appearance, Sound, Gateway, Advanced. A dim number after a section counts its settings that differ from the default.
+- **Right:** one row per setting of the selected section: its name, and its value flush right. A `•` before a value means it differs from the default; the cursor row shows `◂ value ▸` when `h`/`l` can change it. A value set by a higher layer is dim, with its source after it (`init.lua:9`).
+- **Inspector:** four rows under the panes (two under 30 rows) for the selected setting: its **id** (what `mill config set` takes), its **default**, whether it's changed, **when it takes effect** (`now`; `next run` or `next draft` for values a running one already read), the CLI to set it; then the **options** with the current one in brackets, or the numeric range; then the help text. `K` shows the full help text when it's longer.
+- **Header:** `≋ mill › settings`, the breadcrumb (`Drafter › Model`) or the search, and the file changes are written to.
+- **Status line:** the `SETTINGS` mode, the setting id under the cursor (`drafter.model`), and how many settings are changed.
 
 **Editing**
 
 | Key | Action |
 |---|---|
-| `h` / `l` | Previous / next value for choices (`◂ millrace ▸`), or −/+ for numbers and sliders |
+| `j` / `k` | Next / previous setting (on the left pane: section) |
+| `tab` / `shift+tab`, `1`–`9`, `[` / `]` | Switch pane; jump to a section; previous / next section |
+| `h` / `l` | Previous / next value for choices (`◂ millrace ▸`), or −/+ for numbers and sliders. On a setting with no values to step through, nothing |
 | `enter` / `space` | Toggle on/off, or open a text value for editing |
-| `i` | Edit a text value in place; `esc` cancels, `enter` saves |
+| `i` | Edit a text value in place; `esc` cancels, `enter` saves, `ctrl+u` clears. A refused value keeps the editor open and says why |
 | `p` | Preview: plays the sound, shows the color, or renders a sample row |
 | `u` | Reset to the default |
 | `gd` | Go to where the value is set: opens `init.lua` or `.mill/mill.lua` at that line |
-| `/` | Search every setting by name or help text (typed on the last row; the overlay shows the active search) |
+| `K` | The full help text of the setting |
+| `/` | Search every setting by name, id, section or help text (typed on the last row) |
+| `?` | Help page, on these keys (§18.5.1) |
+| `esc`, `q` | Back to the board (`esc` clears a search first) |
+
+**Search.** `/` filters live across every section: the right pane lists the hits grouped by section under a match count, the header shows the query, and sections with no hit are dimmed on the left. No hit reads `no setting matches “…”`. `enter` keeps the filter and the row you picked; `esc` clears it and goes back to the row you were on; a second `esc` closes the page.
 
 **Rules**
 - Changes apply immediately and are written to the managed `settings.lua` (§19.1). There's no save button and no restart.
-- A value set in `init.lua`, a project file, an environment variable or a flag is shown with its source (`init.lua:9`) and can't be changed here, because the higher layer would override it anyway. `gd` takes you to it.
+- A value set in `init.lua`, a project file, an environment variable or a flag is shown with its source (`init.lua:9`) and can't be changed here, because the higher layer would override it anyway. `enter`, `h`/`l`, `i` and `u` refuse on the status line with the source; `gd` takes you to it.
 - Invalid values are refused with the same error format as everywhere else (§29), and the old value stays.
 - Every setting on the page is also reachable as `mill config get|set <id>`.
 
 **Drafter section.** The `drafter.*` settings (§19.6) with a status row on top: `ollama ✓ 127.0.0.1:11434 · llama3.2:3b · 3 models pulled`, or why it is unavailable (`✗ unreachable · describe uses keywords`, `M2212`). `enter` on `drafter.model` opens a picker of the models Ollama reports as pulled (`/api/tags`), with their size; `h`/`l` cycles them. `c` checks Ollama again now. With `drafter.backend` set to `agent`, `drafter.agent` picks the registry agent and model; with `off`, the other rows are dim.
+
+**Appearance section.** `theme` and `density` (§19.6) among others. The page itself is drawn in the theme it sets, live. rex v2's `accent_color` row and bundled themes aren't adopted: color in mill is state only (rule 8). The proposal is open question 18.
 
 
 ### 18.11 Sound
@@ -1032,7 +1317,7 @@ After 5 minutes (`screensaver.after_minutes`) with no key or mouse event, the sc
 - **Same size as rex's.** The logo is one line of normal text, the mark and the name (`≋ mill`), the same size and placement as rex's `∴ rex`. It isn't a large banner or block letters. Both tools' screensavers look like a matched pair.
 - **Live counts.** Daemon events keep the counts current. `failed` shows in red while above zero; everything else stays dim. While the daemon is unreachable, the reconnect status shows under the counts.
 - **Waking is safe.** Any key or mouse event (click, wheel) brings the screen back, and that key or click does nothing else. An `enter`, `R` or `ctrl+c` that wakes mill never opens, reruns or quits anything, and a half-typed `dd` from before is dropped.
-- **Only when you're idle.** It only starts over the bare board. Popups, the editor, the wizard, settings, the command line and confirmations never time out, because there you're in the middle of something.
+- **Only when you're idle.** It only starts over the bare board. Popups, pages (the editor, new pipeline, settings, help), the command line and confirmations never time out, because there you're in the middle of something.
 - **Burn-in safe.** Once a minute it moves a little (at most 6 columns and 2 rows from the center). With `reduce_motion` on it stays centered.
 - **Costs nothing.** No CPU while idle: spinners stop and one timer fires at most once a minute. It plays no sound. The startup voice and run sounds are separate.
 - **Keep awake (macOS).** With `screensaver.keep_awake` on (the default), mill runs `/usr/bin/caffeinate -d -w <mill pid>` while the screensaver shows, so the display doesn't sleep. It's stopped when the screensaver goes away or the TUI exits, and `-w` ends it if mill dies. On other systems the setting does nothing. If macOS turns the display off sooner than `screensaver.after_minutes`, mill doesn't turn it back on, so set the minutes below the system's display timeout.
