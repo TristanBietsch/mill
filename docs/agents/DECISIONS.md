@@ -2,7 +2,7 @@
 
 Choices already made in the spec, as a log an agent can check before undoing something. Each entry: date, status, context, decision, consequences, source.
 
-ADR-001 to ADR-023 were recorded on 2026-11-11 from spec v2. ADR-024 to ADR-044 record the decisions the user (and, for ADR-044, the main session acting for the user) made the same day on the backend and editor plans' open decisions; they are applied in spec v2.1. Status `accepted` means the spec states it as decided. Questions still open live in [spec §30](../spec/30-open-questions.md#30-open-questions). To add a decision: append the next number, never renumber; to reverse one, add a new entry that supersedes it and mark the old one `superseded by ADR-NNN`.
+ADR-001 to ADR-023 were recorded on 2026-11-11 from spec v2. ADR-024 to ADR-044 record the decisions the user (and, for ADR-044, the main session acting for the user) made the same day on the backend and editor plans' open decisions; they are applied in spec v2.1. ADR-045 to ADR-053 record the wizard and command-line decisions of 2026-11-12, applied in spec v2.2. Status `accepted` means the spec states it as decided. Questions still open live in [spec §30](../spec/30-open-questions.md#30-open-questions). To add a decision: append the next number, never renumber; to reverse one, add a new entry that supersedes it and mark the old one `superseded by ADR-NNN`.
 
 ## ADR-001: Hands-off runs
 
@@ -360,3 +360,70 @@ ADR-001 to ADR-023 were recorded on 2026-11-11 from spec v2. ADR-024 to ADR-044 
   - **Mockup↔spec:** crashed (`↯`) and budget-cancelled (`⊗`) in FAILED and counted as failed; user-cancelled (`⊗` dim) and untrusted (`◌`) in READY; branch rows indented under the node that split; retries as new attempts with the failed one as its own sub-row; `M3021` ambiguous input, `M3024` unreachable; mode name at the left of the board's help bar; conditional columns between text and runs; socket fallback `~/.cache/mill/milld.sock`.
 - **Consequences:** Spec v2.1 states all of these. The plans mark each item decided. Code clash fixed on the way: the backend plan's argv-secret check moves from `M9203` (taken by "secret declared but never used") to `M9207`.
 - **Source:** [open-decisions.md](../plans/backend/open-decisions.md), [00-overview.md](../plans/backend/00-overview.md#spec-issues), [editor.md](../plans/editor.md) §5, [spec index](../spec/index.md).
+
+## ADR-045: Four-step wizard, name last
+
+- **Date:** 2026-11-12 · **Status:** accepted
+- **Context:** The v2.1 wizard had five steps, asked for the name first and used keys unlike the editor's ([wizard plan](../plans/wizard.md) §1).
+- **Decision:** Four steps, `1 start › 2 shape › 3 run › 4 review`, with the editor's modal keys (`hjkl`, `i`, `esc`). The name is chosen last, on review, suggested from the source. Every field has a default, so `enter` goes all the way through.
+- **Consequences:** Nothing is written before review. `mill new` flags follow the same four steps.
+- **Source:** User decisions (wizard 1, 2). [spec §18.8](../spec/18-tui.md#188-wizards).
+
+## ADR-046: Dry run, then edit after create
+
+- **Date:** 2026-11-12 · **Status:** accepted
+- **Context:** What the wizard does once the pipeline exists (wizard decision 6).
+- **Decision:** Create runs a dry run (once lint is clean; destructive steps never run in a dry run) and opens the editor with the states painted on the graph. "Open the editor" stays as the alternative on review.
+- **Consequences:** A new pipeline is seen working before it's edited.
+- **Source:** User decision. [spec §18.8](../spec/18-tui.md#188-wizards), [§18.7.12](../spec/18-tui.md#18712-testing-while-you-build).
+
+## ADR-047: Local-LLM drafter
+
+- **Date:** 2026-11-12 · **Status:** accepted
+- **Context:** *Describe it* turns a sentence into a proposed pipeline. The plan's default was a headless agent run (`wizard.agent`).
+- **Decision:** A local model through Ollama's HTTP API drafts it, the way rex's summarizer works. Settings in `:settings` (§19.6): `drafter.backend` (`ollama` default · `agent` · `off`), `drafter.base_url`, `drafter.model` (resolved against pulled models), `drafter.agent`, `drafter.timeout`. When the backend is unavailable the keyword drafter is used with `M2212`; it never blocks. Drafts are validated against the schema and lint before they're shown; the sentence is untrusted input and is delimited.
+- **Consequences:** Describing a pipeline is free and offline by default. `wizard.agent` is gone. Boot and `mill doctor` report drafter availability as optional (principle 10).
+- **Source:** User decision (wizard 3). [spec §19.6](../spec/19-config-lua.md#196-settings-registry), [§18.8](../spec/18-tui.md#188-wizards), [modules/drafter.md](modules/drafter.md).
+
+## ADR-048: n8n steps that wait for a person become handoffs
+
+- **Date:** 2026-11-12 · **Status:** accepted
+- **Context:** n8n workflows can contain approval or form-wait steps; mill is hands-off (principle 1).
+- **Decision:** On import they become a `handoff` node that ends the branch, with warning `M2307` in the preview.
+- **Consequences:** Imports still succeed and the result never waits on a person.
+- **Source:** User decision (wizard 8). [spec §18.8](../spec/18-tui.md#188-wizards), [§23.3](../spec/23-integrations.md#233-n8n-and-zapier).
+
+## ADR-049: Duplicates start manual
+
+- **Date:** 2026-11-12 · **Status:** accepted
+- **Context:** A copied pipeline with the same triggers fires twice on one event.
+- **Decision:** A duplicate's triggers start as `manual`; step 3 offers `as in <original>`.
+- **Consequences:** No accidental double runs.
+- **Source:** User decision (wizard 9). [spec §18.8](../spec/18-tui.md#188-wizards).
+
+## ADR-050: Accepted wizard defaults
+
+- **Date:** 2026-11-12 · **Status:** accepted
+- **Decision:** The wizard plan's defaults for decisions 4 (budget `medium`), 5 (GitHub issue on failure when `mill/github` is installed), 7 (`n8n.call` stubs, `M2304`), 10 (milld reads imports), 11 (5 MB cap), 12 (keep `mill import` and `mill new --from`), 13 (path, picker and pasted paths; terminal file transfer LATER).
+- **Source:** User accepted the defaults. [wizard plan §12](../plans/wizard.md#12-decisions-2026-11-12).
+
+## ADR-051: `i` on the board is a hint
+
+- **Date:** 2026-11-12 · **Status:** accepted
+- **Context:** The `λ` prompt that `i` opened is gone (ADR-053).
+- **Decision:** The board has no text field, so `i` only echoes the `:run`/`:pipe` hint. `i` means insert everywhere else.
+- **Source:** User decision (command line 2). [spec §18.2](../spec/18-tui.md#182-the-board).
+
+## ADR-052: A pending confirm swallows `:`
+
+- **Date:** 2026-11-12 · **Status:** accepted
+- **Context:** `:` opens the command line from every screen (bottom-left, nvim-style). The plan's default let it open over a confirm.
+- **Decision:** A pending y/n confirm takes only `y`, `n` and `esc`, as nvim's `confirm()`; `:` and a click on the last row do nothing until it's answered. In INSERT and text fields `:` types a colon.
+- **Source:** User decision (command line 7). [spec §18.4](../spec/18-tui.md#184-focus-modes), [§18.5](../spec/18-tui.md#185-keys-and-mouse).
+
+## ADR-053: Global `:` command line replaces the `λ` prompt
+
+- **Date:** 2026-11-12 · **Status:** accepted
+- **Context:** User requirement: commands are vim-like, typed after `:` on the bottom row, never after `/`; `:` runs from anywhere and sits in the bottom-left corner.
+- **Decision:** One command line on the terminal's last row at column 0, from every screen (ADR-052 exception). `/` is search only. The `λ` prompt is replaced by `:run <pipeline> k=v` and `:pipe <expr>`. The plan's other defaults are accepted: one-row wildmenu, this screen's commands first, palette `:` types a colon, 200-entry per-user history, `gi` for items with `i` as an alias for one release, echo until the next key (12 s at most).
+- **Source:** User requirement and accepted defaults. [command-line plan §7](../plans/command-line.md#7-decisions-2026-11-12), [spec §18.5](../spec/18-tui.md#185-keys-and-mouse).

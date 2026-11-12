@@ -1,6 +1,6 @@
 # Plan: the `:` command line
 
-Status: draft, for review. Date: 2026-11-12.
+Status: **decided and merged into spec v2.2** (§18.2, §18.4, §18.5, §18.6, §18.7.14, §18.12, §17.5, §29) on 2026-11-12. The spec wins; section 8 is kept as history. Decisions: ADR-051 to ADR-053.
 Spec: §18.1 (rules), §18.2 (board, the `λ` prompt), §18.4 (focus modes), §18.5 (keys), §18.6 (run), §18.7.4 and §18.7.14 (editor modes and `:`), §18.8 (wizard), §17.5 (TUI ↔ CLI), §29.4 and §29.8 (errors).
 Prototype: `mockups/v2/index.html`: press `:` anywhere; `:help commands` lists every command.
 Companion plan: [wizard.md](wizard.md).
@@ -12,7 +12,7 @@ User requirement: commands are vim-like, typed after `:` on the bottom row, neve
 mill copies nvim's command line, not a palette.
 
 1. **One line, the terminal's last row, column 0.** `:` is drawn in the bottom-left corner with the cursor after it, exactly where nvim draws its cmdline. It is never inside an overlay, never centred or indented. While it is open it replaces whatever the last row showed (the help bar, the last echo). Overlays and popups don't move: the command line draws below them on the terminal's own last row.
-2. **Global.** `:` opens it from every NORMAL-like state: the boot screen, the board, every popup and overlay (run, log, items, cause, agent screen, plugins, settings, stats, help, `:messages`, `:runs`, `:help commands`, a confirm dialog), the editor (NORMAL, VISUAL, CONNECT, the port picker, the inspector when not typing, help, diff, the YAML pane, the problems list) and the wizard (NEW · NORMAL, the file picker, help, while drafting). No screen swallows `:`.
+2. **Global.** `:` opens it from every NORMAL-like state: the boot screen, the board, every popup and overlay (run, log, items, cause, agent screen, plugins, settings, stats, help, `:messages`, `:runs`, `:help commands`; not a pending y/n confirm, which swallows `:` as nvim's `confirm()` does, ADR-052), the editor (NORMAL, VISUAL, CONNECT, the port picker, the inspector when not typing, help, diff, the YAML pane, the problems list) and the wizard (NEW · NORMAL, the file picker, help, while drafting). No screen swallows `:`.
 3. **INSERT types it.** In INSERT and in every text field (the wizard's fields, the inspector's fields, the prompt and YAML editors, the palette's query, any `/` search, the settings value editor, setup's trusted-folders field) `:` is a literal colon, as in nvim. The palette counts as a text field because part ids contain `:` (`mcp:slack/send_message`).
 4. **Idle.** When it isn't open, the last row shows the help bar, or the echo of the last command until the next key, left-aligned like nvim's message area. The mode name stays where §18.4 puts it: at the left of the status line (the row above) on screens that have one (popups, overlays, the editor, the wizard: `RUN`, `LOG`, `NORMAL`, `NEW · NORMAL`), and at the left of the help bar on the board, which has no status line. While the command line is open the board's help bar (and its mode name) is replaced, as nvim replaces `-- INSERT --`.
 5. **Context.** Completion lists and orders commands for the screen it was opened from (board commands first on the board, editor commands in the editor, …), then the global ones. A command that belongs to another screen echoes `M1307 :sort works in the board, not here`; global commands (`:new`, `:run`, `:pipe`, `:settings`, `:plugins`, `:q`, `:help`, …) work everywhere. `esc` returns to exactly the state it was opened from: the same popup, selection, mode and pending field.
@@ -349,7 +349,7 @@ No `/`-prefixed command exists in the spec or the prototype; every `/` is a sear
 | Log, plugins, settings | `/` edited inside the popup / overlay | Last row |
 | Wizard gallery and list filters | Inline | Last row |
 | Editor line prompts (rename, extract, `/` jump) | On the status line's row | Last row |
-| `:` swallowed | Boot, confirm dialogs, help overlay (any key closed it), editor help, port picker, wizard help / picker / drafting | Opens the command line; `esc` returns |
+| `:` swallowed | Boot, confirm dialogs, help overlay (any key closed it), editor help, port picker, wizard help / picker / drafting | Opens the command line; `esc` returns. Exception (ADR-052): a pending y/n confirm still swallows `:`, as nvim's `confirm()` |
 | Run popup | `i` items | `gi` (`i` kept as an alias) |
 | Unknown command | `M1301` (that's "unknown flag") | `M1306`; new `M1304`, `M1305` (extended), `M1307`, `M1308` |
 | Page footer | "i λ prompt (tab completes inputs)" | ":run p k=v · :pipe (tab completes, ↑ history, ctrl+r searches it) · :help commands" |
@@ -361,19 +361,21 @@ No `/`-prefixed command exists in the spec or the prototype; every `/` is a sear
 - The root model owns the last row: every screen renders into `height-1` rows (plus the status line where it has one) and the root draws the help bar, the echo or the command line. That is what makes `:` global and bottom-left by construction, and why no screen can swallow it: the root sees `:` before the focused screen unless that screen reports a focused text field (`TextFocused() bool`).
 - Errors use the shared `errs` package, so an echo, `:messages` and `mill … --json` show the same code and help line.
 
-## 7. Open decisions
+## 7. Decisions (2026-11-12)
 
-1. **The `λ` prompt.** Default: removed; `:run <p> k=v` and `:pipe <expr>`. Alternatives: keep `λ` as a second line opened by `!` (vim's filter key); keep it as a `:` alias (`:λ`).
-2. **`i` on the board.** Default: no action, echoes the `:run`/`:pipe` hint. Alternatives: `i` opens `:run ` pre-filled for the selected pipeline (`:run issue-to-pr ▌`); `i` opens the selected pipeline's items (like `gi`).
-3. **Where the wildmenu goes.** Default: the row above the command line (over the status line), one row, scrolling with `<` `>`. Alternatives: a popup menu above the cursor (nvim's `wildoptions=pum`); several rows.
-4. **Context ordering vs fixed order.** Default: this screen's commands first, then global, alphabetical within each; abbreviations never resolve by context (`:s` is ambiguous everywhere). Alternatives: one fixed alphabetical order; context also breaks abbreviation ties (`:s` = `:sort` on the board).
-5. **The palette and `:`.** Default: the palette's query is a text field, so `:` types a colon there (part ids contain `:`). Alternatives: `:` in the palette closes it and opens the command line; `:` opens it only when the query is empty.
-6. **History scope.** Default: one per user, 200 entries, in the state dir. Alternatives: per project; per screen (vim keeps one for `:` and one for `/`; mill would keep the same two).
-7. **Confirm dialogs and `:`.** Default: `:` opens over a confirm; `esc` returns to it. Alternatives: a confirm swallows `:` like nvim's `confirm()`; `:` answers "no" and opens the line.
-8. **Run popup `i`.** Default: `gi` for items, `i` kept as a quiet alias for one release. Alternatives: `gi` only, now; keep `i` (spec §18.6 as is).
-9. **Echo lifetime.** Default: until the next key (and 12 s at most). Alternatives: until the next key only (vim); a setting.
+| # | Decision | Chosen | By |
+|---|---|---|---|
+| 1 | The `λ` prompt | Removed; `:run <p> k=v` and `:pipe <expr>` | default (ADR-053) |
+| 2 | `i` on the board | Hint only: echoes the `:run`/`:pipe` hint | user (ADR-051) |
+| 3 | Wildmenu | One row above the command line, `<` `>` scroll | default |
+| 4 | Ordering | This screen first, then global, alphabetical; abbreviations never resolve by context | default |
+| 5 | Palette and `:` | `:` types a colon in the palette query | default |
+| 6 | History | Per user, 200 entries, state dir | default |
+| 7 | Confirm dialogs and `:` | **A pending y/n confirm swallows `:`**, as nvim's `confirm()`: only `y`, `n`, `esc`. `:` works on every other screen. | user (ADR-052) |
+| 8 | Run popup `i` | `gi`; `i` a quiet alias for one release | default |
+| 9 | Echo lifetime | Until the next key, 12 s at most | default |
 
-## 8. Spec patches
+## 8. Spec patches (merged in v2.2; history only, the spec wins)
 
 ### §18.2 The board
 

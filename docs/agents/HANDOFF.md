@@ -19,11 +19,11 @@ The spec is split: one file per section in `docs/spec/` (start at [../spec/index
 
 | Thing | State |
 |-------|-------|
-| Spec | **v2.1**, split into `docs/spec/NN-*.md` (start at [../spec/index.md](../spec/index.md)). The 2026-11-11 decisions are applied; see "v2.1" in the spec index |
-| Decisions | All open decisions are decided: backend D1–D30, editor 1–30, spec issues S1–S31 applied. Recorded as ADR-024 to ADR-044 in [DECISIONS.md](DECISIONS.md) |
-| Mockups | `mockups/v2/index.html` is the current TUI prototype; v1 is frozen. v2 lags v2.1 in two spots (footer says "provisional"; `M3201` on manual pipelines shows as an error) |
+| Spec | **v2.2**, split into `docs/spec/NN-*.md` (start at [../spec/index.md](../spec/index.md)). v2.1 applied the 2026-11-11 decisions; v2.2 (2026-11-12) adds the 4-step wizard, the global `:` command line and the local-LLM drafter |
+| Decisions | All open decisions are decided: backend D1–D30, editor 1–30, spec issues S1–S31 (ADR-024 to ADR-044); wizard 1–13 and command line 1–9 (ADR-045 to ADR-053). See [DECISIONS.md](DECISIONS.md) |
+| Mockups | `mockups/v2/index.html` is the current TUI prototype; v1 is frozen. v2 has the wizard v2 and the `:` command line, but lags v2.2 in two spots: no drafter section in settings (ADR-047), and `:` still opens over a pending confirm (ADR-052) |
 | Backend plan | Accepted: [../plans/backend/00-overview.md](../plans/backend/00-overview.md), milestones M0–M11 |
-| Editor plan | Accepted: [../plans/editor.md](../plans/editor.md), phases E0–E7 |
+| Editor plan | Accepted: [../plans/editor.md](../plans/editor.md), phases E0–E7. Wizard and command line: [../plans/wizard.md](../plans/wizard.md), [../plans/command-line.md](../plans/command-line.md), both accepted |
 | Overviews | [../design.md](../design.md) (product) and [../tech.md](../tech.md) (stack), one page each |
 | Code | None. No `go.mod`, `Makefile`, CI or `examples/` |
 | Git | Repo `github.com/TristanBietsch/mill` (public), branch `main`, remote `origin`. All mill work is committed there |
@@ -58,9 +58,10 @@ If several worktrees lint at once, golangci-lint can fail on its lock. rex's fix
 |------|-------|--------|--------------|
 | Spec split into `docs/spec/*.md` | done | 2026-11-11 | Edit the section files; `spec.md` is a pointer |
 | Decisions applied to spec (v2.1) | done | 2026-11-11 | The spec is the contract again; plans follow it |
+| Wizard + command line merged into spec (v2.2) | done | 2026-11-12 | Plans keep their spec patches as history only; the spec wins |
 | Editor plan `docs/plans/editor.md` | accepted | decisions decided | Follow it for editor work (E0–E7) |
 | Backend plan `docs/plans/backend/` | accepted | decisions decided | Follow it for backend work (M0–M11) |
-| Mockups `mockups/` | another agent | v2 current, small lag behind v2.1 | Read only; v1 is frozen |
+| Mockups `mockups/` | pending | v2 lags v2.2 (drafter settings, confirm swallows `:`) | Read only; v1 is frozen. The fix is queued |
 
 ## 6. Next milestone: M0, the weekend prototype
 
@@ -97,5 +98,5 @@ Code copied from rex gets a header naming the rex commit and path it came from (
 
 - User docs under `docs/*.md` are stubs that point to the spec. Write each when its feature ships.
 - Module doc file names still use the spec v2 package names (`sched.md` is `engine`); rename them and add docs for the new packages (`core`, `errs`, `partproto`, `schema` …) as their code lands.
-- `mockups/v2` still marks the backend-plan states as provisional and shows `M3201` as an error on manual pipelines; sync it on the next mockup pass.
+- `mockups/v2` lags spec v2.2 in two spots: no drafter section in `:settings` and no drafter label/fallback in *describe it* (ADR-047), and `:` still opens over a pending confirm (ADR-052). Sync it on the next mockup pass.
 - Module docs under `modules/` describe planned packages. Once code exists, rewrite each from the source (rex's module doc shape: Path, Depends on, Entry points, Purpose, Public surface, Invariants, Gotchas).

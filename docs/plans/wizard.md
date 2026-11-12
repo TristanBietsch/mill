@@ -1,6 +1,6 @@
 # Plan: the new-pipeline wizard (v2)
 
-Status: draft, for review. Date: 2026-11-12.
+Status: **decided and merged into spec v2.2** (§18.8, §17, §19.6, §29) on 2026-11-12. The spec wins; sections 13–15 are kept as history. Decisions: ADR-045 to ADR-050.
 Spec: §18.8 (wizards), §18.1 (design rules), §18.4 (focus modes), §18.7.4 (modal model), §18.7.6 (patterns), §17.1 and §17.8 (`mill new`), §9.9–9.10 (export, import), §23.3 (n8n), §29 (errors).
 Prototype: `mockups/v2/index.html`: press `n` on the board, or the **Import file…** button, or drop a file on the terminal. `?` inside the wizard lists every key.
 Companion plan: [command-line.md](command-line.md) (the `:` line the wizard shares with every screen).
@@ -383,7 +383,7 @@ Existing codes reused with their meaning: `M1210` bad name, `M2205` name taken, 
 
 ## 6. Describe
 
-1. `i` on *describe it*, type a sentence, `enter`. A headless agent (`claude/haiku` by default, the cheapest signed-in model; setting `wizard.agent`) drafts a proposal: steps from the step catalog (fetch, ws, work, scope, check, review, pr, notify), a trigger, an agent and effort, a description and a name. Each choice carries the words that caused it.
+1. `i` on *describe it*, type a sentence, `enter`. The drafter (a local model through Ollama by default; `drafter.*` settings, §19.6; keyword rules when it's unavailable) drafts a proposal: steps from the step catalog (fetch, ws, work, scope, check, review, pr, notify), a trigger, an agent and effort, a description and a name. Each choice carries the words that caused it.
 2. The draft is cheap and visible: `≈ $0.01`, counted in today's spend; it runs as a normal one-node run (`mill runs` shows it), so a failure is an error with a code, not a hang. `esc` stops it.
 3. *shape* shows the result with a live graph. `space` turns steps on and off, `h`/`l` changes the agent, `refine` (`i` on the last row) redrafts with an extra sentence (`also post the result to #dev` adds `notify`). Words like `without review` remove a step.
 4. Placeholders the agent couldn't fill (a channel, a repo) stay `‹…›` and show in lint on *review*; creating with them is allowed and the editor walks them (`]e`).
@@ -458,25 +458,27 @@ mill new [<name>] [--from <source>] [--describe "…"] [--agent id/model] [--eff
 - `internal/surface/tui/wizard`: the Bubble Tea model (steps, panes, picker, preview) using the editor's `keymap` modes and the shared bottom-row command line. Writes go through `SavePipeline` like the editor's `:w`.
 - `cmd/mill/new.go`: flag parsing into the same `WizardState`, so the TUI and the CLI build the identical document (one golden test per source kind compares both).
 
-## 12. Open decisions
+## 12. Decisions (2026-11-12)
 
-Each has the default the prototype uses, then alternatives.
+All decided. **User** = the user chose it; **default** = the plan's default, accepted (ADR-050).
 
-1. **Number of steps.** Default: four (start, shape, run, review). Alternatives: three (fold *run* into *review*, fewer screens but a crowded review); keep v2.1's five.
-2. **When the name is chosen.** Default: on *review*, suggested from the sentence, template, copy or file. Alternatives: first (v2.1); on *start* beside the source.
-3. **Describe drafter.** Default: a headless agent run (`wizard.agent`, cheapest signed-in model), visible as a run with its cost. Alternatives: local keyword rules only (free, offline, dumber); the agent the pipeline will use (better, costlier).
-4. **Budget default.** Default: `medium` (2M tokens · $15 · 1h). Alternatives: `small` for a manual pipeline with one cheap agent; derived from the estimate (×3 the worst case).
-5. **On failure default.** Default: GitHub issue when `mill/github` is installed, otherwise nothing. Alternatives: always nothing; a rex session when rex is installed.
-6. **Dry run after create.** Default: `dry run, then edit` (a dry run never runs destructive steps, §18.7.12). Alternatives: just open the editor; dry run only when the pipeline has no destructive step.
-7. **Imported n8n stubs.** Default: `n8n.call` stubs that need `N8N_URL` (`M2304` warning). Alternatives: `‹placeholder›` nodes that fail lint until replaced; refuse the import when anything is unmapped.
-8. **Steps that waited for a person in n8n.** Default: become a `handoff` that ends the branch (`M2307`). Alternatives: drop the step and leave the rest unconnected; refuse the import.
-9. **Duplicate's triggers.** Default: start as `manual`, `as in <original>` offered. Alternatives: copy them as-is (two pipelines fire on one event); always ask.
-10. **Where imports are read.** Default: milld reads files and fetches URLs. Alternatives: the client reads and sends bytes (works from a remote TUI with local files, bigger protocol messages).
-11. **Size cap.** Default: 5 MB per import. Alternatives: 1 MB; a setting `import.max_bytes`.
-12. **`mill import` vs `mill new --from`.** Default: both; `import` keeps §9.10's summary and confirm for bundles, `new --from` goes through the wizard's choices. Alternatives: `mill import` becomes an alias of `mill new --from`; drop `--from <file>` from `mill new`.
-13. **Upload in the real TUI.** Default: path field, picker and pasted paths only (terminals can't receive files). Alternatives: OSC 52/kitty file-transfer where the terminal supports it (LATER).
+| # | Decision | Chosen | By |
+|---|---|---|---|
+| 1 | Number of steps | Four: start › shape › run › review | user (ADR-045) |
+| 2 | When the name is chosen | Last, on review, suggested from the source | user (ADR-045) |
+| 3 | Describe drafter | **Local LLM through Ollama**, like rex's summarizer; settings `drafter.backend` (`ollama` · `agent` · `off`), `drafter.base_url`, `drafter.model`, `drafter.agent`, `drafter.timeout` in `:settings` (§19.6). Unavailable → keyword rules with `M2212`, never blocks. Replaces `wizard.agent`. | user (ADR-047) |
+| 4 | Budget default | `medium` | default |
+| 5 | On failure default | GitHub issue when `mill/github` is installed, else nothing | default |
+| 6 | After create | Dry run, then edit | user (ADR-046) |
+| 7 | Unmapped n8n nodes | `n8n.call` stubs (`M2304`) | default |
+| 8 | n8n steps that waited for a person | `handoff` that ends the branch (`M2307`) | user (ADR-048) |
+| 9 | Duplicate's triggers | Start `manual`; `as in <original>` offered | user (ADR-049) |
+| 10 | Where imports are read | milld | default |
+| 11 | Size cap | 5 MB | default |
+| 12 | `mill import` vs `mill new --from` | Keep both | default |
+| 13 | Upload in the real TUI | Path field, picker, pasted paths; OSC 52/kitty transfer LATER | default |
 
-## 13. Spec patch for §18.8
+## 13. Spec patch for §18.8 (merged in v2.2; history only, the spec wins)
 
 Replace the "New pipeline (`n`)" subsection of §18.8 with:
 
@@ -501,7 +503,7 @@ Replace the "New pipeline (`n`)" subsection of §18.8 with:
 **CLI parity:** `mill new [<name>] --from template:<id>|pattern:<id>|pipeline:<p>|describe:"…"|<file>|<url>|gh:…|- --agent claude/sonnet --effort medium --steps ws,work,check,pr --trigger "cron 0 3 * * *" --budget medium --on-failure gh.issue --allow gh.pr --scope project --then dry-run`. `--dry-run` prints the YAML, lint and estimate and writes nothing.
 ````
 
-## 14. Spec patch for §17
+## 14. Spec patch for §17 (merged in v2.2; history only)
 
 In §17.1, replace the `mill new` lines with:
 
@@ -514,7 +516,7 @@ mill new [<name>] [--from <source>] [--describe "…"] [--agent id/model] [--eff
 
 In §17.5's table, the Wizard row becomes: `` `mill new` (prompts in the terminal, or flags; `--from -` reads stdin) ``.
 
-## 15. Spec patch for §29
+## 15. Spec patch for §29 (merged in v2.2; history only)
 
 In §29.4's table, the `M2xxx` examples gain `` `M2301` not an importable file ``; the `M1xxx` examples are covered in [command-line.md](command-line.md). Add to the explain pages (§29.5) one page per new code from §5.5 above: `M2211`, `M2301`–`M2309`, `M3050`. In §18.7.9's lint table add:
 
