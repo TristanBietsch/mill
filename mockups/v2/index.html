@@ -82,6 +82,7 @@ body { background: var(--desk); color: var(--ink); font-family: var(--sans); dis
     <button id="b-sh" aria-pressed="false">Shell</button>
     <button id="b-snd" aria-pressed="true">Sound on</button>
     <button id="b-saver">Screensaver</button>
+    <button id="b-imp" title="Opens the new pipeline wizard on import and picks a file (or drop one on the terminal)">Import file…</button>
     <button id="b-w">Width 124</button>
     <select id="b-scn" aria-label="Scenario"><option value="normal">Scenario: normal</option><option value="fresh-clone">Scenario: fresh clone (untrusted)</option><option value="config-error">Scenario: config error</option><option value="first-run">Scenario: first run</option><option value="boot-fail">Scenario: boot fails</option></select>
   </div>
@@ -89,8 +90,9 @@ body { background: var(--desk); color: var(--ink); font-family: var(--sans); dis
 <div class="term">
   <div class="bar"><span id="bar-l">mill</span><span id="bar-r">124×34</span></div>
   <div class="scr" id="scr" tabindex="0" aria-label="mill terminal prototype. Focus and type to use it."></div>
+  <input type="file" id="wiz-file" accept=".json,.yaml,.yml,.millpkg,.gz,.tgz,.tar,.pipe,.txt" hidden>
 </div>
-<div class="foot"><b>Board</b> j/k · enter run · L log · i items · c cancel · za expand · v detailed · n new · e edit · R run · F rerun from failed · i λ prompt (tab completes inputs) · / search (state: tag: uses: ok:&lt;90 cost:&gt;1 ran:&lt;24h) · t s V · 1/2/3 · p preview · S settings · ? help · :plugins :stats :runs :messages :bg :sh<br><b>Editor</b> a/i/o add · c connect · enter inspector · gp pipeline · ]e ga gA lint · zs what-if · R dry run · Y yaml · D diff · u undo · :w · ? all keys<br><i>Provisional</i> (backend plan, not yet approved): ↯ crashed (S18) · ⊗ cancelled with its reason (S9) · retries as new attempts, try 1 / try 2 (S8) · untrusted projects, scenario "fresh clone" (D18) · M3021 ambiguous primary upstream in the editor (D9) · ••• redacted secrets in logs and items (S1)</div>
+<div class="foot"><b>Board</b> j/k · enter run · L log · gi items · c cancel · za expand · v detailed · n new · e edit · R run · F rerun from failed · :run p k=v · :pipe (tab completes, ↑ history, ctrl+r searches it) · :help commands · / search (state: tag: uses: ok:&lt;90 cost:&gt;1 ran:&lt;24h) · t s V · 1/2/3 · p preview · S settings · ? help · :plugins :stats :runs :messages :bg :sh<br><b>Editor</b> a/i/o add · c connect · enter inspector · gp pipeline · ]e ga gA lint · zs what-if · R dry run · Y yaml · D diff · u undo · :w · ? all keys<br><b>Backend states</b> (decided, spec v2.1): ↯ crashed · ⊗ cancelled with its reason (budget, you) · retries as new attempts, try 1 / try 2 · untrusted projects and <b>mill trust .</b> (scenario "fresh clone") · M3021 ambiguous input · M3024 unreachable · ••• redacted secrets in logs and items</div>
 
 <script>
 "use strict";
@@ -356,7 +358,7 @@ const PIPES = [
   { name: "release-notes", state: "ok", ago: "3d", desc: "Draft release notes when a tag is pushed.", hist: "✓".repeat(14), typ: "1m", p90: "2m", typSec: 60, cost: 0.06, trigger: "tag v*", detail: "", next: "on tag", tags: ["code"], scope: "project", lastSec: 3 * 86400, uses: ["mill/github"] },
   { name: "best-of-3", state: "draft", ago: "", desc: "Three agents, one task, keep the best.", hist: "", typ: "-", p90: "-", typSec: 0, cost: null, trigger: "manual", detail: "", next: "never run", tags: ["code"], scope: "project", lastSec: 1e12, uses: ["mill/github", "mill/slack"] },
 ];
-// glyphs: ↯ crashed and ⊗ cancelled are provisional (backend plan S18, S9); the spec defines only ✓ ✗ ↻ ⠋ ○
+// glyphs: ✓ ✗ ↻ ⠋ ○ plus ↯ crashed and ⊗ cancelled (spec v2.1)
 const STATE_ORDER = { failed: 0, crashed: 1, cancelled: 2, retrying: 3, running: 4, ok: 5, draft: 6 };
 const STATE_GL = { failed: ["✗", "red"], crashed: ["↯", "red"], cancelled: ["⊗", "red"], retrying: ["↻", "amb"], running: ["⠋", "blu"], ok: ["✓", "grn"], draft: ["○", "dim"] };
 if (SCN === "fresh-clone") for (const p of PIPES) if (p.scope === "project") Object.assign(p, { untrusted: true, state: "draft", hist: "", ago: "", lastSec: 1e12, live: false, cost: null, reason: null });
@@ -636,15 +638,6 @@ function rShell(g) {
   g.rput(W - 1, H - 1, trunc("try: mill · mill status · mill run nightly-swep · mill trust . · mill doctor · echo $?", W - 2), "dim3");
 }
 
-const WIZ_STEPS = ["name", "start", "trigger", "agent", "steps", "guardrails", "review"];
-const WIZ_START = [
-  { id: "blank", label: "blank", note: "pick the steps yourself" },
-  { id: "issue-to-pr", label: "template · issue-to-pr", note: "labeled issue → plan → build → review → draft PR" },
-  { id: "nightly-sweep", label: "template · nightly-sweep", note: "nightly vulnerability fixes as draft PRs" },
-  { id: "morning-brief", label: "template · morning-brief", note: "weekday digest posted to Slack" },
-  { id: "describe", label: "describe it in plain English", note: "an agent drafts the steps; you review every one" },
-  { id: "import", label: "import", note: "an n8n workflow or a .millpkg bundle" },
-];
 const WIZ_TRIG = [
   { id: "manual", label: "manual", note: "run it yourself, from a script, or from an agent over MCP", yaml: "manual: {}", t: "manual", next: "on demand" },
   { id: "weekdays", label: "schedule · weekdays 07:30", note: "cron 30 7 * * 1-5", yaml: 'cron: "30 7 * * 1-5"', t: "cron 07:30 weekdays", next: "07:30" },
@@ -694,35 +687,7 @@ function wizNodes(w) {
   if (HANDOFFS[w.handoff][0] !== "none" && nodes.length > 1) nodes.push({ id: "hand-off", gl: "↪", name: "hand-off", sub: "if a step fails", uses: "handoff", f: [["to", HANDOFFS[w.handoff][0] === "rex session" ? "rex.session" : "gh.issue"], ["on", "failure"]] });
   return nodes;
 }
-function wizGuardRows(w) {
-  const rows = [{ k: "budget" }, { k: "agents" }];
-  for (const n of wizNodes(w)) if (n.destructive) rows.push({ k: "allow", id: n.id, uses: n.uses });
-  rows.push({ k: "handoff" }, { k: "dry" });
-  return rows;
-}
-function wizYaml(w) {
-  const name = w.name || "fix-flaky-test", t = WIZ_TRIG[w.trig], nodes = wizNodes(w), b = BUDGETS[w.budget];
-  const allow = nodes.filter(n => n.destructive && w.allow[n.id] !== false).map(n => n.uses);
-  const y = ["mill: 1", `name: ${name}`, `description: ${w.desc || "Find the flaky test, fix it, open a draft PR."}`, "", "on:", `  ${t.yaml}`, "",
-    `budget: ${b.y}, max_agents: ${w.maxAgents} }`, "policy:", `  allow_destructive: [${allow.join(", ")}]`, "", "nodes:"];
-  for (const n of nodes.slice(1)) {
-    y.push(`  ${n.name}:`, `    uses: ${n.uses}`);
-    if (n.f.length) y.push("    with: { " + n.f.map(([k, v]) => `${k}: ${v}`).join(", ") + " }");
-  }
-  return y;
-}
-function wizLint(w) { return wizNodes(w).filter(n => n.destructive && w.allow[n.id] === false); }
 
-function wizCreate(dryFlag) {
-  const w = S.wiz, name = w.name || "fix-flaky-test", t = WIZ_TRIG[w.trig], doc = wizDoc(w);
-  DOCS[name] = doc; LAYOUT[name] = { pins: {} }; SAMPLE[name] = { event: {}, inputs: {}, out: { work: [{ summary: "Fixed TestCache_Expiry: the clock was read twice; now injected.", files: ["cache.go", "cache_test.go"], diff: "+14 -6" }], check: [{ passed: true }] } };
-  const lint = lintDoc(doc, derive(doc));
-  const p = { name, state: "draft", ago: "", desc: doc.description, hist: "", typ: "-", p90: "-", typSec: 0, uses: [], cost: null, trigger: t.t, detail: "", next: t.next, tags: ["new"], scope: "project", lastSec: 1e12, created: true, lintOk: !lint.some(x => x.sev === "error"), budget: BUDGETS[w.budget].t };
-  PIPES.push(p); syncPipe(p); S.board.selName = name; S.board.readyOpen = true;
-  S.wiz = null; openEditor(name); play("save");
-  toast(`created .mill/pipelines/${name}.mill.yaml · ${p.lintOk ? "✓ lint clean" : "✗ lint errors · ]e walks them, ga fixes"}${lint.some(x => x.sev === "warning") ? " · " + lint.filter(x => x.sev === "warning").length + " warnings" : ""}`, p.lintOk ? "grn" : "amb", 6000);
-  if (dryFlag || w.dry) setTimeout(() => { if (S.screen === "editor" && ED.name === name) dryRun2(); }, 900);
-}
 function dryRun(p) {
   if (!p.lintOk) return errorToast("M2203", `${p.name} has lint errors`, "e opens it in the editor · ]e walks them");
   if (p.state === "running") return toast(`${p.name} is already running`, "amb");
@@ -789,7 +754,7 @@ function statusLine(g, mode, modeCls, left, right) {
   const y = H - 2; g.bg(0, W - 1, y, "stl");
   let x = g.put(0, y, ` ${mode} `, modeCls); x = g.put(x, y, " ", "stl");
   const m = activeMsg();
-  if (m) g.put(x, y, trunc(m.text, W - 30), m.cls + " stl"); else for (const [t, c] of left) x = g.put(x, y, t, (c + " stl").trim());
+  if (m) g.put(x, y, trunc(m.text, Math.max(12, W - x - right.reduce((a, [t]) => a + len(t), 0) - 3)), m.cls + " stl"); else for (const [t, c] of left) x = g.put(x, y, t, (c + " stl").trim());
   g.rsegs(W - 1, y, right.map(([t, c]) => [t, (c + " stl").trim()]));
 }
 function overlayBox(g, x0, y0, w, h, title) {
@@ -914,7 +879,7 @@ function rBoard(g) {
   if (tags.length > 1 || b.tag !== "all" || b.search || b.searchEdit) {
     let x = 6;
     for (const t of ["all", ...tags]) { const x0 = x; x = g.put(x, y, t, t === b.tag ? "b" : "dim3"); const yy = y; hit(x0, yy, x - 1, yy, () => { b.tag = t; b.cur = 0; play("toggle"); }); x += 3; }
-    if (b.searchEdit || b.search) g.rsegs(W - 2, y, [["/", "mark"], [" " + trunc(b.search, 40), "b"], [b.searchEdit ? "▌" : "", "blu"]]);
+    if (b.searchEdit || b.search) g.rsegs(W - 2, y, [["/", "mark"], [" " + trunc(b.search, 40), "b"]]);
     y++;
   }
   y++;
@@ -940,13 +905,7 @@ function rBoard(g) {
   if (!PIPES.length) g.put(6, 5, "no pipelines yet · n makes one", "dim");
   else if (!rows.length && !ents.some(e => e.folded)) g.put(6, y, "no pipelines match · esc clears the search, t cycles tags", "dim");
   const m = activeMsg(); if (m) g.put(1, H - 3, trunc(m.text, W - 3), m.cls);
-  if (S.cmd !== null) g.segs(1, H - 2, [[":", "b"], [S.cmd, "b"], ["▌", "blu"]]);
-  else if (S.prompt !== null) { g.segs(1, H - 2, [["λ ", "mark"], [S.prompt, "b"], ["▌", "blu"]]); const hint = promptHint(S.prompt); if (hint) g.put(4 + len(S.prompt) + 2, H - 2, trunc(hint, W - len(S.prompt) - 8), "dim3"); }
-  else g.segs(1, H - 2, [["λ", "mark"]]);
-  if (S.prompt !== null) helpBar(g, [["enter", "run"], ["tab", "complete"], ["esc", "cancel"]], H - 1, "PROMPT");
-  else if (S.cmd !== null) helpBar(g, [["enter", "run command"], ["esc", "cancel"]], H - 1, "COMMAND");
-  else if (b.searchEdit) helpBar(g, [["type", "to search"], ["enter", "keep"], ["esc", "clear"]], H - 1, "SEARCH");
-  else helpBar(g, [["enter", "open"], ["n", "new"], ["e", "edit"], ["R", "run"], ["?", "more"]]);
+  helpBar(g, [["enter", "open"], ["n", "new"], ["e", "edit"], ["R", "run"], ["?", "more"]]);   // `:` and `/` replace it while typing (drawCmdline)
 }
 function promptHint(t) {
   const [name, ...rest] = t.split(/\s+/), D = typeof DOCS !== "undefined" && DOCS[name];
@@ -1092,7 +1051,7 @@ function rRunPopup(g) {
   if (info.result) g.put(x0 + 3, y0 + h - 4, trunc(info.result[0], w - 6), info.result[1]);
   const m = activeMsg(); if (m) g.put(x0 + 3, y0 + h - 3, trunc(m.text, w - 6), m.cls);
   const cur = rows.find(r => r.key === S.run.sel);
-  g.segs(x0 + 3, y0 + h - 2, [["enter", "b"], [cur && ["failed", "crashed", "cancelled"].includes(cur.st) && !cur.id.includes("[") ? " cause · " : " agent · ", "dim"], ["L", "b"], [" log · ", "dim"], ["F", "b"], [" rerun from here · ", "dim"], ["i", "b"], [" items · ", "dim"], ["esc", "b"], [" back", "dim"]]);
+  g.segs(x0 + 3, y0 + h - 2, [["enter", "b"], [cur && ["failed", "crashed", "cancelled"].includes(cur.st) && !cur.id.includes("[") ? " cause · " : " agent · ", "dim"], ["L", "b"], [" log · ", "dim"], ["F", "b"], [" rerun from here · ", "dim"], ["gi", "b"], [" items · ", "dim"], ["esc", "b"], [" back", "dim"]]);
 }
 function enterRow(info, r) {
   if (!r) return;
@@ -1108,7 +1067,7 @@ function openAgent(r) {
 function rCausePopup(g) {
   const info = runRows(S.run.pipe), r = visRows(info).find(x => x.key === S.run.causeKey) || {}, w = ow(), x0 = ox(w), y0 = 4;
   let C = info.cause;
-  if (r.key === "build/try1") C = { head: `✗ ${info.title} build try 1 failed (M6201) · it was retried as try 2`, lines: [["cause", "provider returned 429 Too Many Requests"], ["class", "rate_limited · retryable · Retry-After 40s"], ["next", "try 2 is a new node-run; try 1 stays failed (provisional: backend plan S8)"], ["help", "mill explain M6201"]], tail: ["12:11:01  build  OUT  $ claude -p --model sonnet (loop 2/3)", "12:11:02  build  ERR  429 rate_limit_error: Number of requests exceeds your limit", "12:11:02  build  WRN  try 1 failed: M6201 · try 2 of 3 starts in 40s"] };
+  if (r.key === "build/try1") C = { head: `✗ ${info.title} build try 1 failed (M6201) · it was retried as try 2`, lines: [["cause", "provider returned 429 Too Many Requests"], ["class", "rate_limited · retryable · Retry-After 40s"], ["next", "try 2 is a new node-run; try 1 stays failed"], ["help", "mill explain M6201"]], tail: ["12:11:01  build  OUT  $ claude -p --model sonnet (loop 2/3)", "12:11:02  build  ERR  429 rate_limit_error: Number of requests exceeds your limit", "12:11:02  build  WRN  try 1 failed: M6201 · try 2 of 3 starts in 40s"] };
   if (!C) return;
   const h = Math.min(H - 6, 8 + C.lines.length + C.tail.length);
   overlayBox(g, x0, y0, w, h, [[`${info.title} · ${r.id}`, "b"], [" · cause", "dim"]]);
@@ -1126,7 +1085,7 @@ function rItemsPopup(g) {
   const h = Math.min(H - 6, lines.length + 6);
   overlayBox(g, x0, y0, w, h, [[`${info.title}/${r.id}`, "b"], [" · items", "dim"]]);
   lines.slice(0, h - 5).forEach(([k, v], i) => { const y = y0 + 2 + i; if (k) g.segs(x0 + 3, y, [[k.padEnd(5), "hd"], [v, "dim"]]); else { let x = x0 + 5; for (const part of trunc(v, w - 8).split(/(•••)/)) x = g.put(x, y, part, part === "•••" ? "amb2" : "out"); } });
-  g.segs(x0 + 3, y0 + h - 2, segsTrunc([["esc", "b"], [" back · ", "dim"], ["•••", "amb2"], [" = a secret value, redacted before storage (provisional: backend plan S1) · ", "dim"], [`mill items ${info.title}/${r.id} --json`, "dim3"]], w - 6));
+  g.segs(x0 + 3, y0 + h - 2, segsTrunc([["esc", "b"], [" back · ", "dim"], ["•••", "amb2"], [" = a secret value, redacted before storage · ", "dim"], [`mill items ${info.title}/${r.id} --json`, "dim3"]], w - 6));
 }
 function rAgentPopup(g) {
   const info = runRows(S.run.pipe), r = visRows(info).find(x => x.key === S.run.agent) || {}, el = SIM.now;
@@ -1178,8 +1137,7 @@ function rLogPopup(g) {
     hit(x0 + 1, y, x0 + w - 2, y, () => { L.follow = false; L.cur = i; if (l.kind === "fold") { L.folds[l.e.fold] = l.open; play("toggle"); } else play("tick"); });
   }
   const yb = y0 + h - 2;
-  if (L.searchEdit) g.segs(x0 + 2, yb, [["/", "b"], [L.search, "b"], ["▌", "blu"]]);
-  else g.segs(x0 + 2, yb, [["j/k", "b"], [" move · ", "dim"], ["za", "b"], [" fold · ", "dim"], ["/", "b"], [" search · ", "dim"], ["n/N", "b"], [" hits · ", "dim"], ["f", "b"], [" follow · ", "dim"], ["o", "b"], [" only this node · ", "dim"], ["L", "b"], [" back", "dim"]]);
+  g.segs(x0 + 2, yb, [["j/k", "b"], [" move · ", "dim"], ["za", "b"], [" fold · ", "dim"], ["/", "b"], [" search · ", "dim"], ["n/N", "b"], [" hits · ", "dim"], ["f", "b"], [" follow · ", "dim"], ["o", "b"], [" only this node · ", "dim"], ["L", "b"], [" back", "dim"]]);
   if (w >= 100) g.rput(x0 + w - 3, yb, `${lines.length} lines · ${lines.length ? Math.round(100 * (L.cur + 1) / lines.length) : 0}%`, "dim3");
 }
 
@@ -1215,7 +1173,7 @@ function rMessages(g) {
   const w = ow(), x0 = ox(w), y0 = 3, h = Math.min(H - 6, Math.max(6, MSGS.length + 5));
   overlayBox(g, x0, y0, w, h, [[":messages", "b"], [" · this session, newest first", "dim"]]);
   if (!MSGS.length) g.put(x0 + 3, y0 + 2, "no errors or warnings this session", "dim");
-  MSGS.slice(0, h - 5).forEach((m, i) => g.segs(x0 + 3, y0 + 2 + i, [[m.t + "  ", "dim3"], [m.lvl === "error" ? "error" : "warning", m.lvl === "error" ? "red" : "amb"], [`[${m.code}] `, m.lvl === "error" ? "red" : "amb"], [trunc(m.text, w - 32), ""]]));
+  MSGS.slice(0, h - 5).forEach((m, i) => g.segs(x0 + 3, y0 + 2 + i, [[m.t + "  ", "dim3"], [m.lvl === "error" ? "error" : m.lvl === "info" ? "info   " : "warning", m.lvl === "error" ? "red" : m.lvl === "info" ? "dim" : "amb"], [m.code ? `[${m.code}] ` : "", m.lvl === "error" ? "red" : "amb"], [trunc(m.text, w - 32), ""]]));
   g.segs(x0 + 3, y0 + h - 2, [["esc", "b"], [" back · ", "dim"], ["gx", "b"], [" on a code explains it", "dim"]]);
 }
 
@@ -1342,7 +1300,7 @@ const DOCS = {
       pr: { uses: "gh.pr", in: "gate", with: { title: "feat: ${{ inputs.task }}", body: "@prompts/pr.md", draft: true } },
       "no-winner": { uses: "handoff", in: "gate.else", with: { to: "gh.issue", title: "best-of-3: no winner for ${{ inputs.task }}" } },
       scorecard: { uses: "file.write", in: "judge", with: { path: "scores/${{ run.number }}.md", content: "${{ nodes.judge.item.winner }}: ${{ nodes.judge.item.reason }}" } },
-      notify: { uses: "mcp:slack/send_message", with: { channel: "#dev", text: "best-of-3: ${{ nodes.pr.item.url }} · scores in ${{ nodes.scorecard.item.path }}" } },
+      notify: { uses: "mcp:slack/send_message", in: "pr", with: { channel: "#dev", text: "best-of-3: ${{ nodes.pr.item.url }} · scores in ${{ nodes.scorecard.item.path }}" } },
     } },
   "issue-to-pr": { mill: 1, name: "issue-to-pr", description: "Turn a labeled GitHub issue into a tested, reviewed draft pull request.", tags: ["code", "github"],
     on: { webhook: { path: "/github", verify: "github-hmac", secret: "GITHUB_WEBHOOK_SECRET", filter: '${{ event.action == "labeled" && event.label.name == "agent" }}' } },
@@ -1470,7 +1428,7 @@ function derive(doc) {
   const adj = {}, addAdj = (a, b) => (adj[a] = adj[a] || new Set()).add(b);
   edges.forEach(e => addAdj(e.from, e.to)); ids.forEach(id => nodes[id].refs.forEach(r => { if (N[r.node]) addAdj(r.node, id); }));
   const reach = (a, b, A = adj) => { const seen = new Set(), st = [...(A[a] || [])]; while (st.length) { const x = st.pop(); if (x === b) return true; if (seen.has(x)) continue; seen.add(x); for (const y of A[x] || []) st.push(y); } return false; };
-  // primary upstream (backend plan D9, provisional): the referenced node downstream of all the others feeds the node;
+  // primary upstream (spec v2.1, §7.4): the referenced node downstream of all the others feeds the node;
   // references in parallel have no such node, so the input is ambiguous (M3021) until in: says which
   const ambiguous = {};
   ids.forEach(id => {
@@ -1673,7 +1631,9 @@ function lintDoc(doc, gr) {
   for (const [node, path, s] of allStrs) for (const m of s.matchAll(/secrets\.([A-Z0-9_]+)/g)) { usedSecs.add(m[1]); if (!secs.includes(m[1])) add("M9201", "error", node, `secret ${m[1]} is used but not declared`, [{ label: `declare ${m[1]}`, safe: true, apply: d => { d.secrets = inList(d.secrets).concat(m[1]); } }], path.join(".")); }
   for (const t of Object.values(doc.on || {})) for (const v of Object.values(t || {})) if (typeof v === "string" && /^[A-Z0-9_]+$/.test(v)) usedSecs.add(v);
   if (anyAgent) for (const s of secs) if (!usedSecs.has(s) && !/TOKEN|KEY/.test(s)) add("M9203", "hint", null, `secret ${s} is declared but never used`, [{ label: `remove ${s}`, safe: true, apply: d => { d.secrets = inList(d.secrets).filter(x => x !== s); } }]);
-  if (anyAgent && !doc.budget) add("M3201", "error", null, "this pipeline runs agents but has no budget", [{ label: "add the medium budget (2M tk · $15 · 1h · 3 agents)", safe: true, apply: d => { addTopKey(d, "budget", { max_tokens: 2000000, max_cost_usd: 15, max_wall: "1h", max_agents: 3 }, "policy"); } }], "budget");
+  const autoTrig = Object.keys(doc.on || {}).some(k => k !== "manual");   // §18.7.9, ADR-033: error with any automatic trigger (anything but manual), warning when manual-only
+  for (const id of gr.ids) { const ins = gr.edges.filter(e => e.to === id && e.kind === "data" && !e.bad); if (ins.length && ins.every(e => N[e.from] && PC[N[e.from].uses] && PC[N[e.from].uses].terminal)) add("M3024", "error", id, `${id} is unreachable: it's only fed by ${[...new Set(ins.map(e => e.from))].join(", ")}, which ends its branch`, [], "in"); }
+  if (anyAgent && !doc.budget) add("M3201", autoTrig ? "error" : "warning", null, autoTrig ? "this pipeline runs agents on an automatic trigger but has no budget" : "this pipeline runs agents but has no budget (manual only, so a warning)", [{ label: "add the medium budget (2M tk · $15 · 1h · 3 agents)", safe: true, apply: d => { addTopKey(d, "budget", { max_tokens: 2000000, max_cost_usd: 15, max_wall: "1h", max_agents: 3 }, "policy"); } }], "budget");
   for (const id of gr.ids) { const n = N[id]; if (n.uses === "agent.fanout" && doc.budget && doc.budget.max_agents && inList(n.with && n.with.agents).length > doc.budget.max_agents) add("M3202", "warning", id, `budget.max_agents ${doc.budget.max_agents} < fanout width ${inList(n.with.agents).length}: candidates run one after another`, [{ label: `raise max_agents to ${inList(n.with.agents).length}`, safe: true, apply: d => { d.budget.max_agents = inList(n.with.agents).length; } }], "budget"); }
   for (const a of allow) if (!used.has(a)) add("M3205", "hint", null, `allow_destructive lists ${a}, but no node uses it`, [{ label: `remove ${a}`, safe: true, apply: d => { d.policy.allow_destructive = inList(d.policy.allow_destructive).filter(x => x !== a); } }], "policy");
   const est = estTotal(doc); if (doc.budget && doc.budget.max_cost_usd && est.hi > doc.budget.max_cost_usd) add("M3208", "warning", null, `worst case ≈ ${usd(est.hi)} per run is over max_cost_usd ${usd(doc.budget.max_cost_usd)}`, [], "budget");
@@ -2438,7 +2398,6 @@ function rEditor(g) {
   if (ED.se) { HITS = []; drawSchemaEd(g); }
   if (ED.pe) HITS = [];
   if (ED.pe) drawTextEditor(g, ED.pe, [[ED.pe.id + " · " + ED.pe.key, "b"]]);
-  if (ED.prompt) drawLinePrompt(g);
   if (ED.diff) drawDiff(g);
   if (ED.help) drawEdHelp(g);
   // status line
@@ -2447,7 +2406,7 @@ function rEditor(g) {
   const nd = c.gr.nodes[ED.sel], slot = c.lay.pos[ED.sel];
   statusLine(g, mode[0] + focusW.toUpperCase(), mode[1], [[`${ED.name} · ${c.gr.ids.length} nodes · ${c.gr.edges.filter(e => !e.bad && e.kind !== "trigger").length} edges   `, ""], [trunc(ctxLine(), 64), ctxCls()]],
     [[` ${nd ? (nd.trig ? "on." + nd.kind : ED.sel) : "-"} `, "inv"], [` ${ZOOMS[ED.zoom].name}${slot ? ` ${slot.col},${slot.row}` : ""}${ED.pins[ED.sel] ? " pinned" : ""} `, "dim"]]);
-  helpBar(g, edHelpKeys());
+  if (ED.prompt) drawLinePrompt(g); else helpBar(g, edHelpKeys());
 }
 function ctxCls() { return ED.con ? (ED.con.target && !conOk(ED.con.target).ok ? "red" : "dim") : ED.whatif ? "amb2" : "dim"; }
 function ctxLine() {
@@ -2472,7 +2431,7 @@ function edHelpKeys() {
   return [["a", "add"], ["c", "connect"], ["enter", "inspect"], fixable ? ["ga", "fix"] : ["R", "dry run"], ["?", "more"]];
 }
 function drawLinePrompt(g) {
-  const P = ED.prompt, y = H - 2; g.bg(0, W - 1, y, "stl"); g.clear(0, y, W, 1); g.bg(0, W - 1, y, "stl");
+  const P = ED.prompt, y = H - 1; g.clear(0, y, W, 1);
   const x = g.segs(1, y, [[P.label + " ", "b"], [P.text, "b"], ["▌", "blu"]]);
   if (P.note) g.put(x + 2, y, trunc(P.note(P.text), W - x - 4), "dim");
   if (P.kind === "jump") { const ms = jumpMatches(P.text).slice(0, 8), x0 = 2, y0 = H - 4 - ms.length; if (ms.length) { g.clear(x0, y0, 44, ms.length + 2); for (let r = y0; r < y0 + ms.length + 2; r++) g.bg(x0, x0 + 43, r, "pop"); g.box(x0, y0, 44, ms.length + 2, "dim"); ms.forEach((m, i) => { g.put(x0 + 2, y0 + 1 + i, m.gl + " " + m.label, i === P.cur ? "b" : ""); g.rput(x0 + 41, y0 + 1 + i, m.note, "dim"); if (i === P.cur) g.bg(x0 + 1, x0 + 42, y0 + 1 + i, "sel"); }); } }
@@ -2481,8 +2440,8 @@ function drawLinePrompt(g) {
 /* ------------------------------------------------------------------ editor actions (each one is a YAML change, §18.7.1) */
 const EXPLAIN = { M3001: "an unknown key; the part's schema doesn't have it", M3002: "a required setting is missing; the part can't run without it", M3003: "a placeholder ‹…› from a new node or a pattern isn't filled in yet",
   M3010: "the part id isn't installed or doesn't exist", M3012: "an expression or in: names a node (or port) that doesn't exist", M3013: "an expression uses an input that isn't declared",
-  M3014: "an expression uses a field the producer's output schema doesn't have", M3020: "edges can only loop back inside a loop part", M3021: "a node without in: takes its items from its primary upstream, the referenced node downstream of all the others; these references run in parallel, so say which with in: (provisional: backend plan D9)", M3022: "a node with no inputs runs at the start of every run",
-  M3030: "items sent to an unconnected port are dropped silently: connect it, hand it off, or discard it on purpose", M3031: "a handoff ends its branch; nothing can come after it", M3032: "a merge needs two inputs",
+  M3014: "an expression uses a field the producer's output schema doesn't have", M3020: "edges can only loop back inside a loop part", M3021: "a node without in: takes its items from its primary upstream, the referenced node downstream of all the others; these references run in parallel, so say which with in:", M3022: "a node with no inputs runs at the start of every run",
+  M3030: "items sent to an unconnected port are dropped silently: connect it, hand it off, or discard it on purpose", M3031: "a handoff ends its branch; nothing can come after it", M3024: "a node only fed by a handoff, a fail, or a port that never emits can never run; reconnect it to the nearest upstream", M3032: "a merge needs two inputs",
   M3040: "a loop needs max_iters so it can't run forever", M3042: "until never changes if it doesn't read the loop's body", M3103: "this part works on a git workspace: create one upstream with git.worktree",
   M3110: "downstream uses fields of this agent's result: declare output so mill asks the agent for them", M3111: "an agent needs a prompt", M3112: "one agent per item with no limit can start dozens at once",
   M3201: "unattended agent runs need a budget so a runaway can't spend without limit", M3202: "a fanout wider than max_agents runs its candidates one after another", M3204: "destructive parts (push, PR, post, delete) must be listed in policy.allow_destructive",
@@ -3146,146 +3105,1063 @@ function wizDoc(w) {
 }
 
 
-/* ------------------------------------------------------------------ wizard (five steps) */
-const WIZ2 = ["describe", "trigger", "agent", "limits", "review"];
-const HOW = [["describe it in plain English", "describe"], ["template · issue-to-pr", "issue-to-pr"], ["template · nightly-sweep", "nightly-sweep"], ["template · morning-brief", "morning-brief"], ["blank", "blank"], ["import a .millpkg or n8n workflow", "import"]];
-function wizNew() {
-  S.wiz = { step: 0, field: 0, name: "", desc: "", how: 0, sentence: "", drafting: 0, trig: 0, agent: 0, steps: { ws: true, work: true, check: true, pr: true }, stepCur: 0, gCur: 0, budget: 1, maxAgents: 2, allow: {}, dry: true, handoff: 1, err: null };
+/* ------------------------------------------------------------------ wizard v2: start › shape › run › review (docs/plans/wizard.md) */
+const WIZ2 = ["start", "shape", "run", "review"];
+const WSRC = [
+  { id: "describe", gl: "✎", label: "describe it", note: "say what it should do · an agent drafts the steps" },
+  { id: "template", gl: "⊞", label: "template", note: "built-in, plugin and pattern starters" },
+  { id: "duplicate", gl: "⧉", label: "duplicate", note: "copy a pipeline you already have" },
+  { id: "import", gl: "⇪", label: "import a file", note: "n8n JSON · .millpkg · .mill.yaml · pipe · URL" },
+  { id: "blank", gl: "□", label: "blank", note: "a trigger and nothing else" },
+];
+const WTRIG = [
+  { k: "manual", label: "manual" }, { k: "cron", label: "schedule", field: "schedule", def: "0 3 * * *" }, { k: "webhook", label: "webhook", field: "path", def: "/github" },
+  { k: "git", label: "git push", field: "branch", def: "main" }, { k: "run", label: "after a pipeline", field: "pipeline", def: "issue-to-pr" }, { k: "fswatch", label: "file change", field: "path", def: "~/notes/drafts" },
+];
+const WPRESET = { small: { max_tokens: 200000, max_cost_usd: 2, max_wall: "15m" }, medium: { max_tokens: 2000000, max_cost_usd: 15, max_wall: "1h" }, large: { max_tokens: 8000000, max_cost_usd: 50, max_wall: "3h" } };
+const WPRESET_T = { small: "200K tk · $2 · 15m", medium: "2M tk · $15 · 1h", large: "8M tk · $50 · 3h" };
+const WGAL = [   // the gallery: built-in templates, plugin templates, patterns as starters (§18.7.6)
+  { id: "issue-to-pr", src: "built-in", gl: "⇡", desc: "labeled issue → plan → build → review → draft PR", tpl: "issue-to-pr" },
+  { id: "nightly-sweep", src: "built-in", gl: "◷", desc: "nightly fixes, tested, as draft PRs", tpl: "nightly-sweep" },
+  { id: "morning-brief", src: "built-in", gl: "♪", desc: "weekday digest of feeds, posted to Slack", tpl: "morning-brief" },
+  { id: "standup-digest", src: "mill/slack", gl: "#", desc: "yesterday's merged PRs, summarized to #standup", plugin: "mill/slack",
+    doc: { description: "Yesterday's merged PRs, summarized for standup.", on: { cron: { schedule: "0 9 * * 1-5" } }, nodes: {
+      merged: { uses: "mcp:github/search_issues", with: { query: "is:pr is:merged merged:>=${{ run.yesterday }}" } },
+      digest: { uses: "agent", in: "merged", with: { agent: "claude/haiku", prompt: "Summarize these PRs for a standup, one line each." }, output: { summary: "string" } },
+      post: { uses: "slack.post", in: "digest", with: { channel: "#standup", text: "${{ nodes.digest.item.summary }}" } } } } },
+  ...PATTERNS.filter(p => !p.special).map(p => ({ id: p.id, src: "pattern", gl: "⁂", desc: p.desc, pat: p })),
+];
+const WEXPLAIN = {
+  M1210: "a pipeline name is lowercase letters, digits and dashes, starting with a letter", M2205: "a pipeline with that name already exists in this scope",
+  M2301: "the file isn't an n8n workflow, a .millpkg bundle, a mill pipeline or a pipe expression, so mill doesn't know what to make of it",
+  M2302: "the pipeline's `mill:` version is newer than this mill understands; update mill", M2303: "the import source couldn't be read: no such file, no access, or the URL failed",
+  M2304: "some n8n nodes have no mill part; each one becomes an n8n.call stub that runs it on your n8n through a webhook (needs N8N_URL)",
+  M2305: "a .millpkg is a tar.gz with plugin.lua and pipelines/*.mill.yaml (what mill export makes); this one is missing parts or isn't one",
+  M2306: "imports are capped at 5 MB, and binary files other than a .millpkg are refused", M2307: "a step that waited for a person became a handoff, which ends its branch (mill never waits on a person)",
+  M2308: "- reads stdin, which only works from a shell: mill new --from - < file", M2309: "no template or pattern has that name; mill pattern ls lists them",
+  M1304: "a command abbreviation matches more than one command; type more letters or press tab", M1305: "a command's argument isn't one of the values it takes; the help line lists them",
+  M1306: "there's no command by that name; :help commands lists every one", M1307: "the command exists but works on another screen (the error names it); global commands work everywhere",
+  M1308: "the command needs an argument; :help <command> shows its form",
+  M3050: "a trigger setting is invalid: a cron schedule has 5 fields (or @every 10m), a webhook path starts with /",
+};
+Object.assign(EXPLAIN, WEXPLAIN);
+
+function wizNew(o = {}) {
+  if (!o.fresh && S.wizLast && !Object.keys(o).length) { S.wiz = S.wizLast; S.wizLast = null; S.wiz.ins = null; S.wiz.picker = null; S.wiz.drafting = null; S.wiz.help = false; S.wiz.err = null; S.wiz.say = "resumed your draft · :new! starts over"; play("open"); return; }
+  delete o.fresh; S.wizLast = null;
+  S.wiz = { step: 0, max: 0, focus: "list", src: 0, prow: 0, sentence: "", refine: "", tpl: 0, tq: "", dup: 0, dq: "", path: "", imp: null, pick: 0, picker: null, ins: null, drafting: null,
+    base: null, agent: 0, amap: 0, trig: 0, cfg: Object.fromEntries(WTRIG.filter(t => t.field).map(t => [t.k, t.def])), budget: 1, handoff: 1, adv: false, maxAgents: 2, allow: {},
+    dry: true, scope: 0, name: "", nameTouched: false, view: "graph", row: 0, say: "", err: null, help: false, ...o };
   play("open");
 }
-function rWizard(g) {
-  const w = S.wiz, bw = ow(), x0 = ox(bw), y0 = 2, bh = 28, X = x0 + 3, Y = y0 + 4, step = WIZ2[w.step];
-  overlayBox(g, x0, y0, bw, bh, [["≋", "mark"], [" new pipeline", "b"]]);
-  let x = x0 + 3;
-  WIZ2.forEach((s, i) => { if (i) x = g.put(x, y0 + 1, "  ›  ", "dim3"); x = g.put(x, y0 + 1, i < w.step ? "✓ " : `${i + 1} `, i < w.step ? "grn" : i === w.step ? "b" : "dim3"); x = g.put(x, y0 + 1, s, i === w.step ? "b" : i < w.step ? "dim" : "dim3"); });
-  g.hl(x0 + 1, x0 + bw - 2, y0 + 2, "dim2");
-  const row = (i, y, on) => { if (on) g.bg(X - 1, x0 + bw - 3, y, "sel"); };
-  let keys;
-  if (step === "describe") {
-    g.put(X, Y, "What should it do?", "hd");
-    const showSentence = HOW[w.how][1] === "describe";
-    const fields = [["name", w.name, "fix-flaky-test", "text"], ["start from", null, null, "how"], ...(showSentence ? [["in a sentence", w.sentence, "every night find flaky tests, fix them, run the tests and open a draft PR", "text"]] : [])];
-    fields.forEach(([k, v, ph, kind], i) => {
-      const y = Y + 2 + i * 2, on = w.field === i;
-      g.put(X, y, k, "dim");
-      if (kind === "how") g.segs(X + 16, y, [["◂ ", "dim"], [HOW[w.how][0], on ? "b" : ""], [" ▸", "dim"]]);
-      else g.segs(X + 16, y, v ? [[trunc(v, 86), "b"], [on ? "▌" : "", "blu"]] : [[on ? "▌" : "", "blu"], [trunc(ph, 86), "dim3"]]);
-      row(i, y, on);
-      hit(X - 1, y, x0 + bw - 3, y, () => { w.field = i; play("tick"); });
-    });
-    if (w.drafting) g.segs(X + 16, Y + 8, [[spin(), "blu"], [" an agent (claude/haiku, headless) is proposing the trigger, agent and steps…", "blu"]]);
-    else g.put(X + 16, Y + 8, "empty fields use the grey example · nothing is written until the review step", "dim3");
-    keys = [["tab", "next field"], ["h/l", "change"], ["enter", "next"], ["esc", "cancel"]];
-  } else if (step === "trigger") {
-    g.put(X, Y, "What starts a run?", "hd");
-    WIZ_TRIG.forEach((t, i) => { const y = Y + 2 + i, on = i === w.trig; g.put(X, y, t.label, on ? "b" : ""); g.put(X + 34, y, trunc(t.note, x0 + bw - X - 38), "dim"); row(i, y, on); hit(X - 1, y, x0 + bw - 3, y, () => { w.trig = i; play("tick"); }); });
-    keys = [["j/k", "move"], ["enter", "next"], ["backspace", "back"], ["esc", "cancel"]];
-  } else if (step === "agent") {
-    g.put(X, Y, "Which agent does the work?", "hd"); if (bw >= 90) g.put(X + 60, Y, "it runs unattended", "dim3");
-    WIZ_AGENTS.forEach((a, i) => { const y = Y + 2 + i, on = i === w.agent; g.put(X, y, a.a === "none" ? "none" : `${a.a} · ${a.m}`, a.off ? "dim2" : on ? "b" : ""); g.put(X + 28, y, a.e && a.e !== "-" ? "effort " + a.e : "", "dim"); g.put(X + 46, y, a.st[0], a.st[1]); row(i, y, on); hit(X - 1, y, x0 + bw - 3, y, () => { w.agent = i; play("tick"); }); });
-    keys = [["j/k", "move"], ["enter", "next"], ["backspace", "back"], ["esc", "cancel"]];
-  } else if (step === "limits") {
-    g.put(X, Y, "Limits · the run never waits on you, so set them now", "hd");
-    const rows = wizGuardRows(w); w.gCur = Math.min(w.gCur, rows.length - 1);
-    rows.forEach((r, i) => {
-      const y = Y + 2 + i, on = i === w.gCur; let label, val, note;
-      if (r.k === "budget") { label = "budget"; val = [["◂ ", "dim"], [BUDGETS[w.budget].label, on ? "b" : ""], [" ▸", "dim"]]; note = BUDGETS[w.budget].t; }
-      else if (r.k === "agents") { label = "max agents"; val = [["◂ ", "dim"], [String(w.maxAgents), on ? "b" : ""], [" ▸", "dim"]]; note = "agents at once in one run"; }
-      else if (r.k === "allow") { const ok = w.allow[r.id] !== false; label = `allow ${r.id}`; val = ok ? [["●", "grn"], [" on", ""]] : [["○", "dim"], [" off", "dim"]]; note = ok ? `${r.uses} is destructive · listed in allow_destructive` : `lint will fail: ${r.uses} isn't allowed`; }
-      else if (r.k === "handoff") { label = "on failure"; val = [["◂ ", "dim"], [HANDOFFS[w.handoff][0], on ? "b" : ""], [" ▸", "dim"]]; note = HANDOFFS[w.handoff][1]; }
-      else { label = "dry run first"; val = w.dry ? [["●", "grn"], [" on", ""]] : [["○", "dim"], [" off", "dim"]]; note = "destructive steps only report"; }
-      g.put(X, y, label, "dim"); g.segs(X + 18, y, val); g.put(X + 40, y, note, r.k === "allow" && w.allow[r.id] === false ? "amb" : "dim3"); row(i, y, on);
-      hit(X - 1, y, x0 + bw - 3, y, () => { w.gCur = i; play("tick"); });
-    });
-    keys = [["j/k", "move"], ["h/l", "change"], ["space", "toggle"], ["enter", "review"], ["backspace", "back"]];
-  } else {
-    g.put(X, Y, "Review", "hd");
-    g.put(X, Y + 1, "steps", "dim");
-    WIZ_DEFS.forEach((d, i) => {
-      const y = Y + 2 + i, on = i === w.stepCur, noAgent = d.agent && WIZ_AGENTS[w.agent].a === "none", chk = !!w.steps[d.id] && !noAgent;
-      g.segs(X, y, [[chk ? "[✓]" : "[ ]", chk ? "grn" : "dim"], [" " + d.gl + " ", "blu"], [d.id, on ? "b" : chk ? "" : "dim"]]);
-      g.put(X + 18, y, trunc(d.agent ? `${WIZ_AGENTS[w.agent].a}·${WIZ_AGENTS[w.agent].m}` : d.sub, 16), "dim");
-      if (on) g.bg(X - 1, X + 36, y, "sel");
-      hit(X - 1, y, X + 36, y, () => { if (w.stepCur === i) { w.steps[d.id] = !w.steps[d.id]; play("toggle"); } else { w.stepCur = i; play("tick"); } });
-    });
-    const wd = wizDoc(w), yl = yEmit(wd).lines, YX = X + 40, yw = x0 + bw - 3 - YX;
-    g.box(YX, Y + 1, yw, 19, "dim2", [[`${w.name || "fix-flaky-test"}.mill.yaml`, "b"]]);
-    yl.slice(0, 17).forEach((t, i) => g.put(YX + 2, Y + 2 + i, trunc(t, yw - 4), t.startsWith("  ") || t === "" ? "dim" : ""));
-    const lint = lintDoc(wd, derive(wd)).filter(p => p.sev !== "hint"), le = lint.filter(p => p.sev === "error");
-    g.segs(X, Y + 12, lint.length ? [[le.length ? "✗" : "!", le.length ? "red" : "amb"], [trunc(` ${lint[0].code} ${lint[0].msg}`, 36), le.length ? "red" : "amb"]] : [["✓", "grn"], [" lint clean", "grn"]]);
-    if (lint.length > 1) g.put(X, Y + 13, `+${lint.length - 1} more · the editor shows them`, "dim3");
-    g.put(X, Y + 14, `${WIZ_TRIG[w.trig].label}`, "dim"); g.put(X, Y + 15, `${BUDGETS[w.budget].t}`, "dim"); g.put(X, Y + 16, `on failure: ${HANDOFFS[w.handoff][0]}`, "dim");
-    keys = [["space", "toggle step"], ["enter", "create"], ["r", "create + dry run"], ["backspace", "back"]];
-  }
-  if (w.err) g.segs(X, y0 + bh - 3, [["error", "red b"], [`[${w.err[0]}]`, "red"], [": " + w.err[1], ""]]);
-  let kx = X; keys.forEach(([k, v], i) => { if (i) kx = g.put(kx, y0 + bh - 2, " · ", "dim3"); kx = g.put(kx, y0 + bh - 2, k, "b"); kx = g.put(kx, y0 + bh - 2, " " + v, "dim"); });
+const wizSrc = w => WSRC[w.src].id;
+function wizCancel() { const w = S.wiz; S.wizLast = w.base || w.sentence || w.path ? w : null; S.wiz = null; play("back"); toast(`new pipeline cancelled · nothing was written${S.wizLast ? " · n resumes the draft, :new! starts over" : ""}`, "dim"); }
+function wizErr(code, text) { const w = S.wiz; if (w) w.err = [code, text]; MSGS.unshift({ t: new Date().toTimeString().slice(0, 8), lvl: "error", code, text }); play("error"); }
+
+/* names */
+function slugName(s) {
+  const stop = new Set("a an the and or then it them to of for on in at by with every each night nightly morning daily weekly day week when after all any my our new please".split(" "));
+  const ws = String(s).toLowerCase().replace(/[^a-z0-9 ]+/g, " ").split(/\s+/).filter(x => x && !stop.has(x));
+  return (ws.slice(0, 3).join("-").replace(/^[^a-z]+/, "").slice(0, 32)) || "new-pipeline";
 }
-function wizKey2(k) {
-  const w = S.wiz, step = WIZ2[w.step];
-  const next = () => { w.err = null; w.step++; play("open"); }, back = () => { w.err = null; if (w.step) { w.step--; play("back"); } };
-  if (k === "Escape") { S.wiz = null; play("back"); toast("new pipeline cancelled · nothing was saved", "dim"); return; }
-  if (step === "describe") {
-    if (w.drafting) return;
-    const showSentence = HOW[w.how][1] === "describe", nf = showSentence ? 3 : 2;
-    if (k === "Tab" || k === "ArrowDown") { w.field = (w.field + 1) % nf; play("tick"); return; }
-    if (k === "ArrowUp") { w.field = (w.field + nf - 1) % nf; play("tick"); return; }
-    if (w.field === 1) {
-      if (k === "h" || k === "ArrowLeft") { w.how = (w.how + HOW.length - 1) % HOW.length; play("toggle"); return; }
-      if (k === "l" || k === "ArrowRight" || k === " ") { w.how = (w.how + 1) % HOW.length; play("toggle"); return; }
+function uniqName(n) { n = String(n || "new-pipeline").toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^[^a-z]+|-+$/g, "") || "new-pipeline"; let x = n, i = 2; while (PIPES.some(p => p.name === x) || DOCS[x]) x = `${n}-${i++}`; return x; }
+function nameProblem(n) { if (!/^[a-z][a-z0-9-]*$/.test(n)) return ["M1210", `"${n}" isn't a valid name · lowercase letters, digits and dashes`]; if (PIPES.some(p => p.name === n) || DOCS[n]) return ["M2205", `a pipeline named ${n} already exists`]; return null; }
+
+/* describe: the headless agent's proposal (simulated: keywords → steps, each with a reason) */
+function wizPropose(text) {
+  const t = text.toLowerCase(), steps = { work: true }, why = { work: "does the task you described" };
+  const hit = (re, id, msg) => { const m = t.match(re); if (m) { steps[id] = true; why[id] = `“${m[0]}” → ${msg}`; } return !!m; };
+  if (/test|fix|bug|code|refactor|\bpr\b|pull request/.test(t)) { steps.ws = true; why.ws = "changes code → its own branch and worktree"; }
+  hit(/\btests?\b|\bchecks?\b/, "check", "run make check; false goes to the failure handoff");
+  hit(/\bdraft pr\b|\bpr\b|pull request/, "pr", "open a draft PR");
+  hit(/review/, "review", "a second agent reviews the diff");
+  hit(/slack|post|tell|notify/, "notify", "post the result to Slack");
+  hit(/rss|news|fetch|feeds?|calendar|digest/, "fetch", "fetch the sources first");
+  hit(/plan|risk|scope|small/, "scope", "check the plan's size before building");
+  const removed = [];
+  for (const m of t.matchAll(/(?:without|no|skip|drop)\s+(?:the\s+|a\s+)?(\w+)/g)) { const id = { review: "review", pr: "pr", prs: "pr", slack: "notify", tests: "check", test: "check", plan: "scope", worktree: "ws" }[m[1]]; if (id) { delete steps[id]; delete why[id]; removed.push(id); } }
+  const trig = /night/.test(t) ? { k: "cron", cfg: "0 3 * * *", why: "“night” → every day at 03:00" } : /morning|weekday/.test(t) ? { k: "cron", cfg: "30 7 * * 1-5", why: "“morning” → weekdays at 07:30" }
+    : /hour/.test(t) ? { k: "cron", cfg: "0 * * * *", why: "“hourly” → every hour" } : /issue|label/.test(t) ? { k: "webhook", cfg: "/github", why: "“issue” → GitHub webhook" }
+    : /push|merge/.test(t) ? { k: "git", cfg: "main", why: "“push” → git push to main" } : { k: "manual", why: "no time or event mentioned → manual" };
+  const agent = /cheap|quick|summar|digest|triage/.test(t) ? 2 : /hard|refactor|complex|architect/.test(t) ? 1 : 0;
+  return { steps, why, trig, agent, removed, desc: text.charAt(0).toUpperCase() + text.slice(1).replace(/\.?$/, ".") };
+}
+function wizTick(w) {
+  if (!w.drafting || performance.now() - w.drafting.t0 < 1400) return;
+  const d = w.drafting; w.drafting = null;
+  const p = wizPropose(d.text), before = w.base && w.base.kind === "gen" && w.base.src === "describe" ? Object.keys(w.base.gen.steps).filter(k => w.base.gen.steps[k]) : null;
+  if (before) { for (const k of before) if (!p.removed.includes(k)) p.steps[k] = true; Object.assign(p.why, Object.fromEntries(Object.entries(w.base.gen.why || {}).filter(([k]) => !p.why[k]))); }   // a refinement keeps what you turned on
+  wizSetBase(w, { kind: "gen", src: "describe", label: "drafted from your sentence", name: slugName(d.text), gen: { steps: p.steps, agent: p.agent, desc: p.desc, why: p.why }, trig: { k: p.trig.k, cfg: p.trig.cfg }, trigWhy: p.trig.why, sentence: d.text });
+  w.step = 1; w.max = Math.max(w.max, 1); w.row = 0; play("node_done");
+  const now = Object.keys(p.steps);
+  w.say = before ? `refined: ${now.filter(k => !before.includes(k)).map(k => "+ " + k).concat(before.filter(k => !now.includes(k)).map(k => "− " + k)).join(" · ") || "no change"}` : `claude/haiku proposed ${now.length} steps and ${p.trig.k === "manual" ? "no trigger" : "a trigger"} · ≈ $0.01 · nothing written`;
+  S.dirty = true;
+}
+function wizDraft(text) { const w = S.wiz; w.drafting = { t0: performance.now(), text: text || "every night find flaky tests, fix them, run the tests and open a draft PR" }; w.say = ""; play("run_start"); }
+
+/* the base a pipeline starts from, and the final document (built from it on every render; written only on create) */
+function wizSetBase(w, B) {
+  w.base = B; w.allow = {}; w.amap = 0; const pin = w.pinned || {};   // values set by :trigger, :budget, :agent or mill new flags survive a new base
+  if (!w.nameTouched) w.name = uniqName(B.name || "new-pipeline");
+  const opts = wizTrigOpts(w); let ti = -1;
+  if (pin.trig) { const k = pin.trig; w.trig = Math.max(0, opts.findIndex(o => o.k === k)); }
+  if (B.trig) { ti = opts.findIndex(o => o.k === B.trig.k); if (B.trig.cfg != null && !pin.trig) w.cfg[B.trig.k] = B.trig.cfg; }
+  else if (B.srcOn && !B.manualFirst) ti = 0;
+  if (ti < 0) ti = opts.findIndex(o => o.k === "manual");
+  if (!pin.trig) w.trig = ti;
+  w.budget = Math.max(0, wizBudgetOpts(w).indexOf(pin.budget || (B.srcBudget ? "source" : "medium")));
+  if (B.kind === "gen" && !pin.agent) w.agent = B.gen.agent;
+}
+function wizTrigOpts(w) { const B = w.base; return [...(B && B.srcOn ? [{ k: "source", label: B.src === "duplicate" ? "as in " + B.dupOf : "as in the file", on: B.srcOn }] : []), ...WTRIG]; }
+function wizBudgetOpts(w) { return [...(w.base && w.base.srcBudget ? ["source"] : []), "small", "medium", "large"]; }
+function wizAgentOpts(w) { return w.base && w.base.kind === "gen" ? WIZ_AGENTS.map(a => a.a === "none" ? "none" : `${a.a}/${a.m}`) : ["as in the source", ...AGENTS]; }
+function cronCheck(v) { v = String(v).trim(); return /^@every \d+[smhd]$/.test(v) || /^@(hourly|daily|weekly)$/.test(v) || (v.split(/\s+/).length === 5 && v.split(/\s+/).every(f => /^[\d*\/,\-]+$/.test(f))); }
+function cronText(v) {
+  const f = String(v).trim().split(/\s+/), hm = (h, m) => `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  if (!cronCheck(v)) return null; if (f.length !== 5) return v;
+  if (/^\d+$/.test(f[0]) && /^\d+$/.test(f[1]) && f[2] === "*" && f[3] === "*") return f[4] === "*" ? `every day at ${hm(f[1], f[0])}` : f[4] === "1-5" ? `weekdays at ${hm(f[1], f[0])}` : `at ${hm(f[1], f[0])} on days ${f[4]}`;
+  if (f[0] === "0" && f[1] === "*") return "every hour"; const m = f[0].match(/^\*\/(\d+)$/); if (m && f[1] === "*") return `every ${m[1]} minutes`; return "cron " + v;
+}
+function trigProblem(k, v) { if (k === "cron" && !cronCheck(v)) return ["M3050", `"${v}" isn't a schedule · 5 fields (minute hour day month weekday) or @every 10m`]; if (k === "webhook" && !String(v).startsWith("/")) return ["M3050", `webhook path "${v}" must start with /`]; if (k === "run" && !PIPES.some(p => p.name === v)) return ["M1201", `pipeline "${v}" not found`]; return null; }
+function onFor(k, v) { return k === "manual" ? { manual: {} } : k === "cron" ? { cron: { schedule: v } } : k === "webhook" ? { webhook: { path: v } } : k === "git" ? { git: { on: "push", branch: v } } : k === "run" ? { run: { pipeline: v, on: "done" } } : { fswatch: { path: v, debounce: "5s" } }; }
+function trigText(w) { const t = wizTrigOpts(w)[w.trig]; if (!t) return "manual"; if (t.k === "source") { const k = Object.keys(t.on || { manual: 1 })[0]; return `${k} ${trigSummary(k, (t.on || {})[k])}`.trim(); } if (t.k === "manual") return "manual"; const v = w.cfg[t.k]; return t.k === "cron" ? (cronText(v) || v) : `${t.label} ${v}`; }
+function attachHandoff(doc, to) {
+  const N = doc.nodes || {}; if (!Object.keys(N).length || Object.values(N).some(n => n.uses === "handoff")) return;
+  const order = topo(derive(doc)).filter(id => N[id]), last = order[order.length - 1]; if (!last) return;
+  N[last].on_error = "route"; N["hand-off"] = { uses: "handoff", in: last + ".error", with: { to, title: `${doc.name} needs a person` } };
+}
+function wizFinal(w) {
+  const B = w.base; if (!B) return null;
+  const name = w.name || "new-pipeline", to = w.handoff === 2 ? "rex.session" : "gh.issue";
+  let doc;
+  if (B.kind === "gen") doc = wizDoc({ name, trig: 0, steps: B.gen.steps, agent: w.agent, budget: 1, maxAgents: w.maxAgents, allow: {}, desc: B.gen.desc, handoff: w.handoff });
+  else {
+    doc = clone(B.doc); doc.mill = doc.mill || 1; doc.name = name; doc.nodes = doc.nodes || {};
+    if (B.dupOf) doc = JSON.parse(JSON.stringify(doc).split(`@prompts/${B.dupOf}`).join(`@prompts/${name}`));
+    if (w.amap > 0) for (const n of Object.values(doc.nodes)) if (PC[n.uses] && PC[n.uses].agent && n.uses !== "agent.fanout") { n.with = n.with || {}; n.with.agent = AGENTS[w.amap - 1]; }
+    if (w.handoff) attachHandoff(doc, to);
+  }
+  const t = wizTrigOpts(w)[w.trig] || WTRIG[0];
+  doc.on = t.k === "source" ? clone(t.on) : onFor(t.k, w.cfg[t.k]);
+  const bo = wizBudgetOpts(w)[w.budget];
+  if (bo !== "source") doc.budget = { ...WPRESET[bo || "medium"], max_agents: w.maxAgents };
+  const used = [...new Set(Object.values(doc.nodes).flatMap(n => [n.uses, n.uses === "handoff" && n.with ? n.with.to : null]).filter(u => u && PC[u] && PC[u].destructive))];
+  const allow = [...new Set([...inList(doc.policy && doc.policy.allow_destructive), ...used])].filter(u => w.allow[u] !== false);
+  if (allow.length) doc.policy = { ...(doc.policy || {}), allow_destructive: allow }; else if (doc.policy) { delete doc.policy.allow_destructive; if (!Object.keys(doc.policy).length) delete doc.policy; }
+  return doc;
+}
+const estText = e => Math.abs(e.hi - e.lo) < 0.005 ? usd(e.lo) : `${usd(e.lo)}–${usd(e.hi)}`;
+function wizFiles(w, doc) {
+  const f = [(w.scope ? "~/.config/mill/pipelines/" : ".mill/pipelines/") + w.name + ".mill.yaml"];
+  if (doc && JSON.stringify(doc).includes(`@prompts/${w.name}.md`)) f.push(`prompts/${w.name}.md${w.base && w.base.dupOf ? " (copy)" : ""}`);
+  for (const x of (w.base && w.base.files) || []) f.push(x[0]);
+  return f;
+}
+function wizGen(tplId, name) { const tp = WIZ_TPL[tplId], t = WIZ_TRIG[tp.trig]; const trig = t.id === "webhook" ? { k: "webhook", cfg: "/github" } : t.id === "weekdays" ? { k: "cron", cfg: "30 7 * * 1-5" } : t.id === "nightly" ? { k: "cron", cfg: "0 3 * * *" } : { k: "manual" }; return { kind: "gen", src: "template", label: "template " + tplId, name, gen: { steps: Object.fromEntries(tp.steps.map(s => [s, true])), agent: tp.agent, desc: tp.desc, why: {} }, trig }; }
+function galBase(e) {
+  if (e.tpl) return wizGen(e.tpl, e.id);
+  if (e.pat) { const doc = { mill: 1, name: e.id, description: e.desc.charAt(0).toUpperCase() + e.desc.slice(1) + ".", nodes: JSON.parse(JSON.stringify(e.pat.nodes).split("$UP").join("‹node›")) }; return { kind: "fixed", src: "template", label: "pattern " + e.pat.name, name: e.id, doc }; }
+  return { kind: "fixed", src: "template", label: `template ${e.id} (${e.src})`, name: e.id, doc: { mill: 1, name: e.id, ...clone(e.doc) }, srcOn: e.doc.on, plugins: [e.plugin] };
+}
+function galItems(w) { const q = w.tq.toLowerCase(); return WGAL.filter(e => !q || `${e.id} ${e.desc} ${e.src}`.toLowerCase().includes(q)); }
+function dupItems(w) { const q = w.dq.toLowerCase(); return PIPES.filter(p => !q || `${p.name} ${p.desc}`.toLowerCase().includes(q)); }
+function dupBase(p) { const doc = clone(DOCS[p.name] || fallbackDoc(p.name)); return { kind: "fixed", src: "duplicate", label: "copy of " + p.name, name: p.name + "-copy", doc, dupOf: p.name, srcOn: doc.on, manualFirst: true, srcBudget: !!doc.budget }; }
+function impBase(imp) {
+  const doc = imp.doc; return { kind: "fixed", src: "import", label: `imported ${imp.label}`, name: imp.name, doc, srcOn: doc.on && Object.keys(doc.on).length ? doc.on : null, srcBudget: !!doc.budget, files: imp.files || [], imp };
+}
+function wizUseSource() {
+  const w = S.wiz, src = wizSrc(w); w.err = null;
+  if (src === "describe") return wizDraft(w.sentence);
+  if (src === "template") { const e = galItems(w)[w.tpl]; if (!e) return wizErr("M2309", `no template matches "${w.tq}"`); wizSetBase(w, galBase(e)); }
+  else if (src === "duplicate") { const p = dupItems(w)[w.dup]; if (!p) return wizErr("M1201", `no pipeline matches "${w.dq}"`); wizSetBase(w, dupBase(p)); }
+  else if (src === "import") {
+    if (!w.imp && w.path) wizLoadPath(w.path);
+    if (!w.imp) { w.focus = "pane"; w.prow = 0; w.say = "type a path (i), browse (o), or drop a file on the terminal"; return; }
+    if (w.imp.err) return wizErr(...w.imp.err);
+    const imp = w.imp.pipelines ? w.imp.pipelines[w.pick] : w.imp; wizSetBase(w, impBase(imp));
+  } else wizSetBase(w, { kind: "fixed", src: "blank", label: "blank", name: "new-pipeline", doc: { mill: 1, name: "new-pipeline", description: "A new pipeline.", nodes: {} } });
+  w.step = 1; w.max = Math.max(w.max, 1); w.row = 0; play("open");
+}
+function wizGo(n) {
+  const w = S.wiz; if (n < 0 || n > 3 || n === w.step) return;
+  if (n > 0 && !w.base) { if (n === 1 || w.step === 0) return wizUseSource(); return; }
+  if (n === 3 && w.step === 2) { const t = wizTrigOpts(w)[w.trig], pr = t && t.k !== "manual" && t.k !== "source" ? trigProblem(t.k, w.cfg[t.k]) : null; if (pr) return wizErr(...pr); }
+  w.step = n; w.max = Math.max(w.max, n); w.row = 0; w.err = null; w.say = ""; play(n > 0 ? "open" : "back");
+}
+
+/* import: detect the type from the content, map it, preview it; nothing is written (§9.10, §23.3) */
+const N8N_MAP = { webhook: "trigger", scheduleTrigger: "trigger", cron: "trigger", manualTrigger: "trigger", httpRequest: "http", if: "if", switch: "switch", set: "map", code: "exec", function: "exec", merge: "merge", wait: "wait", executeWorkflow: "pipeline" };
+function fillRequired(n) { const p = PC[n.uses]; if (!p) return n; n.with = n.with || {}; for (const f of p.schema || []) if (f.req && n.with[f.k] == null) n.with[f.k] = placeholderFor(f); return n; }
+function impN8n(base, j) {
+  const slug = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24) || "node";
+  const nm = uniqName(slug(j.name || base.replace(/\.(n8n\.)?json$/i, ""))), nodes = {}, ids = {}, on = {}, mapped = [], stubs = [], human = [], files = [], warn = [];
+  const switches = {};
+  for (const n of j.nodes) {
+    const short = String(n.type || "").replace(/^.*\./, ""), p = n.parameters || {}, m = N8N_MAP[short];
+    if (/stickyNote/i.test(short)) continue;
+    let id = slug(n.name); while (nodes[id]) id += "-2";
+    if (m === "trigger") {
+      ids[n.name] = null;
+      if (short === "webhook") on.webhook = { path: "/" + String(p.path || id).replace(/^\//, "") };
+      else if (short === "manualTrigger") on.manual = {};
+      else { const iv = (p.rule && p.rule.interval && p.rule.interval[0]) || {}; on.cron = { schedule: iv.expression || p.cronExpression || (iv.triggerAtHour != null ? `0 ${iv.triggerAtHour} * * *` : "0 9 * * *") }; }
+      mapped.push([n.name, "on." + Object.keys(on).pop()]); continue;
     }
-    if (k === "Enter") {
-      if (!w.name) w.name = "fix-flaky-test";
-      if (!/^[a-z][a-z0-9-]*$/.test(w.name)) { w.err = ["M1210", `"${w.name}" isn't a valid name · lowercase letters, digits and dashes`]; play("error"); return; }
-      if (PIPES.some(p => p.name === w.name)) { w.err = ["M2205", `a pipeline named ${w.name} already exists`]; play("error"); return; }
-      const how = HOW[w.how][1];
-      if (how === "import") { w.err = ["M5110", "import isn't in this demo · it's mill import <file|url>"]; play("error"); return; }
-      if (WIZ_TPL[how]) { const tp = WIZ_TPL[how]; w.trig = tp.trig; w.agent = tp.agent; w.steps = Object.fromEntries(tp.steps.map(s => [s, true])); w.desc = tp.desc; return next(); }
-      if (how === "blank") { w.desc = "A new pipeline."; return next(); }
-      const text = w.sentence || "every night find flaky tests, fix them, run the tests and open a draft PR";
-      w.drafting = performance.now(); play("run_start");
-      setTimeout(() => {
-        if (!S.wiz) return;
-        const t = text.toLowerCase(), st = { work: true };
-        if (/test|fix|bug|code|pr\b|pull/.test(t)) { st.ws = true; st.check = /test|check/.test(t); }
-        if (/\bpr\b|pull request/.test(t)) st.pr = true;
-        if (/review/.test(t)) st.review = true;
-        if (/slack|post|tell|notify/.test(t)) st.notify = true;
-        if (/rss|news|fetch|feed|calendar|digest/.test(t)) st.fetch = true;
-        if (/plan|risk|scope/.test(t)) st.scope = true;
-        w.steps = st; w.trig = /night/.test(t) ? 2 : /morning|weekday/.test(t) ? 1 : /issue|label/.test(t) ? 3 : 0;
-        w.desc = text.charAt(0).toUpperCase() + text.slice(1) + ".";
-        w.drafting = 0; w.step = 1; play("node_done"); toast(`proposed ${Object.values(st).filter(Boolean).length} steps · you'll check them on review`, "grn", 4500); S.dirty = true;
-      }, 1600);
-      return;
-    }
-    if (w.field === 0) { if (k === "Backspace") w.name = w.name.slice(0, -1); else if (k.length === 1) { w.name += k; w.err = null; } return; }
-    if (w.field === 2) { if (k === "Backspace") w.sentence = w.sentence.slice(0, -1); else if (k.length === 1) w.sentence += k; return; }
+    ids[n.name] = id;
+    if (/sendAndWait|^form/i.test(short) || (m === "wait" && /webhook|form/.test(p.resume || ""))) { nodes[id] = { uses: "handoff", with: { to: "gh.issue", title: `${n.name}: needs a person` } }; human.push(n.name); continue; }
+    if (m === "http") nodes[id] = { uses: "http", with: { url: p.url || "‹url›", method: String(p.method || "GET").toUpperCase() } };
+    else if (m === "if") nodes[id] = { uses: "if", with: { cond: "‹condition from n8n: " + n.name + "›" } };
+    else if (m === "switch") { nodes[id] = { uses: "switch", with: { on: "‹value›", cases: {} } }; switches[id] = 0; }
+    else if (m === "map") nodes[id] = { uses: "map", with: { expr: "‹fields from n8n Set›" } };
+    else if (m === "exec") { const f = `scripts/${nm}-${id}.js`; files.push([f, p.jsCode || p.functionCode || ""]); nodes[id] = { uses: "exec", with: { argv: ["node", f] } }; }
+    else if (m === "merge") nodes[id] = { uses: "merge", with: { mode: "all" } };
+    else if (m === "wait") nodes[id] = { uses: "wait", with: { for: `${p.amount || 1}${({ seconds: "s", minutes: "m", hours: "h", days: "d" })[p.unit] || "m"}` } };
+    else if (m === "pipeline") nodes[id] = { uses: "pipeline", with: { name: "‹pipeline›" } };
+    else { nodes[id] = { uses: "n8n.call", with: { url: "${{ secrets.N8N_URL }}/webhook/" + id, wait: true } }; stubs.push(n.name); continue; }
+    mapped.push([n.name, nodes[id].uses]);
+  }
+  for (const [from, c] of Object.entries(j.connections || {})) (c.main || []).forEach((outs, oi) => { const a = ids[from]; if (a && switches[a] != null) switches[a] = Math.max(switches[a], oi + 1); });
+  for (const [id, k] of Object.entries(switches)) for (let i = 0; i < Math.max(1, k); i++) nodes[id].with.cases["c" + i] = "‹value " + i + "›";
+  let cut = 0;
+  for (const [from, c] of Object.entries(j.connections || {})) (c.main || []).forEach((outs, oi) => (outs || []).forEach(dst => {
+    const a = ids[from], b = ids[dst.node]; if (!b || !nodes[b] || a == null || !nodes[a]) return;
+    if (nodes[a].uses === "handoff") { cut++; return; }
+    const port = nodes[a].uses === "if" ? (oi ? ".false" : ".true") : nodes[a].uses === "switch" ? ".case.c" + oi : "";
+    nodes[b].in = nodes[b].in ? [].concat(nodes[b].in, a + port) : a + port;
+  }));
+  if (!Object.keys(on).length) on.manual = {};
+  if (stubs.length) warn.push(["M2304", `${stubs.length} n8n node${stubs.length > 1 ? "s" : ""} run on n8n through n8n.call stubs: ${stubs.join(", ")}`]);
+  if (human.length) warn.push(["M2307", `${human.join(", ")} waited for a person: now a handoff that ends its branch${cut ? ` (${cut} step${cut > 1 ? "s" : ""} after it unconnected)` : ""}`]);
+  const doc = { mill: 1, name: nm, description: `Imported from the n8n workflow "${j.name || base}".`, tags: ["n8n"], on, nodes };
+  if (stubs.length) doc.secrets = ["N8N_URL"];
+  return { kind: "n8n", label: "n8n workflow", count: j.nodes.filter(n => !/stickyNote/i.test(n.type || "")).length, name: nm, doc, files, mapped, stubs, human, warn };
+}
+function impMill(base, d) {
+  if (!d || typeof d !== "object" || !d.nodes || typeof d.nodes !== "object") return { err: ["M2301", `${base} has no nodes: so it isn't a mill pipeline`] };
+  if (+d.mill !== 1) return { err: ["M2302", `${base} says mill: ${d.mill}; this mill reads version 1 · mill update`] };
+  return { kind: "mill", label: "mill pipeline", name: uniqName(d.name || base.replace(/\.mill\.ya?ml$|\.ya?ml$/i, "")), doc: clone(d), count: Object.keys(d.nodes).length, asIs: true, warn: [] };
+}
+function splitPipe(s) { const out = []; let cur = "", q = null; for (const ch of s) { if (q) { if (ch === q) q = null; cur += ch; } else if (ch === '"' || ch === "'") { q = ch; cur += ch; } else if (ch === "|") { out.push(cur.trim()); cur = ""; } else cur += ch; } if (cur.trim()) out.push(cur.trim()); return out; }
+function impPipe(base, s) {
+  const stages = splitPipe(s.split("\n").filter(l => !l.trim().startsWith("#")).join(" ")), nodes = {}; let prev = null;
+  for (const st of stages) {
+    const toks = st.match(/"[^"]*"|'[^']*'|\S+/g) || [], part = toks[0], str = toks.slice(1).filter(x => /^["']/.test(x)).map(x => x.slice(1, -1)), kv = toks.slice(1).filter(x => /^[\w.]+=/.test(x));
+    let n;
+    if (part === "sh") n = { uses: "sh", with: { run: str[0] || "‹run›" } };
+    else if (part === "agent") n = { uses: "agent", with: { agent: toks[1] && !/^["']/.test(toks[1]) ? toks[1] : "claude/sonnet", prompt: str[0] || "‹prompt›" } };
+    else n = { uses: part, with: Object.fromEntries(kv.map(x => [x.slice(0, x.indexOf("=")), x.slice(x.indexOf("=") + 1)])) };
+    fillRequired(n); let id = newId({ nodes }, part === "sh" ? "step" : part); if (prev) n = { uses: n.uses, in: prev, with: n.with }; nodes[id] = n; prev = id;
+  }
+  const nm = uniqName(base.replace(/\.(pipe|txt)$/i, "") || "pipe");
+  return { kind: "pipe", label: "pipe expression", name: nm, count: stages.length, doc: { mill: 1, name: nm, description: "Saved from the pipe: " + trunc(s.trim(), 60), on: { manual: {} }, nodes }, warn: [] };
+}
+function parseBundleLua(t) {
+  const list = k => { const m = t.match(new RegExp(k + "\\s*=\\s*\\{([^}]*)\\}")); return m ? [...m[1].matchAll(/"([^"]+)"/g)].map(x => x[1]) : []; };
+  const pm = t.match(/plugins\s*=\s*\{([^}]*)\}/), plugins = pm ? [...pm[1].matchAll(/\["([^"]+)"\]\s*=\s*"([^"]*)"/g)].map(x => [x[1], x[2]]) : [];
+  return { pipelines: list("pipelines"), plugins, secrets: list("secrets"), agents: list("agents") };
+}
+function impBundle(base, files, from) {
+  const names = Object.keys(files).map(f => f.replace(/^\.\//, "")).filter(f => !/(^|\/)\._/.test(f)), F = {}; for (const k of Object.keys(files)) F[k.replace(/^\.\//, "")] = files[k];
+  const lua = names.find(f => /(^|\/)plugin\.lua$/.test(f)), pipes = names.filter(f => /\.mill\.ya?ml$/.test(f));
+  if (!lua) return { err: ["M2305", `${base} has no plugin.lua, so it isn't a .millpkg (mill export makes them)`] };
+  if (!pipes.length) return { err: ["M2305", `${base} has a plugin.lua but no pipelines/*.mill.yaml`] };
+  const meta = parseBundleLua(F[lua]), out = [];
+  for (const f of pipes) { let d; try { d = yParse(F[f]); } catch (e) { return { err: ["M2101", `${base}: ${f}:${e.line || 1}: ${e.message}`] }; } const r = impMill(f.split("/").pop(), d); if (r.err) return r; r.files = names.filter(x => /^prompts\//.test(x) && F[f].includes("@" + x)).map(x => [x, F[x]]); r.kind = "millpkg"; r.label = ".millpkg bundle"; out.push(r); }
+  const inst = new Set(PLUG.installed.map(p => p.name)), have = new Set(AGENTS.map(a => a.split("/")[0])), setSecrets = new Set(["GITHUB_TOKEN", "SLACK_TOKEN"]);
+  return { kind: "millpkg", label: ".millpkg bundle", name: out[0].name, pipelines: out, from: from || null, meta, count: out.length,
+    plugins: meta.plugins.map(([n, v]) => [n, v, inst.has(n)]), agents: meta.agents.map(a => [a, have.has(a)]), secrets: meta.secrets.map(s => [s, setSecrets.has(s)]), warn: [] };
+}
+function untar(u8) {
+  const files = {}, td = new TextDecoder(); let o = 0;
+  const str = (a, b) => td.decode(u8.subarray(o + a, o + b)).replace(/\0[\s\S]*$/, "");
+  while (o + 512 <= u8.length) {
+    if (u8.subarray(o, o + 512).every(b => b === 0)) break;
+    const name = str(0, 100), prefix = str(345, 500), size = parseInt(str(124, 136).trim() || "0", 8) || 0, type = String.fromCharCode(u8[o + 156] || 48);
+    o += 512; if (type === "0" || type === "\0") files[(prefix ? prefix + "/" : "") + name] = td.decode(u8.subarray(o, o + size)); o += Math.ceil(size / 512) * 512;
+  }
+  return files;
+}
+function wizDetect(f) {   // { name, text } → an import result; never writes anything
+  const base = String(f.name || "stdin").split("/").pop(), t = f.text == null ? "" : String(f.text);
+  if (t.length > 5e6) return { err: ["M2306", `${base} is ${(t.length / 1e6).toFixed(1)} MB · imports stop at 5 MB`] };
+  if (/[\u0000-\u0008\u000e-\u001a]/.test(t.slice(0, 4000))) return { err: ["M2306", `${base} looks binary and isn't a .millpkg (tar.gz)`] };
+  const s = t.trim(); if (!s) return { err: ["M2301", `${base} is empty`] };
+  if (s[0] === "{" || s[0] === "[") {
+    let j; try { j = JSON.parse(s); } catch (e) { const m = String(e.message).match(/position (\d+)/), pos = m ? +m[1] : 0, line = s.slice(0, pos).split("\n").length; return { err: ["M2101", `${base}:${line} isn't valid JSON: ${String(e.message).replace(/ in JSON.*$/, "").replace(/^Unexpected token/, "unexpected")}`] }; }
+    if (Array.isArray(j) && j[0] && j[0].nodes && j[0].connections) j = j[0];
+    if (j && Array.isArray(j.nodes) && j.connections && typeof j.connections === "object") return impN8n(base, j);
+    if (j && j.mill != null) return impMill(base, j);
+    return { err: ["M2301", `${base} is JSON, but not an n8n workflow (nodes + connections) or a mill pipeline`] };
+  }
+  if (/^mill:\s*\S/m.test(s) || /^nodes:\s*$/m.test(s)) { let d; try { d = yParse(s); } catch (e) { return { err: ["M2101", `${base}:${e.line || 1}: ${e.message}`] }; } return impMill(base, d); }
+  if (/^\s*[\w.:/-]+(\s+("[^"]*"|'[^']*'|\S+))*\s*\|/.test(s) && s.split("\n").filter(l => l.trim() && !l.trim().startsWith("#")).length <= 4) return impPipe(base, s);
+  return { err: ["M2301", `${base} isn't an n8n workflow, a .millpkg, a mill pipeline or a pipe expression`] };
+}
+async function wizLoadBytes(name, u8) {
+  const base = String(name).split("/").pop();
+  if (u8.length > 5e6) return { err: ["M2306", `${base} is ${(u8.length / 1e6).toFixed(1)} MB · imports stop at 5 MB`] };
+  if (u8[0] === 0x50 && u8[1] === 0x4b) return { err: ["M2305", `${base} is a zip; a .millpkg is a tar.gz (mill export makes one)`] };
+  if (u8[0] === 0x1f && u8[1] === 0x8b) {
+    if (typeof DecompressionStream === "undefined") return { err: ["M2305", `${base} is gzip, and this browser can't unpack it`] };
+    try { const ds = new Blob([u8]).stream().pipeThrough(new DecompressionStream("gzip")); u8 = new Uint8Array(await new Response(ds).arrayBuffer()); } catch (e) { return { err: ["M2305", `${base}: gzip data is broken (${e.message})`] }; }
+  }
+  if (u8.length > 262 && new TextDecoder().decode(u8.subarray(257, 262)) === "ustar") return impBundle(base, untar(u8));
+  return wizDetect({ name: base, text: new TextDecoder().decode(u8) });
+}
+async function wizLoadFile(file) {
+  if (!S.wiz) wizNew();
+  const w = S.wiz; w.src = WSRC.findIndex(s => s.id === "import"); w.step = 0; w.focus = "pane"; w.prow = 0; w.picker = null; w.ins = null; w.base = null; w.err = null; w.pick = 0;
+  w.path = "⇪ " + file.name; w.imp = file.size > 5e6 ? { err: ["M2306", `${file.name} is ${(file.size / 1e6).toFixed(1)} MB · imports stop at 5 MB`] } : await wizLoadBytes(file.name, new Uint8Array(await file.arrayBuffer()));
+  if (w.imp) w.imp.upload = true; if (w.imp && w.imp.err) wizErr(...w.imp.err); else { w.say = `read ${file.name} · ${w.imp.label} · nothing written · enter uses it`; play("node_done"); }
+  S.dirty = true; if (typeof render === "function") render();
+}
+/* a small made-up file system for the path field and the picker (the real TUI reads the disk) */
+let FAKEFS = null;
+function fakeFs() {
+  if (FAKEFS) return FAKEFS;
+  const n8n = { name: "Slack digest", nodes: [
+    { name: "Every weekday", type: "n8n-nodes-base.scheduleTrigger", parameters: { rule: { interval: [{ field: "cronExpression", expression: "30 7 * * 1-5" }] } } },
+    { name: "Fetch feed", type: "n8n-nodes-base.httpRequest", parameters: { url: "https://news.example.com/feed.json", method: "GET" } },
+    { name: "Has items", type: "n8n-nodes-base.if", parameters: {} },
+    { name: "Format", type: "n8n-nodes-base.code", parameters: { jsCode: "return items.map(i => ({ json: { line: `• ${i.json.title}` } }));" } },
+    { name: "Post to Slack", type: "n8n-nodes-base.slack", parameters: { channel: "#daily" } },
+    { name: "Log empty day", type: "n8n-nodes-base.googleSheets", parameters: {} },
+    { name: "Note", type: "n8n-nodes-base.stickyNote", parameters: { content: "digest" } }],
+    connections: { "Every weekday": { main: [[{ node: "Fetch feed", type: "main", index: 0 }]] }, "Fetch feed": { main: [[{ node: "Has items", type: "main", index: 0 }]] },
+      "Has items": { main: [[{ node: "Format", type: "main", index: 0 }], [{ node: "Log empty day", type: "main", index: 0 }]] }, Format: { main: [[{ node: "Post to Slack", type: "main", index: 0 }]] } } };
+  const hello = { mill: 1, name: "hello", description: "Say hello, then count the files.", nodes: { greet: { uses: "sh", with: { run: "echo hello" } }, count: { uses: "sh", in: "greet", with: { run: "ls | wc -l" } } } };
+  const rn = { mill: 1, name: "release-notes-kit", description: "Draft release notes when a tag is pushed.", on: { git: { on: "tag" } }, budget: { max_tokens: 200000, max_cost_usd: 2, max_wall: "15m" },
+    nodes: { log: { uses: "sh", with: { run: "git log --oneline $(git describe --tags --abbrev=0 HEAD^)..HEAD" } }, draft: { uses: "agent", in: "log", with: { agent: "claude/haiku", prompt: "@prompts/release-notes.md" }, output: { notes: "string" } },
+      release: { uses: "gh.release", in: "draft", with: { tag: "${{ event.ref }}", draft: true } } }, policy: { allow_destructive: ["gh.release"] } };
+  const lt = { mill: 1, name: "linear-triage", description: "Label new Linear issues and comment a first reply.", on: { webhook: { path: "/linear" } }, budget: { max_tokens: 400000, max_cost_usd: 4, max_wall: "20m" },
+    nodes: { classify: { uses: "agent.extract", with: { from: "${{ event.issue.body }}" }, output: { kind: { enum: ["bug", "question", "other"] } } }, reply: { uses: "linear.comment", in: "classify", with: { issue: "${{ event.issue.id }}", body: "Thanks! Tagged as ${{ nodes.classify.item.kind }}." } } }, policy: { allow_destructive: ["linear.comment"] } };
+  const lua = `-- generated by mill export\nmill.bundle "code-kit" {\n  pipelines = { "release-notes-kit", "linear-triage" },\n  plugins   = { ["mill/github"] = "^1", ["acme/linear"] = "^1.2", ["acme/jira"] = "^0.4" },\n  secrets   = { "GITHUB_TOKEN", "LINEAR_API_KEY" },\n  agents    = { "claude", "codex" },\n}\n`;
+  const kit = { "plugin.lua": lua, "pipelines/release-notes-kit.mill.yaml": yEmit(rn).lines.join("\n"), "pipelines/linear-triage.mill.yaml": yEmit(lt).lines.join("\n"), "prompts/release-notes.md": "Write release notes from this git log.\n" };
+  FAKEFS = {
+    "~/Downloads/slack-digest.json": { text: JSON.stringify(n8n, null, 2) }, "~/Downloads/code-kit.millpkg": { bundle: kit }, "~/Downloads/broken.json": { text: '{ "nodes": [ { "name": "Webhook", }\n] }' },
+    "~/Downloads/notes.txt": { text: "buy milk\ncall the dentist\n" }, "~/Downloads/huge-export.json": { size: 7.2e6 },
+    "~/code/app/.mill/pipelines/hello.mill.yaml": { text: yEmit(hello).lines.join("\n") }, "~/code/app/legacy/old.mill.yaml": { text: "mill: 2\nname: old\nnodes:\n  a:\n    uses: sh\n" },
+    "~/notes/summarize.pipe": { text: 'sh "git log --oneline -20" | agent claude/haiku "summarize what changed this week" | file.write path=~/notes/week.md' },
+  };
+  return FAKEFS;
+}
+const CWD = "~/code/app";
+function absPath(p) { p = String(p).trim(); return p.startsWith("./") ? CWD + p.slice(1) : p === "." ? CWD : p.startsWith("~") || p.startsWith("/") ? p : CWD + "/" + p; }
+function fsDirs() { const d = new Set(["~"]); for (const k of Object.keys(fakeFs())) { const parts = k.split("/"); for (let i = 1; i < parts.length; i++) d.add(parts.slice(0, i).join("/")); } return d; }
+function fsList(dir) { const dirs = new Set(), files = []; for (const k of Object.keys(fakeFs())) { if (!k.startsWith(dir + "/")) continue; const rest = k.slice(dir.length + 1); if (rest.includes("/")) dirs.add(rest.split("/")[0]); else files.push(rest); } return { dirs: [...dirs].sort(), files: files.sort() }; }
+function pathCands(tok) {   // tab completion: folders end in /, files are complete paths
+  const t = tok || "", a = absPath(t || "./"), dir = t.endsWith("/") ? a.replace(/\/$/, "") : a.slice(0, Math.max(a.lastIndexOf("/"), 1)), pre = t.endsWith("/") ? "" : a.slice(a.lastIndexOf("/") + 1);
+  if (!fsDirs().has(dir)) return [];
+  const { dirs, files } = fsList(dir), shown = t.endsWith("/") ? t : t.slice(0, t.lastIndexOf("/") + 1);
+  return [...dirs.filter(d => d.startsWith(pre)).map(d => shown + d + "/"), ...files.filter(f => f.startsWith(pre)).map(f => shown + f)];
+}
+function wizLoadPath(p) {
+  const w = S.wiz; p = String(p || "").trim(); w.imp = null; w.base = null; w.pick = 0; w.err = null;
+  if (!p) return;
+  if (p === "-") { w.imp = { err: ["M2308", "- reads stdin, which only works in a shell: mill new --from - < file"] }; return wizErr(...w.imp.err); }
+  if (/^gh:/.test(p) || /^https?:\/\//.test(p)) {
+    const kit = fakeFs()["~/Downloads/code-kit.millpkg"].bundle;
+    if (/^gh:acme\/mill-pipelines(\/|$)/.test(p)) { const only = p.split("/").pop(), files = { ...kit }; if (only && only !== "mill-pipelines") { for (const k of Object.keys(files)) if (/\.mill\.yaml$/.test(k) && !k.includes(only)) delete files[k]; } w.imp = impBundle(only || "mill-pipelines", files, "acme/mill-pipelines @ 3f2a9c1"); }
+    else if (/\.millpkg$/.test(p)) w.imp = impBundle(p.split("/").pop(), kit, p.replace(/^https?:\/\//, "").split("/")[0]);
+    else w.imp = { err: ["M2303", `couldn't fetch ${p}: 404 Not Found (milld fetches imports; nothing was written)`] };
+  } else if (/\|/.test(p) && /["']/.test(p) && !fakeFs()[absPath(p)]) w.imp = impPipe("pipe", p);
+  else {
+    const e = fakeFs()[absPath(p)];
+    if (!e) w.imp = fsDirs().has(absPath(p).replace(/\/$/, "")) ? { err: ["M2303", `${p} is a folder · o browses it`] } : { err: ["M2303", `no such file: ${p}`] };
+    else if (e.size) w.imp = { err: ["M2306", `${p.split("/").pop()} is ${(e.size / 1e6).toFixed(1)} MB · imports stop at 5 MB`] };
+    else if (e.bundle) w.imp = impBundle(p.split("/").pop(), e.bundle);
+    else w.imp = wizDetect({ name: p, text: e.text });
+  }
+  if (w.imp.err) wizErr(...w.imp.err); else { w.say = `${w.imp.label} · nothing written yet · enter uses it`; play("node_done"); }
+}
+function wizPaste(t) {
+  const w = S.wiz; t = String(t).replace(/\r?\n$/, "");
+  if (w.ins) { w.ins.text += t.replace(/\n/g, " "); return; }
+  const p = t.trim().replace(/^'(.*)'$/, "$1").replace(/^"(.*)"$/, "$1").replace(/\\ /g, " ");   // terminals paste a dropped file's path, often quoted or escaped
+  if (/^(\/|~|\.\/|gh:|https?:)/.test(p) || /\|/.test(p)) { w.src = WSRC.findIndex(s => s.id === "import"); w.step = 0; w.focus = "pane"; w.base = null; w.path = p; wizLoadPath(w.path); }
+}
+function wizUpload() { const el = typeof document !== "undefined" && document.getElementById("wiz-file"); if (el && typeof el.click === "function") { el.click(); return true; } S.wiz.say = "upload is the browser's file dialog · in the terminal, type a path or drop a file"; return false; }
+
+/* ---- render */
+function wizOutline(doc) {
+  const gr = derive(doc), out = [], seen = new Set();
+  const walk = (id, pre, last, depth, port) => {
+    const nd = gr.nodes[id]; if (!nd) return;
+    out.push({ id, lead: depth ? pre + (last ? "└─ " : "├─ ") : "", nd, port, again: seen.has(id) }); if (seen.has(id)) return; seen.add(id);
+    const body = nd.n && nd.n.uses === "loop" ? inList(nd.n.with && nd.n.with.body).filter(b => gr.nodes[b]).slice(0, 1) : [];
+    const kids = [...body.map(b => [b, "body"]), ...gr.edges.filter(e => e.from === id && !e.bad && gr.nodes[e.to] && (e.kind === "data" || e.kind === "trigger") && e.port !== "body").map(e => [e.to, e.port])];
+    const npre = depth ? pre + (last ? "   " : "│  ") : ""; kids.forEach(([k, p], i) => walk(k, npre, i === kids.length - 1, depth + 1, p));
+  };
+  gr.roots.forEach((r, i) => walk(r.id, "", i === gr.roots.length - 1, 0, null));
+  for (const id of gr.ids) if (!seen.has(id)) out.push({ id, lead: "· ", nd: gr.nodes[id], port: null });
+  return { rows: out, gr };
+}
+function drawPreview(g, doc, x, y, wd, h, view, title) {
+  g.box(x, y, wd, h, "dim2", [[title || (view === "yaml" ? "yaml" : "graph"), "b"], [view === "yaml" ? " · Y graph" : " · Y yaml", "dim3"]]);
+  if (!doc) return;
+  if (view === "yaml") { yEmit(doc).lines.slice(0, h - 2).forEach((t, i) => g.put(x + 2, y + 1 + i, trunc(t, wd - 4), t.startsWith("  ") || !t ? "dim" : "")); return; }
+  const { rows, gr } = wizOutline(doc), lint = lintDoc(doc, gr), sev = id => lint.some(p => p.node === id && p.sev === "error") ? ["✗", "red"] : lint.some(p => p.node === id && p.sev === "warning") ? ["!", "amb"] : null;
+  if (!gr.ids.length) g.put(x + 2, y + 2, "no steps yet · the editor opens on the palette", "dim");
+  rows.slice(0, h - 2).forEach((r, i) => {
+    const nd = r.nd, n = nd.n, yy = y + 1 + i, s = n ? sev(r.id) : null;
+    let xx = g.put(x + 2, yy, r.lead, "dim3");
+    if (r.port && r.port !== "out") xx = g.put(xx, yy, r.port + " ", "dim");
+    xx = g.put(xx, yy, glOf(nd) + " ", nd.trig ? "dim" : "blu");
+    xx = g.put(xx, yy, nd.trig ? "on." + nd.kind : r.id, nd.trig ? "dim" : r.again ? "dim" : "");
+    const sum = nd.trig ? trigSummary(nd.kind, (doc.on || {})[nd.kind]) : n ? `${n.uses}${summary(doc, r.id) ? " · " + summary(doc, r.id) : ""}` : "";
+    g.put(xx + 1, yy, trunc(r.again ? "↑ (joins)" : sum, Math.max(0, x + wd - 4 - xx - (s ? 2 : 0))), "dim");
+    if (s) g.put(x + wd - 3, yy, s[0], s[1]);
+  });
+  if (rows.length > h - 2) g.put(x + wd - 10, y + h - 1, ` +${rows.length - h + 2} `, "dim3");
+}
+function fieldSegs(w, key, text, ph, width) {
+  const on = w.ins && w.ins.key === key, v = on ? w.ins.text : text;
+  return v ? [[trunc(v, width - 1), on ? "b" : ""], [on ? "▌" : "", "blu"]] : [[on ? "▌" : "", "blu"], [trunc(ph, width - 1), "dim3"]];
+}
+function wrapText(s, n) { const out = []; let cur = ""; for (const word of String(s).split(/\s+/)) { if (cur && len(cur + " " + word) > n) { out.push(cur); cur = word; } else cur = cur ? cur + " " + word : word; } if (cur) out.push(cur); return out; }
+function rImp(g, imp, x, y, wd, yMax) {
+  const line = (k, segs) => { if (y > yMax) return; g.put(x, y, k, "dim"); g.segs(x + 10, y, segsTrunc(segs, Math.max(0, wd - 10))); y++; };
+  if (imp.err) { g.segs(x, y++, segsTrunc([["✗ ", "red"], [`${imp.err[0]} `, "red"], [imp.err[1], ""]], wd)); g.put(x + 2, y++, trunc("gx explains · nothing was written", wd - 2), "dim3"); return y; }
+  const one = imp.pipelines ? imp.pipelines[S.wiz.pick] || imp.pipelines[0] : imp, lint = lintDoc(one.doc, derive(one.doc)), le = lint.filter(p => p.sev === "error"), lw = lint.filter(p => p.sev === "warning");
+  g.segs(x, y++, [["✓ ", "grn"], [trunc(`${imp.upload ? "uploaded · " : ""}${imp.label} · ${imp.count} ${imp.kind === "millpkg" ? "pipeline" + (imp.count > 1 ? "s" : "") : imp.kind === "pipe" ? "stages" : "nodes"}${imp.from ? " · from " + imp.from : ""}`, wd - 2), "b"]]);
+  if (imp.pipelines && imp.pipelines.length > 1) imp.pipelines.forEach((p, i) => { if (y > yMax) return; g.segs(x + 2, y, segsTrunc([[i === S.wiz.pick ? "● " : "○ ", i === S.wiz.pick ? "grn" : "dim"], [p.name.padEnd(20), i === S.wiz.pick ? "b" : "dim"], [p.doc.description || "", "dim3"]], wd - 2)); if (S.wiz.focus === "pane" && S.wiz.prow === 2 + i) g.bg(x, x + wd - 1, y, "sel"); y++; });
+  line("creates", [[[".mill/pipelines/" + one.name + ".mill.yaml", ...(one.files || imp.files || []).map(f => f[0])].join(" · "), ""]]);
+  if (imp.mapped) line("mapped", [[`${imp.mapped.length}: ` + imp.mapped.map(([a, b]) => `${a} → ${b}`).join(" · "), ""]]);
+  for (const [c, m] of imp.warn || []) line(c === "M2304" ? "stubs" : "handoffs", [["! " + c + " ", "amb"], [m, "amb"]]);
+  if (imp.plugins) line("plugins", imp.plugins.flatMap(([n, v, ok], i) => [[(i ? " · " : "") + n + " " + v, ""], [ok ? " ✓" : " installs", ok ? "grn" : "amb"]]));
+  if (imp.agents) line("agents", imp.agents.flatMap(([a, ok], i) => [[(i ? " · " : "") + a, ""], [ok ? " ✓" : " ✗ M6101 · map it on shape", ok ? "grn" : "red"]]));
+  if (imp.secrets) line("secrets", imp.secrets.flatMap(([s, ok], i) => [[(i ? " · " : "") + s, ""], [ok ? " set" : " missing (M9202)", ok ? "grn" : "amb"]]));
+  if (imp.asIs) line("opens", [["as is: the file's nodes, trigger and budget are kept", ""]]);
+  line("lint", le.length ? [["✗ " + le.length + " ", "red"], [`${le[0].code} ${le[0].msg}`, ""]] : lw.length ? [["! " + lw.length + " ", "amb"], [`${lw[0].code} ${lw[0].msg}`, ""]] : [["✓ clean", "grn"]]);
+  line("trust", [["new file: creating it trusts this version (§9.10)", "dim"]]);
+  return y;
+}
+function rWizard(g) {
+  const w = S.wiz; wizTick(w);
+  const bw = ow(), x0 = ox(bw), y0 = 2, bh = 28, X = x0 + 3, Y = y0 + 4, R = x0 + bw - 4, B = y0 + bh - 4, C = { x0, y0, bw, bh, X, Y, R, B };
+  overlayBox(g, x0, y0, bw, bh, [["≋", "mark"], [" new pipeline", "b"], [w.base && w.name ? " · " + w.name : "", "dim"]]);
+  let x = X;
+  WIZ2.forEach((s, i) => {
+    if (i) x = g.put(x, y0 + 1, "  ›  ", "dim3");
+    const x1 = x, cur = i === w.step, done = !cur && w.base && i <= w.max;
+    x = g.put(x, y0 + 1, done ? "✓ " : `${i + 1} `, done ? "grn" : cur ? "b" : "dim3"); x = g.put(x, y0 + 1, s, cur ? "b" : done ? "dim" : "dim3");
+    hit(x1, y0 + 1, x - 1, y0 + 1, () => wizGo(i));
+  });
+  if (w.base && bw >= 80) g.rput(R, y0 + 1, trunc(w.base.label, Math.max(0, R - x - 4)), "dim3");
+  g.hl(x0 + 1, x0 + bw - 2, y0 + 2, "dim2");
+  [rWizStart, rWizShape, rWizRun, rWizReview][w.step](g, w, C);
+  if (w.drafting) g.segs(X, y0 + bh - 2, [[spin(), "blu"], [trunc(" claude/haiku (headless) is drafting the steps from your sentence · esc stops it", bw - 8), "blu"]]);
+  else if (w.err) g.segs(X, y0 + bh - 2, [["error", "red b"], [`[${w.err[0]}]`, "red"], [": " + trunc(w.err[1], bw - 30), ""], ["  gx", "b"]]);
+  else if (w.say) g.put(X, y0 + bh - 2, trunc(w.say, bw - 6), "dim");
+  if (w.picker) rWizPicker(g, w, C);
+  if (w.help) rWizHelp(g, C);
+  const mode = w.ins ? "INSERT" : "NORMAL";
+  g.clear(0, H - 2, W, 2);
+  statusLine(g, `NEW · ${mode}`, w.ins ? "invg" : "inv", [[`${w.step + 1}/4 ${WIZ2[w.step]}`, "b"], ["   " + trunc(wizContext(w), Math.max(0, W - (W >= 100 ? 70 : 34))), "dim"]], W >= 100 ? [[" nothing is written until create ", "dim"]] : []);
+  let kx = 1; wizKeys(w).forEach(([k, v], i) => { if (i) kx = g.put(kx, H - 1, " · ", "dim3"); kx = g.put(kx, H - 1, k, "b"); kx = g.put(kx, H - 1, " " + v, "dim"); });
+}
+function wizContext(w) {
+  const s = WIZ2[w.step];
+  if (s === "start") return w.focus === "list" ? WSRC[w.src].note : wizSrc(w) === "import" ? "file, URL, gh:owner/repo/path, or a pipe expression" : WSRC[w.src].note;
+  if (s === "shape") return w.base ? `${Object.keys(wizFinal(w).nodes).length} steps · ${w.base.label}` : "";
+  if (s === "run") return "the run never waits on you, so its limits are set here";
+  return wizFiles(w, wizFinal(w))[0];
+}
+function wizKeys(w) {
+  if (w.ins) return [["type", "edit"], ["tab", "complete"], ["enter", { sentence: "draft it", refine: "redraft", path: "load", name: "done", cfg: "done", tq: "filter", dq: "filter" }[w.ins.key] || "done"], ["esc", "normal"], ["ctrl+c", "discard"]];
+  if (w.picker) return [["hjkl", "browse"], ["enter", "choose"], ["h", "up a folder"], ["esc", "close"]];
+  if (w.drafting) return [["esc", "stop drafting"]];
+  const s = WIZ2[w.step], src = wizSrc(w);
+  if (s === "start") {
+    if (w.focus === "list") return [["j/k", "choose"], ["l", "open"], ["i", src === "describe" ? "describe" : src === "import" ? "type a path" : "insert"], ["enter", "next"], ["?", "more"]];
+    if (src === "describe") return [["i", "edit"], ["enter", "draft it"], ["h", "sources"], ["esc", "cancel"], ["?", "more"]];
+    if (src === "template") return [["hjkl", "choose"], ["/", "filter"], ["enter", "use it"], ["esc", "cancel"], ["?", "more"]];
+    if (src === "duplicate") return [["j/k", "choose"], ["/", "filter"], ["enter", "copy it"], ["h", "sources"], ["?", "more"]];
+    if (src === "import") return [["i", "path"], ["o", "browse"], ["enter", w.imp && !w.imp.err ? "use it" : "load"], ["h", "sources"], ["?", "more"]];
+    return [["enter", "next"], ["h", "sources"], ["esc", "cancel"], ["?", "more"]];
+  }
+  if (s === "shape") return w.base && w.base.kind === "gen" ? [["j/k", "move"], ["space", "on/off"], ["h/l", "agent"], ["enter", "next"], ["?", "more"]] : [["j/k", "move"], ["h/l", "agent"], ["Y", w.view === "graph" ? "yaml" : "graph"], ["enter", "next"], ["?", "more"]];
+  if (s === "run") return [["j/k", "field"], ["h/l", "change"], ["i", "edit"], ["enter", "next"], ["?", "more"]];
+  return [["i", "rename"], ["h/l", "then"], ["Y", w.view === "graph" ? "yaml" : "graph"], ["enter", "create"], ["?", "more"]];
+}
+function selRow(g, x1, x2, y, on, focused = true) { if (on) g.bg(x1, x2, y, focused ? "sel" : "fold"); }
+function rWizStart(g, w, C) {
+  const { X, Y, R, B } = C, LW = C.bw >= 90 ? 24 : 20, PX = X + LW + 3, PW = R - PX + 1, src = wizSrc(w), pane = w.focus === "pane";
+  g.put(X, Y, "How do you want to start?", "hd");
+  WSRC.forEach((s, i) => { const y = Y + 2 + i * 2, on = i === w.src; g.segs(X, y, [[s.gl + " ", on ? "blu" : "dim"], [s.label, on ? "b" : ""]]); selRow(g, X - 1, X + LW, y, on, !pane); hit(X - 1, y, X + LW, y, () => { w.src = i; w.focus = "list"; w.err = null; play("tick"); }); });
+  g.vl(X + LW + 1, Y + 2, B, "dim3");
+  let y = Y + 2;
+  if (src === "describe") {
+    wrapText("Say what it should do. An agent drafts the trigger and steps; you check them on the next screen. Nothing is written until you create it.", PW).forEach(l => g.put(PX, y++, l, "dim")); y++;
+    g.put(PX, y++, "in a sentence", "dim");
+    const on = w.ins && w.ins.key === "sentence", txt = on ? w.ins.text : w.sentence, lines = txt ? wrapText(txt, PW - 2) : [""];
+    lines.slice(-5).forEach((l, i, a) => { g.segs(PX, y, txt ? [[l, "b"], [on && i === a.length - 1 ? "▌" : "", "blu"]] : [[on ? "▌" : "", "blu"], [trunc("every night find flaky tests, fix them, run the tests and open a draft PR", PW - 2), "dim3"]]); selRow(g, PX - 1, R, y, pane && !on); y++; });
+    y++; g.put(PX, y++, trunc("drafted by claude/haiku · headless · ≈ $0.01 · counts toward today's spend", PW), "dim3");
+  } else if (src === "template") {
+    const items = galItems(w), cols = galCols(), cw = Math.floor((PW - (cols - 1) * 2) / cols), vis = 4; w.tpl = Math.min(w.tpl, Math.max(0, items.length - 1));
+    const top = Math.max(0, Math.floor(w.tpl / cols) - vis + 1);
+    if (w.tq || (w.ins && w.ins.key === "tq")) g.segs(PX, y, [["/", "mark"], ...fieldSegs(w, "tq", w.tq, "", PW - 2)]); else g.put(PX, y, `${items.length} starters · / filters`, "dim3"); y += 2;
+    items.forEach((e, i) => { const r = Math.floor(i / cols) - top, c = i % cols; if (r < 0 || r >= vis) return; const cx = PX + c * (cw + 2), cy = y + r * 3, on = i === w.tpl;
+      const tag = e.src === "built-in" ? "" : e.src; g.segs(cx, cy, [[e.gl + " ", "blu"], [trunc(e.pat ? e.pat.name : e.id, cw - 3 - (tag ? len(tag) + 2 : 0)), on ? "b" : ""]]); g.rput(cx + cw - 1, cy, tag, "dim3"); g.put(cx + 2, cy + 1, trunc(e.desc, cw - 2), "dim");
+      if (on) { g.bg(cx - 1, cx + cw - 1, cy, pane ? "sel" : "fold"); g.bg(cx - 1, cx + cw - 1, cy + 1, pane ? "sel" : "fold"); } hit(cx, cy, cx + cw - 1, cy + 1, () => { w.tpl = i; w.focus = "pane"; play("tick"); }); });
+    if (!items.length) g.put(PX, y, "no starter matches · esc clears the filter", "dim");
+    y += vis * 3; const e = items[w.tpl];
+    if (e) { const b = galBase(e), d = b.kind === "gen" ? wizDoc({ name: e.id, trig: WIZ_TPL[e.tpl].trig, steps: b.gen.steps, agent: b.gen.agent, budget: 1, maxAgents: 2, allow: {}, desc: b.gen.desc, handoff: 0 }) : b.doc;
+      drawPreview(g, d, PX, y, PW, Math.max(3, B - y + 1), "graph", (e.pat ? e.pat.name : e.id) + (e.plugin ? ` · needs ${e.plugin} ✓` : "")); }
+  } else if (src === "duplicate") {
+    const items = dupItems(w); w.dup = Math.min(w.dup, Math.max(0, items.length - 1));
+    if (w.dq || (w.ins && w.ins.key === "dq")) g.segs(PX, y, [["/", "mark"], ...fieldSegs(w, "dq", w.dq, "", PW - 2)]); else g.put(PX, y, trunc("copies the file and the prompts it uses · the copy's triggers start as manual", PW), "dim3"); y += 2;
+    const top = Math.max(0, w.dup - (B - y - 1));
+    items.slice(top, top + B - y + 1).forEach((p, i) => { const j = top + i, on = j === w.dup; g.segs(PX, y, [[p.name.padEnd(22), on ? "b" : ""], [trunc(p.trigger || "", 16).padEnd(18), "dim"], [trunc(p.desc || "", Math.max(0, PW - 40)), "dim3"]]); selRow(g, PX - 1, R, y, on, pane); hit(PX, y, R, y, () => { w.dup = j; w.focus = "pane"; play("tick"); }); y++; });
+  } else if (src === "import") {
+    g.put(PX, y++, trunc("A file, a URL, gh:owner/repo/path, or a pipe expression. Drop a file on the terminal to paste its path.", PW), "dim"); y++;
+    g.put(PX, y, "path", "dim"); g.segs(PX + 6, y, fieldSegs(w, "path", w.path, "~/Downloads/slack-digest.json", PW - 7)); selRow(g, PX - 1, R, y, pane && w.prow === 0 && !w.ins); hit(PX, y, R, y, () => { w.focus = "pane"; w.prow = 0; }); y++;
+    g.segs(PX + 6, y, [["o", "b"], [" browse…", "dim"], [typeof document !== "undefined" && document.getElementById("wiz-file") && document.getElementById("wiz-file").click ? "   u upload (browser)   or drop a file here" : "", "dim3"]]); selRow(g, PX - 1, R, y, pane && w.prow === 1); hit(PX, y, R, y, () => { w.picker = { dir: "~/Downloads", cur: 0, top: 0 }; }); y += 2;
+    if (w.imp) rImp(g, w.imp, PX, y, PW, B); else if (S.dropHover) g.put(PX, y, trunc("drop it: the file is read here, nothing is written", PW), "blu");
+    else ["n8n workflow (.json)      nodes mapped to parts, the rest as n8n.call stubs", ".millpkg (from mill export) one pipeline from the bundle, plus its prompts", "*.mill.yaml               opened as is", "pipe expression           sh \"…\" | agent claude/haiku \"…\" becomes steps", "URL · gh:owner/repo/path  fetched by milld, then the same as a file"].forEach(l => g.put(PX, y++, trunc(l, PW), "dim3"));
+  } else wrapText("A pipeline with a trigger and no steps. After create, the editor opens on the palette (a) so you add parts yourself.", PW).forEach(l => g.put(PX, y++, l, "dim"));
+}
+function shapeRows(w) {
+  const B = w.base, rows = []; if (!B) return rows;
+  const fin = wizFinal(w), anyAgent = Object.values(fin.nodes).some(n => PC[n.uses] && PC[n.uses].agent) || (B.kind === "gen" && WIZ_AGENTS[w.agent].a === "none");
+  if (anyAgent || B.kind === "gen") rows.push({ k: "agent" });
+  if (B.kind === "gen") WIZ_DEFS.forEach(d => rows.push({ k: "def", d }));
+  else topo(derive(fin)).filter(id => fin.nodes[id] && id !== "hand-off").forEach(id => rows.push({ k: "node", id }));
+  if (B.src === "describe") rows.push({ k: "refine" });
+  return rows;
+}
+function rWizShape(g, w, C) {
+  const { X, Y, R, B } = C, fin = wizFinal(w), rows = shapeRows(w), wide = C.bw >= 90, LW = wide ? Math.floor((R - X) * 0.52) : R - X, PX = X + LW + 2;
+  g.put(X, Y, w.base.kind === "gen" ? "What it does · space turns a step on or off" : "What it does · used as is; change it in the editor after create", "hd");
+  w.row = Math.min(w.row, rows.length - 1);
+  if (!wide && w.np) { drawPreview(g, fin, X - 1, Y + 1, R - X + 2, B - Y, w.view, null); return; }
+  let y = Y + 2;
+  rows.forEach((r, i) => {
+    if (y > B) return; const on = i === w.row;
+    if (r.k === "agent") { const o = wizAgentOpts(w), v = w.base.kind === "gen" ? o[w.agent] : o[w.amap]; g.segs(X, y, [["agent".padEnd(8), "dim"], ["◂ ", "dim"], [v, on ? "b" : ""], [" ▸", "dim"]]); if (w.base.kind === "gen" && WIZ_AGENTS[w.agent].off) g.put(X + 34, y, "✗ M6101 not installed", "red"); else if (w.base.kind === "gen" && WIZ_AGENTS[w.agent].e && WIZ_AGENTS[w.agent].e !== "-") g.put(X + 34, y, trunc("effort " + WIZ_AGENTS[w.agent].e, LW - 34), "dim3"); y += 2; }
+    else if (r.k === "def") { const d = r.d, noAg = d.agent && WIZ_AGENTS[w.agent].a === "none", chk = !!w.base.gen.steps[d.id] && !noAg, why = (w.base.gen.why || {})[d.id];
+      g.segs(X, y, [[chk ? "[✓] " : "[ ] ", chk ? "grn" : "dim"], [d.gl + " ", "blu"], [d.id.padEnd(8), chk ? (on ? "b" : "") : "dim"], [trunc(chk && why ? why : d.note, LW - 15), chk && why ? "dim" : "dim3"]]); y++; }
+    else if (r.k === "node") { const n = fin.nodes[r.id], p = PC[n.uses]; g.segs(X, y, [[(p ? p.gl : "□") + " ", "blu"], [r.id.padEnd(12), on ? "b" : ""], [trunc(n.uses + (summary(fin, r.id) ? " · " + summary(fin, r.id) : ""), LW - 15), n.uses === "n8n.call" ? "amb" : "dim"]]); y++; }
+    else { y++; g.put(X, y, "refine", "dim"); g.segs(X + 8, y, fieldSegs(w, "refine", w.refine, "also post the result to #dev", LW - 9)); }
+    selRow(g, X - 1, X + LW - 1, y - (r.k === "agent" ? 2 : r.k === "refine" ? 0 : 1), on);
+    if (r.k === "refine") y++;
+  });
+  if (w.base.trigWhy) g.put(X, B, trunc("trigger " + w.base.trigWhy + " (next step)", LW - 1), "dim3");
+  if (wide) drawPreview(g, fin, PX, Y + 1, R - PX + 2, B - Y, w.view, null);
+}
+function wizRunRows(w) {
+  const t = wizTrigOpts(w)[w.trig], rows = [{ k: "trig" }];
+  if (t && t.field) rows.push({ k: "cfg" }); rows.push({ k: "budget" }, { k: "fail" }, { k: "adv" });
+  if (w.adv) { rows.push({ k: "agents" }); const fin = wizFinal(w); for (const u of [...new Set(Object.values(fin.nodes).flatMap(n => [n.uses, n.uses === "handoff" && n.with ? n.with.to : null]).filter(u => u && PC[u] && PC[u].destructive))]) rows.push({ k: "allow", u }); rows.push({ k: "scope" }); }
+  return rows;
+}
+function rWizRun(g, w, C) {
+  const { X, Y, R, B } = C, rows = wizRunRows(w), t = wizTrigOpts(w)[w.trig], fin = wizFinal(w), est = estTotal(fin), bo = wizBudgetOpts(w)[w.budget], NX = X + 34;
+  g.put(X, Y, "When it runs, and its limits", "hd"); if (C.bw >= 90) g.rput(R, Y, "the run never waits on you", "dim3");
+  w.row = Math.min(w.row, rows.length - 1);
+  let y = Y + 2; const ch = (v, on) => [["◂ ", "dim"], [v, on ? "b" : ""], [" ▸", "dim"]], LX = Math.max(16, ...rows.filter(r => r.k === "allow").map(r => r.u.length + 10)), NX2 = Math.max(NX, X + LX + 18);
+  rows.forEach((r, i) => {
+    const on = i === w.row; let label, segs, note = "", ncls = "dim3";
+    if (r.k === "trig") { label = "trigger"; segs = ch(t.label, on); note = t.k === "manual" ? "you, a script, or an agent over MCP" : t.k === "source" ? trigText(w) : ""; }
+    else if (r.k === "cfg") { label = "  " + t.field; segs = fieldSegs(w, "cfg", w.cfg[t.k], t.def, 20); const pr = trigProblem(t.k, w.cfg[t.k]); note = pr ? `✗ ${pr[0]} ${pr[1]}` : t.k === "cron" ? cronText(w.cfg[t.k]) : t.k === "webhook" ? "POST 127.0.0.1:7337/hook/" + w.name + w.cfg[t.k] : ""; ncls = pr ? "red" : "dim"; }
+    else if (r.k === "budget") { label = "budget"; segs = ch(bo === "source" ? "as in the source" : bo, on); const lim = bo === "source" ? fin.budget && fin.budget.max_cost_usd : WPRESET[bo].max_cost_usd; note = `${bo === "source" ? "" : WPRESET_T[bo] + " · "}≈ ${estText(est)} per run${lim ? (est.hi > lim ? " · over! M3208" : " fits") : ""}`; ncls = lim && est.hi > lim ? "amb" : "dim3"; }
+    else if (r.k === "fail") { label = "on failure"; segs = ch(HANDOFFS[w.handoff][0], on); note = HANDOFFS[w.handoff][1]; }
+    else if (r.k === "adv") { label = (w.adv ? "▾" : "▸") + " advanced"; const al = (fin.policy && fin.policy.allow_destructive) || []; segs = [[w.adv ? "" : `max agents ${w.maxAgents} · ${al.length ? "allows " + al.join(", ") : "nothing destructive"} · ${w.scope ? "user" : "project"}`, "dim"]]; }
+    else if (r.k === "agents") { label = "  max agents"; segs = ch(String(w.maxAgents), on); note = "agents at once in one run"; }
+    else if (r.k === "allow") { const ok = w.allow[r.u] !== false; label = "  allow " + r.u; segs = ok ? [["●", "grn"], [" on", ""]] : [["○", "dim"], [" off", "dim"]]; note = ok ? "destructive · listed in allow_destructive" : `lint will refuse it: M3204`; ncls = ok ? "dim3" : "amb"; }
+    else { label = "  scope"; segs = ch(w.scope ? "user" : "project", on); note = w.scope ? "~/.config/mill/pipelines/" : ".mill/pipelines/ (commit it)"; }
+    if (y > B) return;
+    g.put(X, y, label, r.k === "adv" ? (on ? "b" : "dim") : "dim"); g.segs(X + LX, y, segsTrunc(segs, R - X - LX)); if (note) g.put(NX2, y, trunc(note, R - NX2), ncls); selRow(g, X - 1, R, y, on);
+    hit(X - 1, y, R, y, () => { w.row = i; play("tick"); }); y += r.k === "fail" ? 2 : 1;
+  });
+}
+function rWizReview(g, w, C) {
+  const { X, Y, R, B } = C, fin = wizFinal(w), wide = C.bw >= 90, LW = wide ? Math.floor((R - X) * 0.52) : R - X, PX = X + LW + 2, lint = lintDoc(fin, derive(fin)), le = lint.filter(p => p.sev === "error"), lw = lint.filter(p => p.sev === "warning"), est = estTotal(fin), np = nameProblem(w.ins && w.ins.key === "name" ? w.ins.text : w.name);
+  g.put(X, Y, "Review · nothing is written until enter", "hd");
+  let y = Y + 2; const row = (k, segs, cls) => { if (y > B) return; g.put(X, y, k, "dim"); g.segs(X + 10, y, segsTrunc(segs.map(([t, c]) => [t, c || cls || ""]), Math.max(0, LW - 11))); y++; };
+  row("name", fieldSegs(w, "name", w.name, "new-pipeline", LW - 12)); selRow(g, X - 1, X + LW - 1, y - 1, w.row === 0 && !w.ins);
+  row("", np ? [["✗ " + np[0] + " " + np[1], "red"]] : [["✓ free · lowercase, digits, dashes", "dim3"]]);
+  y++; wizFiles(w, fin).forEach((f, i) => row(i ? "" : "writes", [[f, ""]]));
+  const steps = Object.keys(fin.nodes).length, al = (fin.policy && fin.policy.allow_destructive) || [], ag = Object.values(fin.nodes).find(n => PC[n.uses] && PC[n.uses].agent);
+  row("runs", [[`${trigText(w)} · ${steps} step${steps === 1 ? "" : "s"}${ag ? " · " + ((ag.with && ag.with.agent) || defaultAgent(fin)) : ""}`, ""]]);
+  row("limits", [[fin.budget ? `${(fin.budget.max_tokens / 1e6).toFixed(1).replace(/\.0$/, "")}M tk · $${fin.budget.max_cost_usd} · ${fin.budget.max_wall}` : "no budget", ""], [` · on failure ${HANDOFFS[w.handoff][0]}`, "dim"]]);
+  row("allows", [[al.length ? al.join(", ") : "nothing destructive", al.length ? "amb2" : "dim"]]);
+  row("estimate", [[`≈ ${estText(est)} · ${fmtDur(est.sec)} per run`, ""], [fin.budget && est.hi > fin.budget.max_cost_usd ? " · over budget (M3208)" : fin.budget ? " · fits the budget" : "", fin.budget && est.hi > fin.budget.max_cost_usd ? "amb" : "dim3"]]);
+  row("lint", le.length ? [[`✗ ${le.length} `, "red"], [`${le[0].code} ${le[0].msg}`, ""]] : lw.length ? [[`! ${lw.length} `, "amb"], [`${lw[0].code} ${lw[0].msg}`, ""]] : [["✓ clean", "grn"]]);
+  if (le.length + lw.length > 1) row("", [[`+${le.length + lw.length - 1} more · the editor walks them (]e, ga)`, "dim3"]]);
+  if (w.base && w.base.imp) row("trust", [["creating it trusts this version of the file (§9.10)", "dim"]]);
+  y++; const thenOpts = ["dry run, then edit", "open the editor"];
+  row("then", [["◂ ", "dim"], [thenOpts[w.dry ? 0 : 1], w.row === 1 ? "b" : ""], [" ▸", "dim"], [w.dry && le.length ? "  dry run waits for lint (M2203)" : w.dry ? "  destructive steps only report" : "", w.dry && le.length ? "amb" : "dim3"]]); selRow(g, X - 1, X + LW - 1, y - 1, w.row === 1);
+  if (wide) drawPreview(g, fin, PX, Y + 1, R - PX + 2, B - Y, w.view, null);
+}
+function pickerItems(dir) {
+  const { dirs, files } = fsList(dir), up = typeof document !== "undefined" && document.getElementById("wiz-file") && typeof document.getElementById("wiz-file").click === "function";
+  const guess = f => /\.millpkg$/.test(f) ? "bundle" : /\.mill\.ya?ml$/.test(f) ? "pipeline" : /\.json$/.test(f) ? "json" : /\.pipe$/.test(f) ? "pipe" : "";
+  return [...(up ? [{ gl: "⇪", label: "upload from this computer…", up: true, note: "browser only" }] : []), ...(dir !== "~" ? [{ gl: "↰", label: "..", parent: true }] : []),
+    ...dirs.map(d => ({ gl: "▸", label: d + "/", dir: dir + "/" + d })), ...files.map(f => ({ gl: "▤", label: f, file: dir + "/" + f, note: guess(f) }))];
+}
+function rWizPicker(g, w, C) {
+  const P = w.picker, items = pickerItems(P.dir), pw = Math.min(60, C.bw - 8), ph = Math.min(16, items.length + 4), px = C.x0 + Math.floor((C.bw - pw) / 2), py = C.Y + 1, vis = ph - 3;
+  HITS = []; g.clear(px, py, pw, ph); for (let r = py; r < py + ph; r++) g.bg(px, px + pw - 1, r, "pop"); g.box(px, py, pw, ph, "b", [["open ", "b"], [P.dir + "/", "dim"]]);
+  P.cur = Math.max(0, Math.min(P.cur, items.length - 1)); P.top = Math.max(0, Math.min(P.top || 0, P.cur, items.length - vis)); if (P.cur >= P.top + vis) P.top = P.cur - vis + 1;
+  items.slice(P.top, P.top + vis).forEach((it, i) => { const y = py + 1 + i, j = P.top + i, on = j === P.cur; g.segs(px + 2, y, [[it.gl + " ", it.up ? "mark" : "blu"], [trunc(it.label, pw - 18), on ? "b" : it.dir || it.parent ? "" : "dim"]]); if (it.note) g.rput(px + pw - 3, y, it.note, "dim3"); if (on) g.bg(px + 1, px + pw - 2, y, "sel"); hit(px + 1, y, px + pw - 2, y, () => { P.cur = j; pickerKey("Enter"); }); });
+  g.put(px + 2, py + ph - 2, trunc("j/k move · l/enter open · h up a folder · esc close", pw - 4), "dim3");
+}
+function pickerKey(k) {
+  const w = S.wiz, P = w.picker, items = pickerItems(P.dir), it = items[P.cur];
+  if (k === "Escape" || k === "q") { w.picker = null; play("back"); return; }
+  if (k === "j" || k === "ArrowDown") { P.cur = Math.min(items.length - 1, P.cur + 1); play("tick"); return; }
+  if (k === "k" || k === "ArrowUp") { P.cur = Math.max(0, P.cur - 1); play("tick"); return; }
+  if (k === "g") { P.cur = 0; return; } if (k === "G") { P.cur = items.length - 1; return; }
+  if (k === "h" || k === "ArrowLeft" || k === "Backspace" || (it && it.parent && (k === "l" || k === "Enter"))) { if (P.dir !== "~") { P.dir = P.dir.slice(0, P.dir.lastIndexOf("/")) || "~"; P.cur = 0; P.top = 0; play("back"); } return; }
+  if ((k === "l" || k === "Enter" || k === "ArrowRight") && it) {
+    if (it.up) { w.picker = null; wizUpload(); return; }
+    if (it.dir) { P.dir = it.dir; P.cur = 0; P.top = 0; play("open"); return; }
+    w.picker = null; w.path = it.file.replace(CWD + "/", "./"); w.prow = 0; wizLoadPath(it.file); return;
+  }
+}
+function rWizHelp(g, C) {
+  const rows = [["NORMAL", ""], ["j k", "next / previous row"], ["h l", "change a ◂ value ▸; on start, sources ↔ pane"], ["i  a  enter", "edit a text field (INSERT)"], ["cc", "clear a field and edit it"], ["space", "turn a step or a switch on/off"], ["tab  shift+tab", "next / previous step"], ["1 2 3 4", "jump to a step (breadcrumb)"], ["Y", "graph ↔ yaml preview"], ["o  u", "browse files · upload (browser)"], ["/", "filter the gallery or the list"], ["gx", "explain the error code"], [":", "command line (:w creates, :q cancels)"], ["esc", "cancel · nothing is written"], ["INSERT", ""], ["type  backspace", "edit"], ["ctrl+w  ctrl+u", "delete a word · clear"], ["tab", "complete a path or a name"], ["enter", "done (and act: draft, load)"], ["esc", "back to NORMAL, keep the text"], ["ctrl+c", "back to NORMAL, drop the edit"]];
+  const hw = Math.min(64, C.bw - 6), hh = rows.length + 3, hx = C.x0 + Math.floor((C.bw - hw) / 2), hy = Math.max(1, C.y0 + 1);
+  HITS = []; g.clear(hx, hy, hw, hh); for (let r = hy; r < hy + hh; r++) g.bg(hx, hx + hw - 1, r, "pop"); g.box(hx, hy, hw, hh, "b", [["new pipeline · keys", "b"]]);
+  rows.forEach(([k, v], i) => v ? g.segs(hx + 2, hy + 1 + i, [[k.padEnd(18), "b"], [trunc(v, hw - 22), "dim"]]) : g.put(hx + 2, hy + 1 + i, k, "hd"));
+  g.put(hx + 2, hy + hh - 2, "any key closes", "dim3");
+}
+
+/* ---- keys: NORMAL moves (hjkl), i/a/enter edit a field (INSERT), esc goes back to NORMAL */
+function wizStartIns(key) {
+  const w = S.wiz, cur = { sentence: w.sentence, refine: w.refine, path: w.path.startsWith("⇪ ") ? "" : w.path, name: w.name, tq: w.tq, dq: w.dq, cfg: (() => { const t = wizTrigOpts(w)[w.trig]; return t && t.field ? w.cfg[t.k] : ""; })() }[key];
+  w.ins = { key, text: cur || "", orig: cur || "" }; w.err = null; play("toggle");
+}
+function wizCommit(cancel) {
+  const w = S.wiz, I = w.ins; w.ins = null; if (cancel) { if (I.key === "tq") w.tq = I.orig; if (I.key === "dq") w.dq = I.orig; play("back"); return null; }
+  const t = I.text;
+  if (I.key === "sentence") w.sentence = t; else if (I.key === "refine") w.refine = t; else if (I.key === "path") w.path = t; else if (I.key === "tq") { w.tq = t; w.tpl = 0; } else if (I.key === "dq") { w.dq = t; w.dup = 0; }
+  else if (I.key === "name") { if (t !== w.name) { w.name = t; w.nameTouched = true; } }
+  else if (I.key === "cfg") { const tr = wizTrigOpts(w)[w.trig]; w.cfg[tr.k] = t; }
+  return I.key;
+}
+function wizInsKey(k) {
+  const w = S.wiz, I = w.ins;
+  if (k === "Escape") { const key = wizCommit(false); if (key === "path" && w.path) wizLoadPath(w.path); if (key === "name") { const p = nameProblem(w.name); if (p) wizErr(...p); } return; }
+  if (k === "C-c") { wizCommit(true); return; }
+  if (k === "Enter") {
+    const key = wizCommit(false);
+    if (key === "sentence") wizDraft(w.sentence);
+    else if (key === "refine") { if (w.refine.trim()) wizDraft(`${w.base.sentence || w.sentence} ${w.refine}`); }
+    else if (key === "path") wizLoadPath(w.path);
+    else if (key === "name") { const p = nameProblem(w.name); if (p) wizErr(...p); }
+    else if (key === "cfg") { const tr = wizTrigOpts(w)[w.trig], p = trigProblem(tr.k, w.cfg[tr.k]); if (p) wizErr(...p); }
     return;
   }
-  if (k === "Backspace") return back();
-  const lists = { trigger: ["trig", WIZ_TRIG.length], agent: ["agent", WIZ_AGENTS.length], limits: ["gCur", wizGuardRows(w).length], review: ["stepCur", WIZ_DEFS.length] }[step];
-  if (k === "j" || k === "ArrowDown") { const v = Math.min(lists[1] - 1, w[lists[0]] + 1); if (v !== w[lists[0]]) { w[lists[0]] = v; play("tick"); } return; }
-  if (k === "k" || k === "ArrowUp") { const v = Math.max(0, w[lists[0]] - 1); if (v !== w[lists[0]]) { w[lists[0]] = v; play("tick"); } return; }
-  if (step === "trigger" && k === "Enter") return next();
-  if (step === "agent" && k === "Enter") { const a = WIZ_AGENTS[w.agent]; if (a.off) { w.err = ["M6101", `${a.a} isn't installed · install it, or pick another agent`]; play("error"); return; } return next(); }
-  if (step === "limits") {
-    const r = wizGuardRows(w)[w.gCur], d = (k === "h" || k === "ArrowLeft") ? -1 : (k === "l" || k === "ArrowRight") ? 1 : 0;
-    if (d || k === " ") {
-      if (r.k === "budget" && d) w.budget = (w.budget + d + BUDGETS.length) % BUDGETS.length;
-      else if (r.k === "agents" && d) w.maxAgents = Math.max(1, Math.min(4, w.maxAgents + d));
-      else if (r.k === "handoff" && d) w.handoff = (w.handoff + d + HANDOFFS.length) % HANDOFFS.length;
-      else if (r.k === "allow") w.allow[r.id] = w.allow[r.id] === false;
-      else if (r.k === "dry") w.dry = !w.dry;
-      else return;
-      play("toggle"); return;
-    }
-    if (k === "Enter") return next();
+  if (k === "Tab") {
+    if (I.key === "path") { const c = pathCands(I.text); if (c.length === 1) I.text = c[0]; else if (c.length) { const l = c.reduce((a, b) => { let i = 0; while (i < a.length && a[i] === b[i]) i++; return a.slice(0, i); }); if (l.length > I.text.length) I.text = l; w.say = c.map(x => x.split("/").filter(Boolean).pop() + (x.endsWith("/") ? "/" : "")).join("  "); } else w.say = "no match"; }
+    else if (I.key === "cfg" && wizTrigOpts(w)[w.trig].k === "cron") { const ps = ["0 3 * * *", "30 7 * * 1-5", "0 * * * *", "*/15 * * * *", "@every 10m"]; I.text = ps[(ps.indexOf(I.text) + 1) % ps.length]; }
+    else if (I.key === "cfg" && wizTrigOpts(w)[w.trig].k === "run") { const m = PIPES.map(p => p.name).filter(n => n.startsWith(I.text)); if (m.length) I.text = m[0]; }
     return;
   }
-  if (step === "review") {
-    if (k === " " || k === "x") { const d = WIZ_DEFS[w.stepCur]; w.steps[d.id] = !w.steps[d.id]; play("toggle"); return; }
-    if (k === "Enter" || k === "r") { if (wizNodes(w).length < 2) { w.err = ["M2211", "pick at least one step"]; play("error"); return; } return wizCreate(k === "r"); }
+  if (k === "Backspace") I.text = I.text.slice(0, -1);
+  else if (k === "C-w") I.text = I.text.replace(/\S+\s*$/, "");
+  else if (k === "C-u") I.text = "";
+  else if (k.length === 1) I.text += k;
+  else return;
+  if (I.key === "tq") { w.tq = I.text; w.tpl = 0; } if (I.key === "dq") { w.dq = I.text; w.dup = 0; }
+}
+function wizKey(k) {
+  const w = S.wiz;
+  if (w.help) { w.help = false; play("back"); return; }
+  if (w.picker) return pickerKey(k);
+  if (w.ins) return wizInsKey(k);
+  if (w.drafting) { if (k === "Escape" || k === "C-c") { w.drafting = null; w.say = "drafting stopped · nothing was proposed"; play("back"); } return; }
+  const s = seq(k, ["gx", "cc", "za"]); if (s === "") return; const key = s || k;
+  if (key !== "gx") w.err = null;
+  switch (key) {
+    case "?": w.help = true; play("open"); return;
+    case "Escape": if (w.step === 0 && w.focus === "pane") { w.focus = "list"; play("back"); return; } return wizCancel();
+    case "Tab": return wizGo(w.step + 1);
+    case "S-Tab": return wizGo(w.step - 1);
+    case "1": case "2": case "3": case "4": return wizGo(+key - 1);
+    case "gx": { const c = w.err ? w.err[0] : (w.imp && w.imp.err ? w.imp.err[0] : null); w.say = c ? `${c}: ${EXPLAIN[c] || "see mill explain " + c} · mill explain ${c}` : "no error to explain"; return; }
+    case "Y": if (C_wide()) w.view = w.view === "graph" ? "yaml" : "graph"; else if (!w.np) { w.np = true; w.view = "graph"; } else if (w.view === "graph") w.view = "yaml"; else { w.np = false; w.view = "graph"; } play("toggle"); return;
   }
+  return [wizStartKey, wizShapeKey, wizRunKey, wizReviewKey][w.step](key);
+}
+const C_wide = () => ow() >= 90;
+function galCols() { const bw = ow(), LW = bw >= 90 ? 24 : 20; return bw - LW - 9 >= 56 ? 2 : 1; }
+function wizStartKey(k) {
+  const w = S.wiz, src = wizSrc(w);
+  if (w.focus === "list") {
+    if (k === "j" || k === "ArrowDown") { if (w.src < WSRC.length - 1) { w.src++; w.base = null; play("tick"); } return; }
+    if (k === "k" || k === "ArrowUp") { if (w.src > 0) { w.src--; w.base = null; play("tick"); } return; }
+    if (k === "g") { w.src = 0; return; } if (k === "G") { w.src = WSRC.length - 1; return; }
+    if (k === "l" || k === "ArrowRight" || k === "Enter") { w.focus = "pane"; w.prow = 0; play("open"); return; }
+    if (k === "i" || k === "a") { w.focus = "pane"; if (src === "describe") return wizStartIns("sentence"); if (src === "import") return wizStartIns("path"); if (src === "template") return wizStartIns("tq"); if (src === "duplicate") return wizStartIns("dq"); return; }
+    return;
+  }
+  if ((k === "h" || k === "ArrowLeft") && src !== "template") { w.focus = "list"; play("back"); return; }
+  if (src === "describe") { if (k === "i" || k === "a") return wizStartIns("sentence"); if (k === "cc") { w.sentence = ""; return wizStartIns("sentence"); } if (k === "Enter") return wizUseSource(); return; }
+  if (src === "template") {
+    const items = galItems(w), cols = galCols();
+    if (k === "l" || k === "ArrowRight") { if (w.tpl % cols < cols - 1 && w.tpl + 1 < items.length) { w.tpl++; play("tick"); } return; }
+    if (k === "h" || k === "ArrowLeft") { if (w.tpl % cols > 0) { w.tpl--; play("tick"); } else { w.focus = "list"; play("back"); } return; }
+    if (k === "j" || k === "ArrowDown") { if (w.tpl + cols < items.length) { w.tpl += cols; play("tick"); } return; }
+    if (k === "k" || k === "ArrowUp") { if (w.tpl - cols >= 0) { w.tpl -= cols; play("tick"); } return; }
+    if (k === "/" || k === "i") return wizStartIns("tq");
+    if (k === "Enter") return wizUseSource();
+    return;
+  }
+  if (src === "duplicate") {
+    const n = dupItems(w).length;
+    if (k === "j" || k === "ArrowDown") { w.dup = Math.min(n - 1, w.dup + 1); play("tick"); return; }
+    if (k === "k" || k === "ArrowUp") { w.dup = Math.max(0, w.dup - 1); play("tick"); return; }
+    if (k === "/" || k === "i") return wizStartIns("dq");
+    if (k === "Enter") return wizUseSource();
+    return;
+  }
+  if (src === "import") {
+    const nP = w.imp && w.imp.pipelines && w.imp.pipelines.length > 1 ? w.imp.pipelines.length : 0, max = 1 + nP;
+    if (k === "j" || k === "ArrowDown") { w.prow = Math.min(max, w.prow + 1); if (w.prow >= 2) w.pick = w.prow - 2; play("tick"); return; }
+    if (k === "k" || k === "ArrowUp") { w.prow = Math.max(0, w.prow - 1); if (w.prow >= 2) w.pick = w.prow - 2; play("tick"); return; }
+    if (k === "i" || k === "a") return wizStartIns("path");
+    if (k === "cc") { w.path = ""; w.imp = null; return wizStartIns("path"); }
+    if (k === "o" || (k === "Enter" && w.prow === 1)) { const d = w.path && !w.path.startsWith("⇪") ? absPath(w.path) : "~/Downloads"; w.picker = { dir: fsDirs().has(d) ? d : fsDirs().has(d.slice(0, d.lastIndexOf("/"))) ? d.slice(0, d.lastIndexOf("/")) : "~/Downloads", cur: 0, top: 0 }; play("open"); return; }
+    if (k === "u") { wizUpload(); return; }
+    if (k === " " && w.prow >= 2) { w.pick = w.prow - 2; play("toggle"); return; }
+    if (k === "Enter") { if (w.prow === 0 && !w.path) return wizStartIns("path"); if (!w.imp && w.path) wizLoadPath(w.path); if (w.imp && !w.imp.err) return wizUseSource(); return; }
+    return;
+  }
+  if (k === "Enter") return wizUseSource();
+}
+function wizShapeKey(k) {
+  const w = S.wiz, rows = shapeRows(w), r = rows[w.row];
+  if (k === "j" || k === "ArrowDown") { if (w.row < rows.length - 1) { w.row++; play("tick"); } return; }
+  if (k === "k" || k === "ArrowUp") { if (w.row > 0) { w.row--; play("tick"); } return; }
+  if (k === "g") { w.row = 0; return; } if (k === "G") { w.row = rows.length - 1; return; }
+  if (r && r.k === "agent" && (k === "h" || k === "l" || k === "ArrowLeft" || k === "ArrowRight")) { const d = k === "h" || k === "ArrowLeft" ? -1 : 1, o = wizAgentOpts(w); if (w.base.kind === "gen") w.agent = (w.agent + d + o.length) % o.length; else w.amap = (w.amap + d + o.length) % o.length; play("toggle"); return; }
+  if (r && r.k === "def" && (k === " " || k === "x")) { const st = w.base.gen.steps; st[r.d.id] = !st[r.d.id]; play("toggle"); return; }
+  if (r && r.k === "node" && k === " ") { w.say = "used as is · change steps in the editor after create (a adds, dd deletes)"; return; }
+  if (r && r.k === "refine" && (k === "i" || k === "a" || k === "Enter")) return wizStartIns("refine");
+  if (k === "Enter") { if (w.base.kind === "gen" && WIZ_AGENTS[w.agent].off && Object.values(w.base.gen.steps).some(Boolean)) return wizErr("M6101", `${WIZ_AGENTS[w.agent].a} isn't installed · install it, or pick another agent`); if (!Object.keys(wizFinal(w).nodes).length && w.base.kind === "gen") return wizErr("M2211", "turn on at least one step"); return wizGo(2); }
+}
+function wizRunKey(k) {
+  const w = S.wiz, rows = wizRunRows(w), r = rows[w.row], d = k === "h" || k === "ArrowLeft" ? -1 : k === "l" || k === "ArrowRight" ? 1 : 0;
+  if (k === "j" || k === "ArrowDown") { if (w.row < rows.length - 1) { w.row++; play("tick"); } return; }
+  if (k === "k" || k === "ArrowUp") { if (w.row > 0) { w.row--; play("tick"); } return; }
+  if (!r) return;
+  if (r.k === "cfg" && (k === "i" || k === "a")) return wizStartIns("cfg");
+  if (r.k === "cfg" && k === "cc") { const t = wizTrigOpts(w)[w.trig]; w.cfg[t.k] = ""; return wizStartIns("cfg"); }
+  if (d || k === " " || k === "za" || (k === "Enter" && r.k === "adv")) {
+    if (r.k === "trig" && d) { const n = wizTrigOpts(w).length; w.trig = (w.trig + d + n) % n; }
+    else if (r.k === "budget" && d) { const n = wizBudgetOpts(w).length; w.budget = (w.budget + d + n) % n; }
+    else if (r.k === "fail" && d) w.handoff = (w.handoff + d + HANDOFFS.length) % HANDOFFS.length;
+    else if (r.k === "adv") w.adv = d ? d > 0 : !w.adv;
+    else if (r.k === "agents" && d) w.maxAgents = Math.max(1, Math.min(8, w.maxAgents + d));
+    else if (r.k === "allow") w.allow[r.u] = w.allow[r.u] === false;
+    else if (r.k === "scope" && d) w.scope = w.scope ? 0 : 1;
+    else return;
+    play("toggle"); return;
+  }
+  if (k === "i" || k === "a") { const t = wizTrigOpts(w)[w.trig]; if (t && t.field) { w.row = rows.findIndex(x => x.k === "cfg"); return wizStartIns("cfg"); } w.say = "h/l changes this one · i edits text fields"; return; }
+  if (k === "Enter") return wizGo(3);
+}
+function wizReviewKey(k) {
+  const w = S.wiz;
+  if (k === "j" || k === "ArrowDown") { w.row = 1; play("tick"); return; }
+  if (k === "k" || k === "ArrowUp") { w.row = 0; play("tick"); return; }
+  if (k === "i" || k === "a" || (k === "Enter" && w.row === 0 && nameProblem(w.name))) { w.row = 0; return wizStartIns("name"); }
+  if (k === "cc") { w.name = ""; w.row = 0; return wizStartIns("name"); }
+  if (k === "h" || k === "l" || k === " " || k === "ArrowLeft" || k === "ArrowRight") { w.row = 1; w.dry = !w.dry; play("toggle"); return; }
+  if (k === "Enter") return wizCreate(false);
+  if (k === "R") return wizCreate(true);
+}
+function wizCreate(dryFlag) {
+  const w = S.wiz;
+  if (!w.base) return wizErr("M1308", "choose how to start first");
+  const np = nameProblem(w.name); if (np) { w.step = 3; w.row = 0; return wizErr(...np); }
+  const t = wizTrigOpts(w)[w.trig]; if (t && t.field) { const tp = trigProblem(t.k, w.cfg[t.k]); if (tp) { w.step = 2; return wizErr(...tp); } }
+  const name = w.name, doc = wizFinal(w), files = wizFiles(w, doc), k0 = Object.keys(doc.on || { manual: 1 })[0];
+  DOCS[name] = doc; LAYOUT[name] = { pins: {} }; SAMPLE[name] = { event: {}, inputs: {}, out: { work: [{ summary: "Fixed TestCache_Expiry: the clock was read twice; now injected.", files: ["cache.go", "cache_test.go"], diff: "+14 -6" }], check: [{ passed: true }] } };
+  const lint = lintDoc(doc, derive(doc)), errs = lint.filter(x => x.sev === "error");
+  const p = { name, state: "draft", ago: "", desc: doc.description, hist: "", typ: "-", p90: "-", typSec: 0, uses: [], cost: null, trigger: `${k0} ${trigSummary(k0, doc.on[k0])}`.trim(), detail: "", next: k0 === "manual" ? "on demand" : "on " + k0, tags: doc.tags || ["new"], scope: w.scope ? "user" : "project", lastSec: 1e12, created: true, lintOk: !errs.length, budget: doc.budget ? `${doc.budget.max_cost_usd}$` : "-" };
+  PIPES.push(p); syncPipe(p); S.board.selName = name; S.board.readyOpen = true;
+  const blank = !Object.keys(doc.nodes).length, dry = (dryFlag || w.dry) && !blank;
+  S.wiz = null; openEditor(name); play("save");
+  if (blank) { try { openPalette("trigger"); ED.pal.cat = 0; } catch (e) { /* the palette needs a node */ } }
+  toast(`created ${files.map(f => f.replace(/ \(copy\)$/, "")).join(" + ")}${w.base.imp ? " · trusted" : ""} · ${errs.length ? `✗ ${errs.length} lint error${errs.length > 1 ? "s" : ""} · ]e walks them${dry ? " · dry run waits for lint" : ""}` : "✓ lint clean" + (dry ? " · dry run starting" : "")}`, errs.length ? "amb" : "grn", 6000);
+  if (dry && !errs.length) { ED.wizDry = performance.now(); setTimeout(() => { if (S.screen === "editor" && ED.name === name && !ED.dry) dryRun2(); }, 900); }
+}
+function wizCommand(name, arg, bang) {
+  const w = S.wiz, un = s => String(s || "").replace(/^["']|["']$/g, "");
+  switch (name) {
+    case "quit": wizCancel(); return true;
+    case "write": case "create": case "x": case "wq": if (!w.base) { wizUseSource(); if (!S.wiz || !S.wiz.base) return true; } wizCreate(/--dry-run/.test(arg)); return true;
+    case "step": { const i = /^\d+$/.test(arg) ? +arg - 1 : WIZ2.indexOf(arg); if (i < 0 || i > 3) { errorToast("M1305", `unknown step "${arg}"`, WIZ2.join(", ")); return true; } wizGo(i); return true; }
+    case "describe": w.src = 0; w.step = 0; if (arg) w.sentence = un(arg); w.base = null; wizUseSource(); return true;
+    case "template": { const i = WGAL.findIndex(e => e.id === arg); if (i < 0) { const near = closest(arg, WGAL.map(e => e.id)); errorToast("M2309", `no template or pattern "${arg}"`, near ? `did you mean ${near}?` : "mill pattern ls"); return true; } w.src = 1; w.tq = ""; w.tpl = i; w.base = null; wizUseSource(); return true; }
+    case "dup": { const items = PIPES; const i = items.findIndex(p => p.name === arg); if (i < 0) { errorToast("M1201", `pipeline "${arg}" not found`, "mill ls"); return true; } w.src = 2; w.dq = ""; w.dup = i; w.base = null; wizUseSource(); return true; }
+    case "import": w.src = 3; w.step = 0; w.focus = "pane"; w.base = null; w.path = un(arg); wizLoadPath(w.path); if (w.imp && !w.imp.err) wizUseSource(); return true;
+    case "name": if (!arg) { errorToast("M1308", ":name needs a name", ":name fix-flaky-tests"); return true; } w.name = arg; w.nameTouched = true; { const p = nameProblem(arg); if (p) errorToast(p[0], p[1], ""); else toast("name: " + arg, "dim"); } return true;
+    case "trigger": { const [kk, ...rest] = arg.split(/\s+/), alias = { schedule: "cron", cron: "cron", manual: "manual", webhook: "webhook", git: "git", after: "run", run: "run", file: "fswatch", fswatch: "fswatch" }[kk]; const i = wizTrigOpts(w).findIndex(o => o.k === alias); if (i < 0) { errorToast("M1305", `unknown trigger "${kk}"`, "manual, schedule, webhook, git, after, file"); return true; } w.trig = i; (w.pinned = w.pinned || {}).trig = alias; if (rest.length) w.cfg[alias] = un(rest.join(" ")); const pr = alias !== "manual" ? trigProblem(alias, w.cfg[alias]) : null; if (pr) errorToast(pr[0], pr[1], ""); else toast("trigger: " + trigText(w), "dim"); return true; }
+    case "budget": { const i = wizBudgetOpts(w).indexOf(arg); if (i < 0) { errorToast("M1305", `unknown budget "${arg}"`, "small, medium, large"); return true; } w.budget = i; (w.pinned = w.pinned || {}).budget = arg; toast("budget: " + arg + " · " + (WPRESET_T[arg] || ""), "dim"); return true; }
+    case "agent": { const o = wizAgentOpts(w), i = o.indexOf(arg); if (i < 0) { errorToast("M6101", `agent "${arg}" isn't in the registry`, AGENTS.join(", ")); return true; } if (w.base && w.base.kind !== "gen") w.amap = i; else { w.agent = i; (w.pinned = w.pinned || {}).agent = true; } toast("agent: " + arg, "dim"); return true; }
+  }
+  return false;
+}
+
+/* ================================================================== command line: one vim-style `:` line on the bottom row (docs/plans/command-line.md) */
+const CL = { hist: [], hi: -1, pfx: "", wild: null, rs: null, echo: null };
+// name, aliases, context, argument kind, CLI equivalent, what it does
+const CMDS = [
+  ["quit", ["q"], "global", "", "ctrl+c (milld keeps running)", "close what's open; on the board, quit"], ["qall", ["qa"], "global", "", "—", "quit from anywhere (asks to save the editor)"],
+  ["help", ["h"], "global", "topic", "mill <command> --help · mill explain <code>", "help: keys, commands, one command, or an error code"],
+  ["messages", ["mes"], "global", "", "mill daemon logs", "this session's errors and results"], ["settings", [], "global", "setting", "mill config list", "settings"],
+  ["set", ["se"], "global", "set", "mill config set <key> <value>", "key=value · key? shows it · key& resets it"],
+  ["plugins", [], "global", "", "mill plugin ls", "plugins, MCP servers and agents"], ["stats", [], "global", "", "mill stats", "runs, cost and time"],
+  ["runs", [], "global", "pipeline", "mill runs [--pipeline p]", "older runs"], ["new", ["n"], "global", "new", "mill new [<name>] [--from …]", "the new pipeline wizard"],
+  ["edit", ["e"], "global", "pipeline", "mill edit <pipeline>", "open a pipeline in the editor (:e! reverts the buffer)"],
+  ["run", ["r"], "global", "run", "mill run <p> [--input k=v]… [--dry-run]", "run a pipeline with inputs"], ["pipe", [], "global", "", "mill pipe '<expr>'", "run a pipe expression"],
+  ["trust", [], "global", "path", "mill trust <path>", "trust a project's pipelines"], ["explain", [], "global", "code", "mill explain <code>", "what an error code means"],
+  ["theme", [], "global", "theme", "mill config set theme <name>", "color theme"], ["sound", [], "global", "sound", "mill config set sound.set <set>", "sound on, off, or a soundset"],
+  ["bg", ["detach"], "global", "", "— (mill reattaches)", "back to the shell; runs keep going"], ["sh", [], "global", "", "—", "a shell (prototype only)"], ["screensaver", [], "global", "", "—", "start the screensaver"],
+  ["sort", [], "board", "sort", "mill ls --sort <by>", "sort inside each section"], ["filter", ["f"], "board", "", "mill ls --filter <expr>", "filter the rows (same as /)"],
+  ["view", [], "board", "view", "mill ls --view <name>", "a saved view"], ["enable", [], "board", "pipeline", "mill trigger enable <p>", "arm a pipeline's triggers"],
+  ["disable", [], "board", "pipeline", "mill trigger disable <p>", "disarm a pipeline's triggers"], ["rerun", [], "board", "pipeline", "mill rerun <run> --from <node>", "rerun the latest failed run from where it failed"],
+  ["write", ["w"], "editor", "", "SavePipeline (mill node … saves too)", "save; refuses lint errors, :w! saves anyway"], ["wq", ["x"], "editor", "", "—", "save and close"],
+  ["lint", [], "editor", "", "mill lint <p>", "lint, and open the problems list"], ["copen", [], "editor", "", "mill lint <p>", "the problems list"], ["cclose", [], "editor", "", "—", "close the problems list"],
+  ["goto", [], "editor", "node", "mill show <p> --outline", "jump to a node"], ["refs", [], "editor", "node", "mill refs <p>/<n>", "everything that uses a node"],
+  ["wrap", [], "editor", "", "mill wrap <p> loop <n>…", "wrap the selection in a loop"], ["extract", [], "editor", "", "mill extract <p> <n>… --as <name>", "the selection becomes a sub-pipeline"],
+  ["layout", [], "editor", "layout", "mill layout <p> reset", "unpin every node"], ["pattern", [], "editor", "", "mill pattern save <p> <n>… --as <name>", "save the selection as a pattern"],
+  ["prompt", [], "editor", "promptmode", "mill node set <p>/<n> prompt=@file", "move a prompt to a file, or inline it"], ["sample", [], "editor", "", "mill node pin <p>/<n> --file items.jsonl", "edit the pinned sample"],
+  ["undo", ["u"], "editor", "", "—", "undo, with a count: :3undo"], ["redo", ["red"], "editor", "", "—", "redo, with a count"], ["dry", [], "editor", "", "mill run <p> --dry-run", "dry run the buffer"],
+  ["estimate", ["est"], "editor", "", "mill estimate <p>", "cost and time per run"], ["diff", [], "editor", "", "—", "the buffer against the file"], ["yaml", [], "editor", "", "mill show <p> --yaml", "the YAML pane"], ["outline", [], "editor", "", "mill show <p> --outline", "the outline"],
+  ["create", ["w", "wq", "x"], "wizard", "", "mill new … (every step is a flag)", "create the pipeline and open the editor"], ["step", [], "wizard", "step", "—", "go to start, shape, run or review"],
+  ["describe", [], "wizard", "", "mill new --from describe:\"…\"", "start from a sentence"], ["template", [], "wizard", "template", "mill new --from template:<id>", "start from a template or pattern"],
+  ["dup", [], "wizard", "pipeline", "mill new --from pipeline:<p>", "start from a copy"], ["import", [], "wizard", "path", "mill new --from <file|url|->", "start from a file"],
+  ["name", [], "wizard", "", "mill new <name>", "set the name"], ["trigger", [], "wizard", "trigger", "mill new --trigger <spec>", "set the trigger"],
+  ["budget", [], "wizard", "budget", "mill new --budget small|medium|large", "set the budget"], ["agent", [], "wizard", "agent", "mill new --agent <id/model>", "set the agent"],
+  ["install", [], "plugins", "plugin", "mill plugin add <id>", "install a plugin (asks first: what it adds and can touch)"], ["update", ["up"], "plugins", "plugin", "mill plugin update [<id>]", "update one plugin, or every one with an update"],
+  ["remove", [], "plugins", "plugin", "mill plugin rm <id>", "remove a plugin nothing uses"], ["check", [], "plugins", "plugin", "mill doctor · mill agent test <id>", "health-check a plugin, MCP server or agent"],
+  ["section", [], "settings", "section", "mill config list", "jump to a settings section"], ["reset", [], "settings", "setting", "mill config reset <key>", "reset a setting to its default (:set key& anywhere)"],
+  ["cancel", [], "run", "", "mill cancel <run>", "cancel this run"], ["log", [], "run", "", "mill logs <run>", "this run's log"], ["items", [], "run", "", "mill items <run>/<node>", "the selected node's items"],
+  ["attach", [], "run", "", "mill attach <run>/<node>", "the selected agent's screen, view-only"],
+];
+function clCtx() { return S.screen === "boot" || S.screen === "setup" ? "boot" : S.wiz ? "wizard" : S.popup ? "run" : S.overlay === "plugins" || S.overlay === "settings" ? S.overlay : S.overlay ? "overlay" : S.screen === "editor" ? "editor" : "board"; }
+// nvim: `:` opens the command line from every NORMAL-like state; INSERT and text fields type a literal ":"
+function clTextEntry() {
+  if (S.screen === "preboot") return true;
+  if (S.screen === "setup") return !!S.setup && SETUP_STEPS[S.setup.step] === "trusted folders";
+  if (S.screen === "boot") return false;
+  if (S.confirm) return false;
+  if (S.wiz) return !!S.wiz.ins;
+  if (S.screen === "board" && S.board.searchEdit && !S.popup && !S.overlay) return true;
+  if (S.popup === "log" && S.log.searchEdit) return true;
+  if (S.overlay === "settings" && (S.settings.edit || S.settings.qEdit)) return true;
+  if (S.overlay === "plugins" && S.plugins.qEdit) return true;
+  if (S.screen === "editor" && !S.popup && !S.overlay && (ED.pe || ED.ye || ED.inp || ED.prompt || ED.pal)) return true;   // the palette's query is a text field (part ids like mcp:slack/… contain ":")
+  return false;
+}
+function clOpen() { S.cmd = ""; S.pending = ""; CL.wild = null; CL.rs = null; CL.hi = -1; CL.echo = null; }
+function clAvail() { const c = clCtx(); return CMDS.filter(x => x[2] === "global" || x[2] === c).sort((a, b) => (a[2] === c ? 0 : 1) - (b[2] === c ? 0 : 1)); }
+function clResolve(tok) {
+  const av = clAvail(), ex = av.find(c => c[0] === tok || c[1].includes(tok)); if (ex) return { cmd: ex };
+  const all = CMDS.find(c => c[0] === tok || c[1].includes(tok)); if (all) return { err: ["M1307", `:${tok} works in the ${all[2]}, not here`, ":help " + all[0]] };
+  const pre = av.filter(c => c[0].startsWith(tok)); if (pre.length === 1) return { cmd: pre[0] };
+  if (pre.length > 1) return { err: ["M1304", `:${tok} is ambiguous: ${pre.slice(0, 5).map(c => ":" + c[0]).join(" ")}`, "type more letters, or tab"] };
+  const near = closest(tok, av.map(c => c[0])); return { err: ["M1306", `unknown command ":${tok}"`, near ? `did you mean :${near}?` : ":help commands lists them"] };
+}
+function clRun(text) {
+  const t = String(text || "").trim(); if (!t) return;
+  CL.hist = CL.hist.filter(h => h !== t); CL.hist.push(t); if (CL.hist.length > 200) CL.hist.shift();
+  const before = S.msg, ctx0 = typeof ED !== "undefined" ? ED.ctxAt : 0, n0 = MSGS.length; S.msg = null;
+  try { clExec(t); } catch (e) { errorToast("M0001", String(e && e.message || e), "a bug in the prototype"); }
+  const m = S.msg;
+  if (m) { CL.echo = { text: m.text, cls: m.cls, at: performance.now() }; S.msg = null; if (MSGS.length === n0) MSGS.unshift({ t: new Date().toTimeString().slice(0, 8), lvl: "info", code: "", text: ":" + t + " · " + m.text }); }
+  else if (typeof ED !== "undefined" && ED.ctxAt !== ctx0 && S.screen === "editor") CL.echo = { text: ED.ctx, cls: "dim", at: performance.now() };
+  else S.msg = before;
+}
+function clGoto(n) {
+  const c = clCtx();
+  if (c === "wizard") return wizGo(n - 1);
+  if (c === "editor") { const order = topo(edc().gr, loopVirt(edc().gr)).filter(isNode); if (!order[n - 1]) return errorToast("M1305", `there are ${order.length} nodes`, ""); jumpTo(order[n - 1]); return; }
+  if (S.popup === "log") { const L = S.log; L.cur = Math.max(0, n - 1); L.follow = false; return; }
+  if (S.popup === "run") { const rows = visRows(runRows(S.run.pipe)); if (rows[n - 1]) S.run.sel = rows[n - 1].key; return; }
+  const rows = boardRows(); if (!rows[n - 1]) return errorToast("M1305", `there are ${rows.length} rows`, ""); S.board.cur = n - 1; S.board.selName = rows[n - 1].name;
+}
+function clExec(t) {
+  let count = null; const m = t.match(/^(\d+)\s*(.*)$/); if (m) { count = +m[1]; t = m[2]; if (!t) return clGoto(count); }
+  const sp = t.search(/\s/), c0 = sp < 0 ? t : t.slice(0, sp), arg = sp < 0 ? "" : t.slice(sp + 1).trim(), bang = c0.length > 1 && c0.endsWith("!"), base = bang ? c0.slice(0, -1) : c0;
+  const r = clResolve(base); if (r.err) return errorToast(...r.err);
+  const name = r.cmd[0], ctx = clCtx();
+  if (ctx === "boot") { if (name === "quit" || name === "qall") { if (S.screen === "setup") return setupKey("Escape"); return bootQuit(); } if (!["help", "explain", "set", "sound", "theme", "messages"].includes(name) || name === "help" && !arg) return errorToast("M1307", `:${name} works once mill is up · it's booting`, ":q quits · :help <code> explains one"); if (name === "messages") return toast(`${MSGS.length} message${MSGS.length === 1 ? "" : "s"} so far · :messages opens them after boot`, "dim"); }
+  if (ctx === "wizard" && wizCommand(name, arg, bang)) return;
+  const p = arg ? PIPES.find(x => x.name === arg) : null, needP = () => { const near = closest(arg, PIPES.map(x => x.name)); errorToast("M1201", `pipeline "${arg}" not found`, near ? `did you mean ${near}?` : "mill ls"); };
+  switch (name) {
+    case "quit": if (S.popup) { S.popup = null; S.run.old = null; play("back"); return; } if (S.overlay) { S.overlay = null; play("back"); return; } return command(bang ? "q!" : "q");
+    case "qall": S.popup = null; S.overlay = null; if (S.screen === "editor" && edDirty() && !bang) return leaveEditor2(false); S.screen = "board"; return command("q");
+    case "write": return command(bang ? "w!" : "w");
+    case "wq": return command("wq");
+    case "edit": if (bang && !arg) return command("e!"); if (!arg) { const s = selected(); if (S.screen !== "editor" && s) openEditor(s.name); return; } if (!p) return needP(); openEditor(p.name); return;
+    case "undo": case "redo": for (let i = 0; i < (count || 1); i++) undo(name === "redo"); return;
+    case "run": return clRunCmd(arg);
+    case "pipe": return clPipe(arg);
+    case "help": return clHelp(arg);
+    case "explain": { const c = arg.toUpperCase(); if (!/^M\d{4}$/.test(c)) return errorToast("M1308", ":explain needs a code like M2301", ""); return toast(`${c}: ${EXPLAIN[c] || "see mill explain " + c}`, "dim", 8000); }
+    case "theme": { const v = SETTING.theme.vals; if (!arg) return toast("theme " + setting("theme") + " · " + v.join(", "), "dim"); if (!v.includes(arg)) return errorToast("M8004", `unknown theme "${arg}"`, v.join(", ")); SETTING.theme.val = arg; return toast("theme " + arg + " (the prototype only draws dark)", "dim"); }
+    case "sound": { const v = SETTING["sound.set"].vals; if (arg === "on") { AU.muted = false; setVolume(); syncBtns(); return toast("sound on", "dim"); } if (arg === "off") { AU.muted = true; setVolume(); syncBtns(); return toast("sound off", "dim"); } if (!arg) return toast("sound " + (AU.muted ? "off" : "on") + " · set " + setting("sound.set"), "dim"); if (!v.includes(arg)) return errorToast("M8004", `unknown soundset "${arg}"`, v.join(", ")); SETTING["sound.set"].val = arg; play("run_done", true); return toast("soundset " + arg, "dim"); }
+    case "trust": { const n = PIPES.filter(x => x.untrusted).length; PIPES.forEach(x => { x.untrusted = false; }); return toast(n ? `trusted ${n} pipeline${n > 1 ? "s" : ""} in ${arg || "."} · their triggers can be armed` : `everything in ${arg || "."} is already trusted`, "grn"); }
+    case "filter": S.board.search = arg; S.board.cur = 0; return;
+    case "view": { const i = VIEWS.findIndex(v => v.name === arg); if (i < 0) return errorToast("M1305", `no view "${arg}"`, VIEWS.map(v => v.name).join(", ")); S.view = i; S.board.tag = VIEWS[i].tag; S.board.search = VIEWS[i].search; S.board.cur = 0; return; }
+    case "rerun": { const q = p || selected(); if (arg && !p) return needP(); if (!q) return; return runPipe(q, sectionOf(q) === "FAILED"); }
+    case "goto": if (!isNode(arg)) { const near = closest(arg, edc().gr.ids); return errorToast("M3012", `no node "${arg}"`, near ? `did you mean ${near}?` : ""); } jumpTo(arg); ED.focus = "canvas"; return;
+    case "refs": if (arg && !isNode(arg)) return errorToast("M3012", `no node "${arg}"`, ""); if (arg) ED.sel = arg; ED.panel = "refs"; ED.focus = "panel"; ED.pcur = 0; return;
+    case "dry": return dryRun2();
+    case "estimate": { const e = edc().est; return toast(`≈ ${usd(e.lo)}–${usd(e.hi)} · ${fmtDur(e.sec)} per run${ED.doc.budget ? " · budget $" + ED.doc.budget.max_cost_usd : " · no budget"} · mill estimate ${ED.name} has the breakdown`, "dim", 6000); }
+    case "install": case "update": case "remove": case "check": return clPlugin(name, arg);
+    case "section": { const i = SECTIONS.findIndex(x => x[0].toLowerCase().startsWith(arg.toLowerCase())); if (!arg || i < 0) return errorToast("M1305", `no section "${arg}"`, SECTIONS.map(x => x[0].toLowerCase()).join(", ")); Object.assign(S.settings, { q: null, sec: i, row: 0 }); return; }
+    case "reset": { const id = arg || ((settingsRows()[S.settings.row] || {}).id); if (!id || !SETTING[id]) return errorToast("M8004", `unknown setting "${arg}"`, ":settings to browse"); return clExec("set " + id + "&"); }
+    case "cancel": return keyRun("c");
+    case "log": S.popup = "log"; S.log.follow = true; return;
+    case "items": return keyRun("i");
+    case "attach": return keyRun("Enter");
+    case "set": { const mq = arg.match(/^([\w.]+)([?&])$/); if (mq) { const s = SETTING[mq[1]]; if (!s) { const near = closest(mq[1], Object.keys(SETTING)); return errorToast("M8004", `unknown setting "${mq[1]}"`, near ? `did you mean ${near}?` : ":settings to browse"); } if (mq[2] === "&") { s.val = SETTING_DEFAULTS[s.id]; return toast(`${s.id} reset to ${s.val === "" ? "(empty)" : s.val}`, "dim"); } return toast(`${s.id}=${s.val} · ${s.h}`, "dim", 6000); } return command("set " + arg); }
+    case "settings": command("settings"); if (arg) { S.settings.q = arg; S.settings.qEdit = false; S.settings.row = 0; } return;
+    case "new": { if (!arg) return wizNew(bang ? { fresh: true } : {}); wizNew({ fresh: true }); const w = S.wiz, toks = arg.match(/--\w[\w-]*(?:[= ](?:\S*"[^"]*"|\S+))?|"[^"]*"|\S+/g) || [];
+      for (const tk of toks) { const [f, ...vv] = tk.split(/[= ]/), v = vv.join(" ").replace(/^"|"$/g, ""); if (!f.startsWith("--")) { w.name = tk; w.nameTouched = true; continue; }
+        if (f === "--from") { if (/^describe:/.test(v)) wizCommand("describe", v.slice(9)); else if (/^template:/.test(v)) wizCommand("template", v.slice(9)); else if (/^pipeline:/.test(v)) wizCommand("dup", v.slice(9)); else wizCommand("import", v); }
+        else if (f === "--trigger") wizCommand("trigger", v); else if (f === "--budget") wizCommand("budget", v); else if (f === "--agent") wizCommand("agent", v); }
+      return; }
+  }
+  return command(name === "bg" ? "bg" : name + (arg ? " " + arg : ""));
+}
+function clPlugin(name, arg) {
+  const P = S.plugins, view = name === "install" ? "available" : name === "check" ? null : "installed";
+  if (!arg) { if (name === "update") return keyPlugins("U"); const p = plugRows()[P.cur]; if (!p) return errorToast("M1308", `:${name} needs a plugin`, `:${name} <id> · tab lists them`); arg = p.name; }
+  const vs = view ? [view] : PVIEWS, hit = vs.map(v => [v, (v === "installed" ? PLUG.installed : v === "updates" ? PLUG.installed.filter(x => x.up) : PLUG[v] || []).findIndex(x => x.name === arg)]).find(([, i]) => i >= 0);
+  if (!hit) { const pool = vs.flatMap(v => (v === "installed" ? PLUG.installed : PLUG[v] || []).map(x => x.name)), near = closest(arg, pool); return errorToast("M5101", `no ${view === "available" ? "available " : view === "installed" ? "installed " : ""}plugin "${arg}"`, near ? `did you mean ${near}?` : "mill plugin search"); }
+  Object.assign(P, { view: PVIEWS.indexOf(hit[0]), q: "", qEdit: false, detail: false, cur: hit[1] });
+  return keyPlugins({ install: "i", update: "u", remove: "x", check: "c" }[name]);
+}
+function clRunCmd(arg) {
+  if (!arg) return errorToast("M1308", ":run needs a pipeline", ":run issue-to-pr task=\"…\"");
+  const dry = /(^|\s)--dry-run(\s|$)/.test(arg), rest = arg.replace(/(^|\s)--dry-run(?=\s|$)/, " ").trim(), name = rest.split(/\s+/)[0], p = PIPES.find(x => x.name === name);
+  if (dry && p) return dryRun(p);
+  runPrompt(rest);
+}
+function clPipe(expr) {
+  if (!expr) return errorToast("M1308", ":pipe needs an expression", ':pipe sh "git log -5" | agent claude/haiku "summarize"');
+  const n = splitPipe(expr).length; play("run_start"); toast(`≋ pipe · ${n} stage${n > 1 ? "s" : ""} started · mill pipe '${trunc(expr, 40)}'`, "blu");
+  setTimeout(() => { play("run_done"); toast(`✓ pipe done · ${n} stage${n > 1 ? "s" : ""} · 4.8s · $0.01 · mill logs pipe#1 has the output`, "grn", 6000); S.dirty = true; }, 2500);
+}
+function clHelp(arg) {
+  if (!arg) { if (S.wiz) { S.wiz.help = true; return; } if (S.screen === "editor" && !S.popup && !S.overlay) { ED.help = true; return; } S.overlay = "help"; return; }
+  if (arg === "commands" || arg === ":" || arg === "cmdline") { S.overlay = "cmds"; S.cmdsTop = 0; play("open"); return; }
+  if (/^M\d{4}$/i.test(arg)) return clExec("explain " + arg);
+  const c = CMDS.find(x => x[0] === arg.replace(/^:/, "") || x[1].includes(arg.replace(/^:/, "")));
+  if (c) return toast(`:${c[0]}${c[1].length ? " (:" + c[1].join(", :") + ")" : ""} · ${c[5]} · ${c[2]} · CLI: ${c[4]}`, "dim", 8000);
+  if (["keys", "board", "editor", "wizard", "new", "run"].includes(arg)) return clHelp("");
+  errorToast("M1305", `no help for "${arg}"`, ":help commands");
+}
+function clCands(head, tok) {
+  const words = head.trim().split(/\s+/).filter(Boolean).map(x => x.replace(/^\d+/, ""));
+  if (!words.length || (words.length === 1 && !words[0])) { const seen = new Set(), ctx = clCtx(), rank = c => c[2] === ctx ? 0 : 1; return clAvail().slice().sort((a, b) => rank(a) - rank(b) || (a[0] < b[0] ? -1 : 1)).map(c => c[0]).filter(n => n.startsWith(tok.replace(/^\d+/, "")) && !seen.has(n) && seen.add(n)).map(n => (tok.match(/^\d+/) || [""])[0] + n); }
+  const r = clResolve(words[0].replace(/!$/, "")); if (!r.cmd) return [];
+  const kind = r.cmd[3], pre = xs => xs.filter(x => String(x).startsWith(tok));
+  switch (kind) {
+    case "pipeline": return pre(PIPES.map(p => p.name));
+    case "run": { if (words.length === 1) return pre(PIPES.map(p => p.name)); const D = DOCS[words[1]]; const given = words.slice(2).map(x => x.split("=")[0]); return pre([...Object.keys((D && D.inputs) || {}).filter(k => !given.includes(k)).map(k => k + "="), "--dry-run"]); }
+    case "set": { if (tok.includes("=")) { const k = tok.split("=")[0], s = SETTING[k]; return s && s.vals ? pre(s.vals.map(v => k + "=" + v)) : []; } return pre(Object.keys(SETTING).map(k => k + "=")); }
+    case "setting": return pre(Object.keys(SETTING));
+    case "topic": return pre(["commands", "keys", "board", "editor", "wizard", "run", ...CMDS.map(c => c[0]), ...Object.keys(EXPLAIN)]);
+    case "code": return pre(Object.keys(EXPLAIN));
+    case "path": return pathCands(tok);
+    case "new": return tok.startsWith("-") ? pre(["--from", "--trigger", "--budget", "--agent", "--dry-run"]) : /^--from$/.test(words[words.length - 1]) ? pre(["describe:", "template:", "pipeline:", ...pathCands(tok)]) : [];
+    case "node": return S.screen === "editor" ? pre(edc().gr.ids) : [];
+    case "sort": return pre(SORTS.filter(s => !s.includes(" ")));
+    case "view": return pre(VIEWS.map(v => v.name));
+    case "theme": return pre(SETTING.theme.vals);
+    case "sound": return pre(["on", "off", ...SETTING["sound.set"].vals]);
+    case "layout": return pre(["reset"]); case "promptmode": return pre(["file", "inline"]);
+    case "step": return pre(WIZ2); case "template": return pre(WGAL.map(e => e.id)); case "trigger": return pre(["manual", "schedule", "webhook", "git", "after", "file"]);
+    case "plugin": return pre([...new Set([...(PLUG.installed || []), ...(PLUG.available || []), ...(PLUG.mcp || []), ...(PLUG.agents || [])].map(p => p.name))]);
+    case "section": return pre(SECTIONS.map(x => x[0].toLowerCase()));
+    case "budget": return pre(["small", "medium", "large"]); case "agent": return pre(S.wiz ? wizAgentOpts(S.wiz) : AGENTS);
+  }
+  return [];
+}
+function clComplete(dir) {
+  const t = S.cmd;
+  if (CL.wild && CL.wild.items.length > 1) { const Wd = CL.wild; Wd.i = Wd.i < 0 ? (dir > 0 ? 0 : Wd.items.length - 1) : (Wd.i + dir + Wd.items.length) % Wd.items.length; S.cmd = Wd.head + Wd.items[Wd.i]; return; }
+  const sp = t.lastIndexOf(" "), head = t.slice(0, sp + 1), tok = t.slice(sp + 1), c = clCands(head, tok);
+  if (!c.length) { CL.wild = { head, items: [], i: -1, none: true }; return; }
+  if (c.length === 1) { S.cmd = head + c[0] + (/[=\/:]$/.test(c[0]) ? "" : " "); CL.wild = null; return; }
+  const l = c.reduce((a, b) => { let i = 0; while (i < a.length && a[i] === b[i]) i++; return a.slice(0, i); });
+  S.cmd = head + (l.length > tok.length ? l : tok); CL.wild = { head, items: c, i: -1 };
+}
+function clHint(t) {
+  const words = t.trim().split(/\s+/).filter(Boolean);
+  if (!words.length) { const c = clCtx(); return `${c === "overlay" || c === "boot" ? "" : c + " first: "}${clAvail().slice(0, 8).map(x => x[0]).join(" ")} … · tab lists them · ↑ history · ctrl+r searches it`; }
+  const base = words[0].replace(/^\d+/, "").replace(/!$/, ""); if (!base) return "a number jumps: a row, a node, a step, a log line";
+  const r = clResolve(base); if (!r.cmd) { if (!r.err) return ""; if (r.err[0] === "M1304") return `:${base}… could be ${r.err[1].split(": ").pop()} · tab completes`; return `${r.err[0]} ${r.err[1]}`; }
+  const c = r.cmd; let h = `:${c[0]} · ${c[5]} · CLI: ${c[4]}`;
+  if (c[0] === "run" && words[1]) { const ph = promptHint(words.slice(1).join(" ")); if (ph) h = ph + " · CLI: mill run " + words[1] + " --input k=v"; }
+  return h;
+}
+function clRsFind(q, from) { for (let i = Math.min(from, CL.hist.length - 1); i >= 0; i--) if (CL.hist[i].includes(q)) return i; return null; }
+function clKey(k) {
+  if (CL.rs) {
+    const R_ = CL.rs;
+    if (k === "C-r") { const i = R_.hit == null ? null : clRsFind(R_.q, R_.hit - 1); if (i != null) R_.hit = i; return; }
+    if (k === "Enter") { const t = R_.hit != null ? CL.hist[R_.hit] : ""; CL.rs = null; S.cmd = null; clRun(t); return; }
+    if (k === "Escape" || k === "Tab" || k === "ArrowRight") { S.cmd = R_.hit != null ? CL.hist[R_.hit] : R_.orig; CL.rs = null; return; }
+    if (k === "C-g" || k === "C-c") { S.cmd = R_.orig; CL.rs = null; return; }
+    if (k === "Backspace") R_.q = R_.q.slice(0, -1); else if (k.length === 1) R_.q += k; else return;
+    R_.hit = clRsFind(R_.q, CL.hist.length - 1); return;
+  }
+  if (k === "Escape" || k === "C-c") { S.cmd = null; CL.wild = null; CL.hi = -1; play("back"); return; }
+  if (k === "Enter") { const t = S.cmd; S.cmd = null; CL.wild = null; CL.hi = -1; clRun(t); return; }
+  if (k === "Tab" || k === "S-Tab") return clComplete(k === "Tab" ? 1 : -1);
+  if (CL.wild && CL.wild.items.length > 1 && (k === "C-n" || k === "C-p")) return clComplete(k === "C-n" ? 1 : -1);
+  if (k === "ArrowUp" || k === "C-p") { if (CL.hi < 0) { CL.pfx = S.cmd; CL.hi = CL.hist.length; } for (let i = CL.hi - 1; i >= 0; i--) if (CL.hist[i].startsWith(CL.pfx)) { CL.hi = i; S.cmd = CL.hist[i]; return; } return; }
+  if (k === "ArrowDown" || k === "C-n") { if (CL.hi < 0) return; for (let i = CL.hi + 1; i < CL.hist.length; i++) if (CL.hist[i].startsWith(CL.pfx)) { CL.hi = i; S.cmd = CL.hist[i]; return; } CL.hi = -1; S.cmd = CL.pfx; return; }
+  if (k === "C-r") { CL.rs = { q: "", hit: CL.hist.length ? CL.hist.length - 1 : null, orig: S.cmd }; return; }
+  CL.wild = null; CL.hi = -1;
+  if (k === "Backspace") { if (!S.cmd) { S.cmd = null; return; } S.cmd = S.cmd.slice(0, -1); return; }
+  if (k === "C-u") { S.cmd = ""; return; }
+  if (k === "C-w") { S.cmd = S.cmd.replace(/\S+\s*$/, ""); return; }
+  if (k.length === 1) S.cmd += k;
+}
+function drawCmdline(g) {
+  if (S.shell || S.saver || S.screen === "preboot") return;
+  const y = H - 1;
+  if (S.cmd !== null) {
+    g.clear(0, y, W, 1);
+    if (CL.rs) { const h = CL.rs.hit != null ? CL.hist[CL.rs.hit] : null; g.segs(0, y, [["(history) ", "dim"], [CL.rs.q, "b"], ["▌", "blu"], ["  ", ""], [h != null ? ":" + trunc(h, W - 40 - len(CL.rs.q)) : "no match", h != null ? "b" : "red"]]); g.rput(W - 2, y, "enter run · esc edit · ctrl+r older", "dim3"); return; }
+    g.segs(0, y, [[":", "b"], [S.cmd, "b"], ["▌", "blu"]]);
+    const wy = H - 2;
+    if (CL.wild) {
+      g.clear(0, wy, W, 1); g.bg(0, W - 1, wy, "stl");
+      if (CL.wild.none) { g.put(1, wy, "no completions", "red stl"); return; }
+      let x = 1; const items = CL.wild.items, i0 = Math.max(0, CL.wild.i);
+      let start = 0, acc = 0; for (let i = 0; i <= i0; i++) { acc += len(items[i]) + 2; if (acc > W - 6) { start = i; acc = len(items[i]) + 2; } }
+      if (start) x = g.put(x, wy, "< ", "dim stl");
+      for (let i = start; i < items.length; i++) { if (x + len(items[i]) > W - 3) { g.put(W - 2, wy, ">", "dim stl"); break; } x = g.put(x, wy, items[i], i === CL.wild.i ? "inv" : "stl"); x = g.put(x, wy, "  ", "stl"); }
+    } else { const h = clHint(S.cmd); if (h) { g.clear(0, wy, W, 1); g.bg(0, W - 1, wy, "stl"); g.put(1, wy, trunc(h, W - 2), "dim stl"); } }
+    return;
+  }
+  if (CL.echo && performance.now() - CL.echo.at < 12000) { g.clear(0, y, W, 1); g.put(0, y, trunc(CL.echo.text, W - 1), CL.echo.cls); return; }
+  const w = S.wiz;
+  if (S.screen === "boot" || S.screen === "setup") return;
+  const q = w && w.ins && (w.ins.key === "tq" || w.ins.key === "dq") ? w.ins.text : S.board.searchEdit && S.screen === "board" && !S.popup && !S.overlay && !S.wiz ? S.board.search : S.popup === "log" && S.log.searchEdit ? S.log.search : S.overlay === "plugins" && S.plugins.qEdit ? S.plugins.q : S.overlay === "settings" && S.settings.qEdit ? S.settings.q : null;
+  if (q != null) { g.clear(0, y, W, 1); g.segs(0, y, [["/", "b"], [q, "b"], ["▌", "blu"]]); g.rput(W - 2, y, "enter keep · esc clear", "dim3"); }
+}
+function rCmdsOverlay(g) {
+  const w = ow(), x0 = ox(w), y0 = 1, h = H - 4, lines = [];
+  for (const grp of ["global", "board", "editor", "wizard", "run", "plugins", "settings"]) { lines.push([grp.toUpperCase(), null]); for (const c of CMDS.filter(x => x[2] === grp)) lines.push([c, grp]); }
+  overlayBox(g, x0, y0, w, h, [[":help commands", "b"], [" · every command, its context and its CLI", "dim"]]);
+  S.cmdsTop = Math.max(0, Math.min(S.cmdsTop || 0, lines.length - (h - 4)));
+  const cw = Math.max(18, Math.floor((w - 6) * 0.22)), dw = Math.floor((w - 6 - cw) * 0.5);
+  lines.slice(S.cmdsTop, S.cmdsTop + h - 4).forEach(([c, grp], i) => { const y = y0 + 2 + i; if (!grp) { g.put(x0 + 3, y, c, "hd"); return; } g.segs(x0 + 3, y, [[(":" + c[0] + (c[1].length ? " :" + c[1].join(" :") : "")).padEnd(cw).slice(0, cw), "b"], [trunc(c[5], dw - 1).padEnd(dw), "dim"], [trunc(c[4], w - 8 - cw - dw), "dim3"]]); });
+  g.put(x0 + 3, y0 + h - 2, `j/k scroll · esc close · ${lines.length - (h - 4) > 0 ? "more below" : ""}`, "dim3");
 }
 
 
@@ -3320,7 +4196,7 @@ function rPluginsOverlay(g) {
   overlayBox(g, x0, y0, w, h, [["plugins", "b"]]);
   let x = x0 + 3;
   PVIEWS.forEach((n, i) => { const cnt = n === "installed" ? PLUG.installed.length : n === "updates" ? PLUG.installed.filter(p => p.up).length : PLUG[n].length; const xa = x; x = g.put(x, y0 + 1, `${n} ${cnt}`, i === P.view ? "b" : "dim3"); hit(xa, y0 + 1, x - 1, y0 + 1, () => { P.view = i; P.cur = 0; P.detail = false; play("toggle"); }); x += 3; });
-  if (P.qEdit || P.q) g.rsegs(x0 + w - 3, y0 + 1, [["/", "mark"], [" " + P.q, "b"], [P.qEdit ? "▌" : "", "blu"]]); else if (w >= 100) g.rput(x0 + w - 3, y0 + 1, "tab next view", "dim3");
+  if (P.qEdit || P.q) g.rsegs(x0 + w - 3, y0 + 1, [["/", "mark"], [" " + P.q, "b"]]); else if (w >= 100) g.rput(x0 + w - 3, y0 + 1, "tab next view", "dim3");
   const rows = plugRows(); P.cur = Math.max(0, Math.min(P.cur, rows.length - 1));
   const X = x0 + 3, Y = y0 + 3, wide = w >= 100, cH = wide ? X + 70 : X + 40;
   const p = rows[P.cur];
@@ -3378,7 +4254,7 @@ function rSettingsOverlay(g) {
   g.vl(x0 + 18, y0 + 1, y0 + h - 4, "dim3");
   const rows = settingsRows(), X = x0 + 21, VX = X + 17, NX = X + 41, room = x0 + w - 2 - NX;
   st.row = Math.max(0, Math.min(st.row, rows.length - 1));
-  if (st.q != null) g.segs(X, y0 + 1, [["/", "mark"], [" " + st.q, "b"], [st.qEdit ? "▌" : "", "blu"], [`  ${rows.length} match${rows.length === 1 ? "" : "es"}`, "dim3"]]);
+  if (st.q != null) g.segs(X, y0 + 1, [["/", "mark"], [" " + st.q, "b"], [`  ${rows.length} match${rows.length === 1 ? "" : "es"}`, "dim3"]]);
   let y = y0 + 2, ph = false;
   rows.forEach((r, i) => {
     if (y > y0 + h - 5) return;
@@ -3438,13 +4314,13 @@ function rStatsOverlay(g) {
 
 /* ------------------------------------------------------------------ help (§18.5) */
 const HELP_L = [["NAVIGATION", ""], ["j k ↓ ↑", "move"], ["g G", "first / last row"], ["1 2 3", "failed / running / ready"], ["tab", "next failed"], ["/", "search: state: tag: uses: ok:<90"], ["t  s -  V", "tags · sort/reverse · views"], ["v", "simple / detailed rows"],
-  ["ACTIONS", ""], ["enter", "open the latest run"], ["R", "run (dry run if never run)"], ["F", "rerun from the failed node"], ["e  n", "edit · new pipeline"], ["i", "λ prompt: name + inputs, or a pipe"], ["p", "preview line"], ["x  dd", "disable/enable · delete"], ["S  ?", "settings · this help"], ["q ctrl+c", "quit (asks first)"],
+  ["ACTIONS", ""], ["enter", "open the latest run"], ["R", "run (dry run if never run)"], ["F", "rerun from the failed node"], ["e  n", "edit · new pipeline"], [":run  :pipe", "run a pipeline with inputs · a pipe"], ["p", "preview line"], ["x  dd", "disable/enable · delete"], ["S  ?", "settings · this help"], ["q ctrl+c", "quit (asks first)"],
   ["MOUSE", ""], ["click", "select · double-click opens"], ["wheel", "move · click a tag chip filters"],
   ["MODES", ""], ["esc", "leaves any mode back to the board"], ["", "the mode shows bottom left"]];
 const HELP_R = [["COMMANDS", ""], [":plugins :stats", "apps · runs, success, time, cost"], [":settings :new", "settings · new pipeline"], [":runs :messages", "older runs · errors this session"], [":sort :set", "sort · change a setting"], [":enable :disable", "a pipeline's triggers"], [":bg :detach", "leave, everything keeps running"], [":screensaver :sh :q", "now · shell (demo) · quit"],
   ["RUN", ""], ["enter", "agent screen, or the cause if failed"], ["L  i", "log · items"], ["F  c", "rerun from here · cancel"], ["za", "expand an each node"],
   ["EDITOR", ""], ["a c enter", "add · connect · inspect"], ["]e ga R", "problems · fix · dry run"], ["?", "every editor key, in the editor"],
-  ["BADGES", ""], ["▴2× ▴4× ▴8×", "running longer than usual"], ["82% $", "a running run's budget used"], ["p u", "project / user pipeline"], ["↯  ⊗", "crashed · cancelled (provisional)"], ["◌  ⊘  ○", "not trusted · disabled · never run"]];
+  ["BADGES", ""], ["▴2× ▴4× ▴8×", "running longer than usual"], ["82% $", "a running run's budget used"], ["p u", "project / user pipeline"], ["↯  ⊗", "crashed · cancelled"], ["◌  ⊘  ○", "not trusted · disabled · never run"]];
 function rHelp(g) {
   const two = W >= 96, w = two ? ow() : ow(), x0 = ox(w), y0 = 1, maxRows = H - 7;
   let L = HELP_L, R = HELP_R, cut = false;
@@ -3498,7 +4374,7 @@ function bootSteps(scn) {
     first ? { st: "SKIP", step: "plugins.verify", desc: "no plugins yet" } : { st: "WARN", step: "plugins.verify", desc: "8 plugins · lock ok · notion: auth expired (M6202)", code: "M6202" },
     { st: "OK", step: "agents.probe", desc: first ? "claude · codex found on PATH" : "claude · codex · gemini · ollama" },
     { st: "OK", step: "keymap.bind", desc: "board + editor + wizard bindings ready" },
-    { st: "OK", step: "socket.resolve", desc: "/run/user/501/mill/milld.sock" },
+    { st: "OK", step: "socket.resolve", desc: "~/.cache/mill/milld.sock" },
     fail ? { st: "FAIL", step: "daemon", desc: "milld not found", ms: 420, code: "M7004", cause: "error[M7004]: exec: \"milld\": executable file not found in $PATH", fix: "make sure milld is on PATH or installed next to mill" }
       : fresh ? { st: "OK", step: "daemon", desc: "started · pid 48213 · 612ms", ms: 612, slow: "starting milld" } : first ? { st: "OK", step: "daemon", desc: "started · pid 48213 · 38ms" } : { st: "OK", step: "daemon", desc: "already running · pid 48213" },
     { st: "OK", step: "client.dial", desc: "connected · 2ms" },
@@ -3643,17 +4519,17 @@ function render() {
       if (S.screen === "editor") rEditor(g); else rBoard(g);
       if (S.popup || S.overlay || S.wiz || S.confirm) dimAll(g);
       if (S.popup === "run") rRunPopup(g); else if (S.popup === "agent") rAgentPopup(g); else if (S.popup === "log") rLogPopup(g); else if (S.popup === "cause") rCausePopup(g); else if (S.popup === "items") rItemsPopup(g);
-      if (S.overlay === "plugins") rPluginsOverlay(g); else if (S.overlay === "settings") rSettingsOverlay(g); else if (S.overlay === "stats") rStatsOverlay(g); else if (S.overlay === "runs") rRunsOverlay(g); else if (S.overlay === "messages") rMessages(g);
+      if (S.overlay === "plugins") rPluginsOverlay(g); else if (S.overlay === "settings") rSettingsOverlay(g); else if (S.overlay === "stats") rStatsOverlay(g); else if (S.overlay === "runs") rRunsOverlay(g); else if (S.overlay === "messages") rMessages(g); else if (S.overlay === "cmds") rCmdsOverlay(g);
       if (S.wiz) rWizard(g);
       if (S.overlay === "help") rHelp(g);
       if (S.confirm) rConfirm(g);
       if (S.screen !== "editor" || S.popup || S.overlay) {
         const mode = S.confirm ? "CONFIRM" : S.overlay === "help" ? "HELP" : S.wiz ? "NEW" : S.overlay ? S.overlay.toUpperCase() : S.popup === "agent" ? "AGENT" : S.popup === "log" ? "LOG" : S.popup ? "RUN" : null;
         if (mode === "SETTINGS") { const r = settingsRows()[S.settings.row]; modeLine(g, mode, [[r && r.id ? r.id : "preview", "b"]], [[" → ~/.config/mill/settings.lua ", "dim"]]); }
-        else if (mode === "NEW") modeLine(g, mode, [[`${S.wiz.step + 1} ${WIZ2[S.wiz.step]}`, "b"]]);
-        else if (mode) modeLine(g, mode, [[S.popup ? S.run.pipe : "", "dim"]]);
+        else if (mode && mode !== "NEW") modeLine(g, mode, [[S.popup ? S.run.pipe : "", "dim"]]);   // the wizard draws its own (NEW · NORMAL / INSERT)
       }
     }
+    drawCmdline(g);
   } catch (err) {
     g = new G(W, H); HITS = [];
     g.segs(2, 2, [["error", "red b"], ["[M0001]", "red"], [": this screen failed to draw · a bug in the prototype", "b"]]);
@@ -3687,7 +4563,7 @@ function command(text) {
   if (c === "sort") { const i = SORTS.indexOf(arg); if (i < 0) return errorToast("M1305", `unknown sort "${arg}"`, SORTS.join(", ")); S.board.sort = i; return; }
   if (c === "set") { const m = arg.match(/^([\w.]+)\s*=\s*(.*)$/); if (!m || !SETTING[m[1]]) { const near = m && closest(m[1], Object.keys(SETTING)); return errorToast("M8004", `unknown setting "${m ? m[1] : arg}"`, near ? `did you mean ${near}?` : ":settings to browse"); } const r = SETTING[m[1]]; let v = m[2]; if (r.src) return errorToast("M8203", `${r.id} is set in ${r.src}`, "change it there"); if (r.type === "bool") v = /^(true|on|1)$/i.test(v); else if (r.type === "num") { v = +v; if (isNaN(v) || v < r.min || v > r.max) return errorToast("M8005", `${r.id} must be ${r.min}–${r.max}`, ""); } if (r.type === "enum" && !r.vals.includes(v)) return errorToast("M8005", `${r.id} can't be "${v}"`, r.vals.join(", ")); if (r.type === "text") return commitSettingText(r, v); r.val = v; if (r.id === "sound.volume") setVolume(); play("toggle"); toast(`${r.id} = ${v}`, "grn"); return; }
   const near = closest(c, ["plugins", "stats", "settings", "new", "runs", "messages", "sort", "set", "enable", "disable", "bg", "detach", "screensaver", "sh", "help", "q"]);
-  errorToast("M1301", `unknown command ":${c}"`, near ? `did you mean :${near}?` : ":help lists them");
+  errorToast("M1306", `unknown command ":${c}"`, near ? `did you mean :${near}?` : ":help commands lists them");
 }
 function runPrompt(text) {
   const t = text.trim(); if (!t) return;
@@ -3703,13 +4579,6 @@ function runPrompt(text) {
   if (unknown) return errorToast("M1303", `${p.name} has no input "${unknown}"`, Object.keys(D.inputs).join(", "));
   runPipe(p); S.board.selName = p.name; if (sectionOf(p) === "READY") S.board.readyOpen = true;
   if (kv.length) setTimeout(() => toast(`≋ ${p.name} started with ${kv.join(" ")}`, "blu"), 10);
-}
-function promptComplete() {
-  const t = S.prompt, parts = t.split(/\s+/);
-  if (parts.length <= 1) { const m = PIPES.map(p => p.name).find(n => n.startsWith(t) && n !== t); if (m) S.prompt = m + " "; return; }
-  const D = DOCS[parts[0]], last = parts[parts.length - 1]; if (!D) return;
-  const k = Object.keys(D.inputs || {}).find(k => k.startsWith(last) && !parts.slice(1, -1).some(x => x.startsWith(k + "=")));
-  if (k) S.prompt = parts.slice(0, -1).concat(k + "=").join(" ");
 }
 function keyBoard(k) {
   const b = S.board, rows = boardRows(), p = rows[b.cur];
@@ -3728,7 +4597,7 @@ function keyBoard(k) {
     case "F": if (p) { if (sectionOf(p) === "FAILED") runPipe(p, true); else toast("F reruns the latest failed run from the node that failed", "dim"); } break;
     case "e": if (p) openEditor(p.name); break;
     case "n": wizNew(); break;
-    case "i": S.prompt = ""; play("toggle"); break;
+    case "i": toast("i edits a text field · on the board, :run <pipeline> k=v runs one and :pipe runs a pipe", "dim", 4500); break;
     case "v": b.detailed = !b.detailed; play("toggle"); break;
     case "t": { const tags = ["all", ...new Set(PIPES.flatMap(x => x.tags))]; b.tag = tags[(tags.indexOf(b.tag) + 1) % tags.length]; b.cur = 0; play("toggle"); break; }
     case "/": b.searchEdit = true; play("toggle"); break;
@@ -3752,7 +4621,7 @@ function keyRun(k) {
     case "za": case "zo": case "zc": { const base = r && (r.each ? r : rows.slice(0, i).reverse().find(x => x.each)); if (!base) { toast("za expands nodes in each mode", "dim"); break; } S.run.open[base.key] = k === "zo" ? true : k === "zc" ? false : !S.run.open[base.key]; S.run.sel = base.key; play("toggle"); break; }
     case "L": S.popup = "log"; S.log.follow = true; play("open"); break;
     case "F": { const p = PIPES.find(x => x.name === S.run.pipe); if (p && p.live) { simReset(true); p.state = "running"; play("run_start", false, p.name); toast(`≋ issue-to-pr#${S.run.num} started from ${r ? r.id : "build"}`, "blu"); } else if (p) runPipe(p, sectionOf(p) === "FAILED"); break; }
-    case "i": if (r) { S.popup = "items"; play("open"); } break;
+    case "i": case "gi": if (r) { S.popup = "items"; play("open"); } break;
     case "c": { const p = PIPES.find(x => x.name === S.run.pipe); if (!p || !(p.state === "running" || p.state === "retrying")) { toast("c cancels a run that's still going", "dim"); break; }
       S.confirm = { text: `cancel ${info.title}? live nodes get Cancel, then are killed after the grace period`, keys: [["y", "cancel the run"], ["n", "keep it"]], y: () => { if (p.live) SIM.cancelled = true; p.state = "cancelled"; p.reason = "you"; p.hist += "c"; p.lastSec = 1; play("run_failed", true); toast(`⊗ ${info.title} cancelled · workspaces follow their cleanup policy`, "dim"); }, n: () => {} }; break; }
     case "Escape": case "q": S.popup = null; S.run.old = null; play("back"); break;
@@ -3818,36 +4687,31 @@ function onKey(e) {
   if (k.length > 1 && !/^(C-.|S-Tab)$/.test(k) && !["Enter", "Escape", "Backspace", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Tab", "Home", "End"].includes(k)) return;
   if (e.preventDefault) e.preventDefault();
   S.lastInput = performance.now(); S.dirty = true; audioInit();
+  if (CL.echo && S.cmd === null) CL.echo = null;
   if (S.shell) return shellKey(e);
   if (S.screen === "preboot") { bootStart(); return; }
+  if (S.saver) { S.saver = false; S.pending = ""; return; }
+  if (S.cmd !== null) return clKey(k);
+  if (k === ":" && !clTextEntry()) return clOpen();   // INSERT and text fields type ":" instead
   if (S.screen === "boot") { if (k === "q" || k === "Escape" || k === "C-c") bootQuit(); return; }
   if (S.screen === "setup") return setupKey(k);
-  if (S.saver) { S.saver = false; S.pending = ""; return; }
   if (S.confirm) { const c = S.confirm; if (k === "y" && c.y) { S.confirm = null; c.y(); } else if ((k === "n" || k === "Escape") && c.n) { S.confirm = null; c.n(); play("back"); } return; }
   if (S.overlay === "help") { S.overlay = null; play("back"); return; }
-  if (S.wiz) return wizKey2(k);
-  if (S.cmd !== null) { if (k === "Escape") S.cmd = null; else if (k === "Enter") { const t = S.cmd; S.cmd = null; command(t); } else if (k === "Backspace") S.cmd = S.cmd.slice(0, -1); else if (k.length === 1) S.cmd += k; return; }
-  if (S.prompt !== null) {
-    if (k === "Escape") { S.prompt = null; play("back"); } else if (k === "Enter") { const t = S.prompt; S.prompt = null; runPrompt(t); }
-    else if (k === "Backspace") S.prompt = S.prompt.slice(0, -1);
-    else if (k === "Tab") promptComplete();
-    else if (k.length === 1) S.prompt += k;
-    return;
-  }
+  if (S.wiz) return wizKey(k);
   if (S.board.searchEdit && S.screen === "board" && !S.popup && !S.overlay) { const b = S.board; if (k === "Escape") { b.search = ""; b.searchEdit = false; play("back"); } else if (k === "Enter") { b.searchEdit = false; play("toggle"); } else if (k === "Backspace") b.search = b.search.slice(0, -1); else if (k.length === 1) { b.search += k; b.cur = 0; } return; }
   if (S.popup === "log" && S.log.searchEdit) { const L = S.log; if (k === "Escape") { L.search = ""; L.searchEdit = false; } else if (k === "Enter") { L.searchEdit = false; jumpHit(1); } else if (k === "Backspace") L.search = L.search.slice(0, -1); else if (k.length === 1) L.search += k; return; }
   if (S.overlay === "settings" && (S.settings.edit || S.settings.qEdit)) return keySettings(k);
   if (S.overlay === "plugins" && S.plugins.qEdit) return keyPlugins(k);
   if (S.screen === "editor" && !S.popup && !S.overlay && edKey(k)) return;
-  if (k === ":") { S.cmd = ""; S.pending = ""; return; }
   if (k === "?") { S.overlay = "help"; play("open"); return; }
-  if (S.popup === "run") { const s = seq(k, ["za", "zo", "zc"]); if (s === "") return; return keyRun(s || k); }
+  if (S.popup === "run") { const s = seq(k, ["za", "zo", "zc", "gi"]); if (s === "") return; return keyRun(s || k); }
   if (S.popup === "agent") { const s = seq(k, ["qq"]); if (s === "") return; if (k === "Escape" || k === "C-]" || s === "qq") { S.popup = "run"; S.run.agent = null; play("back"); } else if (k === "L") { S.popup = "log"; play("open"); } return; }
   if (S.popup === "cause") { const s = seq(k, ["gx"]); if (s === "") return; if (k === "Escape" || k === "q") { S.popup = "run"; play("back"); } else if (k === "L") { S.popup = "log"; play("open"); } else if (k === "F") { S.popup = "run"; keyRun("F"); } else if (s === "gx") { const info = runRows(S.run.pipe), code = (JSON.stringify(info.cause || {}).match(/M\d{4}/) || ["M6201"])[0]; toast(`mill explain ${code} · ${{ M4301: "crashed during daemon restart: rerun from the node", M4101: "budget exceeded: rerun with a larger budget", M6201: "rate limited: retried automatically as a new attempt" }[code] || "see mill explain"}`, "amb", 5000); } return; }
   if (S.popup === "items") { if (k === "Escape" || k === "q" || k === "i") { S.popup = "run"; play("back"); } return; }
   if (S.popup === "log") { const s = seq(k, ["gg", "za", "zo", "zc", "gx"]); if (s === "") return; return keyLog(s || k); }
   if (S.overlay === "plugins") { const s = seq(k, ["gd", "gx"]); if (s === "") return; return keyPlugins(s || k); }
   if (S.overlay === "settings") { const s = seq(k, ["gd"]); if (s === "") return; return keySettings(s || k); }
+  if (S.overlay === "cmds") { if (k === "j" || k === "ArrowDown") S.cmdsTop = (S.cmdsTop || 0) + 1; else if (k === "k" || k === "ArrowUp") S.cmdsTop = Math.max(0, (S.cmdsTop || 0) - 1); else if (k === "Escape" || k === "q") { S.overlay = null; play("back"); } return; }
   if (S.overlay === "stats" || S.overlay === "messages") { if (k === "Escape" || k === "q") { S.overlay = null; play("back"); } return; }
   if (S.overlay === "runs") { const rows = runList(); if (k === "j" || k === "ArrowDown") { S.runs.cur = Math.min(rows.length - 1, S.runs.cur + 1); play("tick"); } else if (k === "k" || k === "ArrowUp") { S.runs.cur = Math.max(0, S.runs.cur - 1); play("tick"); } else if (k === "Enter" && rows[S.runs.cur]) openRunFromList(rows[S.runs.cur]); else if (k === "Escape" || k === "q") { S.overlay = null; play("back"); } return; }
   if (k === "S") { S.overlay = "settings"; play("open"); return; }
@@ -3869,6 +4733,7 @@ function findHit(x, y) { for (let i = HITS.length - 1; i >= 0; i--) { const h = 
 scr.addEventListener("mousedown", ev => {
   scr.focus(); S.lastInput = performance.now(); audioInit();
   if (S.screen === "preboot") { bootStart(); return; }
+  if (!S.saver && !S.shell && setting("mouse_enabled") && S.cmd === null && !clTextEntry() && cellAt(ev)[1] === H - 1) { clOpen(); render(); return; }
   if (S.screen === "boot" || S.screen === "setup") return;
   if (S.saver) { S.saver = false; S.pending = ""; return; }     // waking never does anything else
   if (S.shell || !setting("mouse_enabled")) return;
@@ -3921,6 +4786,13 @@ document.getElementById("b-sh").onclick = e => { audioInit(); S.shell = true; sy
 document.getElementById("b-snd").onclick = e => { audioInit(); AU.muted = !AU.muted; setVolume(); syncBtns(); e.currentTarget.blur(); scr.focus(); };
 document.getElementById("b-saver").onclick = e => { if (S.screen !== "board") return; S.shell = false; S.saver = true; syncBtns(); e.currentTarget.blur(); scr.focus(); };
 document.getElementById("b-w").onclick = e => { const ws = [124, 100, 80]; W = ws[(ws.indexOf(W) + 1) % ws.length]; if (typeof ED !== "undefined") ED.lastSel = null; fit(); syncBtns(); toast(`terminal is ${W} columns · columns give way in a fixed order (§18.3)`, "dim"); render(); e.currentTarget.blur(); scr.focus(); };
+const wizFileEl = document.getElementById("wiz-file");
+if (wizFileEl) wizFileEl.onchange = async () => { const f = wizFileEl.files && wizFileEl.files[0]; if (f) await wizLoadFile(f); wizFileEl.value = ""; scr.focus(); };
+document.getElementById("b-imp").onclick = e => { audioInit(); e.currentTarget.blur(); if (S.screen !== "board" && S.screen !== "editor") return; if (!S.wiz) wizNew({ fresh: true }); const w = S.wiz; w.src = WSRC.findIndex(s => s.id === "import"); w.step = 0; w.focus = "pane"; render(); wizUpload(); scr.focus(); };
+scr.addEventListener("dragover", ev => { ev.preventDefault(); if (!S.dropHover) { S.dropHover = true; if (S.screen === "board" && !S.wiz) { wizNew({ fresh: true }); S.wiz.src = WSRC.findIndex(s => s.id === "import"); S.wiz.focus = "pane"; } } });
+scr.addEventListener("dragleave", () => { S.dropHover = false; });
+scr.addEventListener("drop", async ev => { ev.preventDefault(); S.dropHover = false; const dt = ev.dataTransfer, f = dt && dt.files && dt.files[0]; if (f) return wizLoadFile(f); const t = dt && dt.getData && dt.getData("text"); if (t) { if (!S.wiz) wizNew({ fresh: true }); wizPaste(t); render(); } });
+document.addEventListener("paste", ev => { const t = ev.clipboardData && ev.clipboardData.getData("text"); if (!t) return; if (S.cmd !== null) { S.cmd += t.replace(/\s*\n\s*/g, " "); ev.preventDefault(); render(); return; } if (S.wiz) { wizPaste(t); ev.preventDefault(); render(); } });
 const scnSel = document.getElementById("b-scn"); scnSel.value = SCN; scnSel.onchange = () => { location.hash = scnSel.value; location.reload(); };
 if (typeof window !== "undefined" && window.addEventListener) window.addEventListener("resize", fit);
 if (typeof window !== "undefined" && "speechSynthesis" in window) speechSynthesis.getVoices();
