@@ -1,10 +1,14 @@
 # Security
 
-Secrets broker and redaction, sandboxing of CEL and Lua, plugin trust, the socket and gateway, and a threat model. Refines spec §21, §22.
+Secrets broker and redaction, sandboxing of CEL and Lua, plugin trust, the socket and gateway, and a threat model mapped to the layers of [layers.md](layers.md) (§8). Refines spec §21, §22. Citations use the keys in [references.md](references.md).
+
+Layers: the redactor is `redact` (L0); the broker and backends are `secrets` (L4); CEL's secret handle is in `expr` (L2); trust, plugins and Lua sandboxes are L5 (`parthost`, `plugins`, `luaapi`); the socket and gateway are L6.
 
 ## 1. Secrets broker
 
 ### 1.1 Flow
+
+Least privilege per node-run [BSRS ch. 5]: a part receives only the secrets its node references, only for that node-run.
 
 1. **Declare.** A pipeline lists the names it may use in `secrets:`. Lint fails M9201 for any `secrets.X` reference not declared.
 2. **Resolve at run start.** Before any node-run is created, the broker resolves every declared name that some node actually references (a name declared but unused is not fetched). Missing → the run fails immediately with M9202 and `help: mill secrets set NAME` (spec §29.9). Backends are tried in configured order (`mill.secrets { backends = {...} }`, default `env, keychain`); the first hit wins. Resolution happens in a helper goroutine with a timeout (10 s per backend; `op` can prompt for biometrics, which counts as a failure in a non-interactive daemon).
@@ -18,6 +22,8 @@ Secrets broker and redaction, sandboxing of CEL and Lua, plugin trust, the socke
 6. **Redact.** Every value (and its encodings, §2) is registered with the run's redactor at resolution time, before anything that could echo it runs.
 
 ### 1.2 CEL handle type
+
+A hardened type makes the unsafe use a compile error instead of a review comment [BSRS ch. 12].
 
 `secrets` in CEL is a map of opaque values of type `mill.Secret`. The only operations are: pass it as a whole field value (`token: ${{ secrets.X }}`) to a field the part's schema marks `"x-mill-secret": true`, or to an `env` entry. `string(secret)`, concatenation and interpolation inside a larger string are type errors at compile time (M9204), so `"Bearer ${{ secrets.X }}"` fails lint with a hint to use the part's `auth` field or an env var.
 
@@ -35,7 +41,7 @@ Secrets broker and redaction, sandboxing of CEL and Lua, plugin trust, the socke
 
 ## 2. Redaction
 
-`secrets/redact.Redactor`, one per run (plus a daemon-wide one for config-level secrets such as MCP server env).
+`redact.Redactor` (L0, was `secrets/redact`, D33), one per run (plus a daemon-wide one for config-level secrets such as MCP server env).
 
 - **Patterns per secret:** the raw value, standard and URL-safe base64 (with and without padding), URL query-escaping, JSON string escaping, and hex for values ≤ 64 bytes. Values shorter than 6 bytes are not registered (they'd redact ordinary text) and produce warning M9206 at resolution.
 - **Matcher:** Aho–Corasick over all patterns (own implementation, ~200 lines, fuzzed), replacing each match with `•••`.
@@ -72,6 +78,8 @@ All profiles run with `L.SetContext(ctx)` so deadlines interrupt loops. gopher-l
 `ctx.http` network rules: host must match the manifest allowlist exactly (or `*.domain` wildcard); redirects to other hosts are refused; resolved addresses in loopback, link-local and private ranges are refused unless the allowlist names them explicitly (SSRF guard). TLS verification can't be disabled from Lua.
 
 ## 4. Pipeline and project trust
+
+A fresh clone is attacker-controlled input until the user says otherwise [BSRS ch. 2]; config from it can't widen trust ([configuration.md](configuration.md) §2).
 
 | Source | Default | To run |
 |---|---|---|
@@ -132,3 +140,57 @@ Trust records: `~/.local/share/mill/trust.json` (`[{kind, path, sha256, at}]`), 
 | T12 | Exports | Secrets or personal paths shared | Export scanner blocks secret-looking strings, flags absolute paths; history excluded by default | |
 | T13 | Logs / bug bundles | PII in `doctor --bundle` | Redactor + explicit listing before writing | Non-secret PII in step output |
 | T14 | Env inheritance | Unrelated tokens in milld's env reach every step | `env.passthrough` allowlist (execution.md §3) | Allowlist misconfigured |
+
+The threat ids T1–T14 above are kept stable; §8 maps them to layers.
+
+## 8. Threat model by layer
+
+Trust boundaries cross layers at known points [BSRS ch. 2] [BSRS ch. 6]. Each layer owns the controls for the boundaries it touches, so a review of one layer can check its threats without reading the rest.
+
+```mermaid
+flowchart LR
+  U["user (trusted)"] --> L7["L7 surface"]
+  L7 -- "UDS, peer uid (B1)" --> L6["L6 milld server"]
+  NET["network (untrusted)"] -- "gateway: token / HMAC (B2)" --> L6
+  REPO["cloned repo (untrusted until trusted)"] -- "pipelines, .mill/mill.lua (B3)" --> L2["L2 language"]
+  REPO --> L5["L5 config / luaapi"]
+  L5 -- "parts protocol, lockfile hash (B4)" --> PART["part processes (semi-trusted)"]
+  L4["L4 execution"] -- "env allowlist, workspace, process group (B5)" --> STEP["step and agent processes (untrusted output)"]
+  STEP -- "output → redact → store (B6)" --> L3["L3 persistence"]
+  L4 -- "secret backends (B7)" --> SEC["keychain / op / vault"]
+```
+
+| Layer | Boundary | Assets | Threats (ids from §7) | Controls | Tests |
+|---|---|---|---|---|---|
+| L0 | B6 (bytes in) | secrets in transit to disk; paths | T3 secrets at rest, T8 traversal | `redact` streaming matcher with held-back tail; `paths.CheckRoot`, `os.Root` | `FuzzRedactorChunks`, `FuzzPathSafety` |
+| L1 | all (shapes) | protocol and event integrity | malformed part messages (T9 adjacent), log tampering by bugs | strict decoders, one `Done`/`Fail` per context, reducer rejects illegal transitions | `FuzzPartMessages`, `FuzzEventLogReplay` |
+| L2 | B3 | the user's machine via a pipeline file | T10 CEL abuse, T2 secrets in argv, T7 prompt injection reaching destructive parts | CEL cost and time limits, opaque secret type (M9204), argv lint (M9207), `policy.allow_destructive` lint (M3204), no I/O in helpers | `FuzzCELHelpers`, lint goldens |
+| L3 | B6 | run history, artifacts | T3, T12 exports, T13 bundles | redaction before every append; 0600/0700 modes; CAS blobs 0400; export and bundle scanners | `TestSecrets_NotOnDisk`, file-mode tests |
+| L4 | B5, B7 | secrets, the main checkout, the host | T2, T6 agent writes, T11 double execution, T14 env leaks | grants per node-run, env allowlist (ADR-031), workspaces by default, write-ahead + crash-don't-guess, process groups/Job Objects, container runner `network: none` | `TestCancel_NeverFailed`, crash-point exploration, `TestShEnvAllowlist` |
+| L5 | B3, B4 | the user's machine via config, plugins and parts | T1 auto-run from clones, T9 supply chain, T10 Lua, T7 | data-only Lua for untrusted config, no armed triggers until `mill trust .`, built-in ids win (ADR-041), lockfile hashes (M5301), Lua deadlines and network allowlists with SSRF guard | sandbox escape tests, `TestConfig_ProjectCannotWidenTrust`, lockfile tests |
+| L6 | B1, B2 | control of `milld` (= run anything as the user) | T4 local socket, T5 gateway | peer uid check, 0600 socket in 0700 dir, line caps; gateway off by default, loopback bind, per-trigger HMAC/token, replay dedupe, body and rate limits, hashed API tokens | peer-cred tests, forged-webhook tests |
+| L7 | user | the user's terminal and scripts | terminal escape injection from step output; secrets on screen | the TUI renders sanitized copies (raw bytes only in attach view, through the vt10x emulator); redacted errors; `--json` never includes secrets | golden output with ANSI-laden fixtures |
+
+### 8.1 Security fitness functions
+
+| Check | Tool | Guards |
+|---|---|---|
+| `gosec` (in rex's linter set) with no blanket excludes | golangci-lint | common Go footguns |
+| forbidigo: `exec.Command` only in `proc`, runners, `workspace`, `daemonctl`; `os.Getenv` only in `paths`, `config`, `secrets` ([layers.md](layers.md) §8.3) | golangci-lint | T2, T14 |
+| A6 built-ins can't import `secrets`, `store`, `engine` ([layers.md](layers.md) §8.1) | archtest | principle 7; secrets reach parts only through grants |
+| `secrets.Value` has no exported field and its `String`, `GoString`, `Format`, `MarshalJSON`, `MarshalText` return `•••` (reflection test) | unit | T3 |
+| `TestSecrets_NotOnDisk`, `TestErrors_Redacted` | integration | invariant 9 |
+| `govulncheck` | `make vuln` | dependencies |
+| Fixture scanner (token-shaped strings, personal paths) | `fixtures_lint_test.go` | synthetic data rule |
+
+## 9. Sources
+
+| Decision | Follows |
+|---|---|
+| Threat model by adversary and boundary | [BSRS ch. 2] |
+| Least privilege: per-node grants, env allowlist, trust gate | [BSRS ch. 5] |
+| Small understandable boundaries per layer | [BSRS ch. 6] |
+| Hardened secret type; misuse is a compile error | [BSRS ch. 12] |
+| Fuzzing the parsers and the redactor | [BSRS ch. 13] |
+| Crash, don't guess for destructive steps | [BSRS ch. 9] [RI ch. 5, Let It Crash] |
+| Gateway limits and replay protection | [RI ch. 5, Shed Load] [EIP, Idempotent Receiver] |

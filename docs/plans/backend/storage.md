@@ -2,6 +2,8 @@
 
 On-disk layout, event log records, items and artifacts, the SQLite index, durability and locking. Files are the truth (spec §2.5); `index.db` is a cache that `mill doctor --reindex` rebuilds from files.
 
+Layers ([layers.md](layers.md)): `store`, `store/cas`, `store/index` are L3; the event catalog and reducer they use are L1 (`core/event`, `core/fold`, D31); locks are L0 `lock` (was `store/lock`, D33). Lifecycle, GC, backups and format changes: [data-lifecycle.md](data-lifecycle.md). Versioning: [versioning.md](versioning.md). Citations: [references.md](references.md); sources table in §11.
+
 ## 1. Directory layout
 
 Base dirs from `internal/paths` (spec §20). XDG variables are honored on Linux **and** macOS (`XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CACHE_HOME`, `XDG_RUNTIME_DIR`), then `MILL_CONFIG_DIR`, `MILL_DATA_DIR`, `MILL_STATE_DIR` (new), `MILL_SOCKET` override. Windows: config and data under `%APPDATA%\mill`, state and cache under `%LOCALAPPDATA%\mill`. Every directory mill creates is `0700`; every file `0600`, except CAS blobs (`0400`).
@@ -269,16 +271,7 @@ CREATE TABLE usage_daily (            -- for mill stats / digest / board "$6.20 
 
 ## 7. Retention and GC
 
-| What | Policy | Mechanism |
-|---|---|---|
-| Finished runs | `retention` (30d) by `finished_at`; `mill prune --older 30d`; never prune a run referenced as `parent` of a live run | daily job in milld + on demand; deletes run dir (teardown path first if somehow live), index rows cascade |
-| Cache entries | `cache.ttl` (30d since last hit) and `cache.max_bytes` (5 GiB, LRU) | same job |
-| Artifacts | mark-and-sweep: roots = `artifact_refs` of remaining runs + `cache_artifacts`; sweep blobs not in roots **and** older than 1 h (grace for in-flight writes not yet indexed) | same job; `mill prune --dry-run` prints what would go |
-| Workspaces | per node policy (`on_success`, `always`, `never`, `keep: 7d`) + setting `keep_workspaces`; orphan sweep of `workspace_root/<run>` dirs whose run is terminal and past keep | workspace manager at run end + daily |
-| Triggers state | seen-key sets bounded by `dedupe_window` and a max of 10k keys per trigger | trigger host |
-| `tmp/` and `scratch/` | remove anything older than 24 h on start | boot |
-
-Pruning a run whose items are needed by `rerun --from` of a newer run is fine: the newer run copied (hardlinked) what it reused.
+Moved to [data-lifecycle.md](data-lifecycle.md) §2–§4 (retention table, mark-and-sweep with grace, disk pressure), unchanged in substance and extended with GC ordering, disk-pressure behavior and backups.
 
 ## 8. Durability (fsync policy)
 
@@ -297,7 +290,7 @@ macOS note: `fsync` doesn't flush the drive cache; `F_FULLFSYNC` does but costs 
 
 | Lock | Holder | Purpose |
 |---|---|---|
-| `data/daemon.lock` | milld for its lifetime | one daemon per data dir (rex `AcquireLock`). A second milld exits with M7005 naming the pid. |
+| `data/daemon.lock` | milld for its lifetime | one daemon per data dir (rex `AcquireLock`, now package `lock`). A second milld exits with M7005 naming the pid. |
 | `runs/<id>/run.lock` | the run's owner: a milld actor or a `--local` process | recovery skips runs whose lock is held (a `--local` run in progress isn't "crashed"); `mill rm` refuses (class `refused`, exit 6) while another process holds it |
 | `index.db` | SQLite (WAL) | milld and `--local` processes both write; `busy_timeout` serializes |
 | pipeline files | none; compare-and-swap on content hash | `SavePipeline{base_hash}` → `conflict` (M2201) if the file changed |
@@ -310,3 +303,21 @@ Both lock kinds are advisory and released by the OS when the process dies, so a 
 ## 10. `--store` and portability
 
 A run directory is self-contained except for artifacts. `mill run --local --store ./mill-runs` writes runs and a private CAS under that directory (`./mill-runs/runs`, `./mill-runs/artifacts`, `./mill-runs/index.db`) so CI can upload it as one build artifact; `mill runs --store ./mill-runs` opens it read-only and rebuilds its index in memory if needed.
+
+## 11. Sources
+
+| Decision | Section | Follows |
+|---|---|---|
+| XDG/`MILL_*` dirs; 0700/0600 modes | §1 | [TAOUP ch. 10] [BSRS ch. 5] |
+| Global CAS with per-run refs | §1, §5 | [EIP, Claim Check] [DDIA ch. 3] |
+| Random 128-bit run ids, per-pipeline numbers | §2 | [DDIA ch. 8] (no ordering from ids or clocks) |
+| Append-only event log as the source of truth | §3 | [DDIA ch. 11] [EIP, Message Store] |
+| `log_v` header; unknown fields ignored | §3 | [DDIA ch. 4] [DBI ch. 3] |
+| Side files for large payloads | §3 | [EIP, Claim Check] |
+| Redaction before every append | §3.2 | [BSRS ch. 12] |
+| Items committed by event after fsync | §4 | [EIP, Guaranteed Delivery] [DBI ch. 5] |
+| Index as a rebuildable cache; migrations = rebuild | §6 | [DDIA ch. 12] [BEA ch. 6] |
+| Write-behind indexer never blocks a run | §6 | [RI ch. 5, Bulkheads] |
+| Sync vs group commit; write-ahead before spawn | §8 | [DBI ch. 5] |
+| Advisory locks released by the OS | §9 | [DBI ch. 5] |
+| Compare-and-set pipeline saves on the content hash (spec §16.3 `base_hash`) | §9 | [DDIA ch. 7, compare-and-set against lost updates] |

@@ -2,7 +2,7 @@
 
 Every dependency mill's backend needs, pinned, with the reason it's there. Versions were checked against `proxy.golang.org` on 2026-11-11. Pin exact versions in `go.mod`; bump on purpose, never as a side effect.
 
-Related: [architecture.md](architecture.md) for where each library is used, [open-decisions.md](open-decisions.md) for the choices that still need a yes.
+Related: [architecture.md](architecture.md) for where each library is used, [layers.md](layers.md) §8.1 for which layer may import which module (the `ext` allowlists), [open-decisions.md](open-decisions.md) for the choices that still need a yes. Few, pinned, deliberately chosen dependencies [SEG ch. 21]. Citations: [references.md](references.md); sources table in §7.
 
 ## 1. Language and toolchain
 
@@ -47,7 +47,7 @@ Grouped by area. "Where" names the package from [architecture.md](architecture.m
 | PTY (Unix) | `github.com/creack/pty` | v1.1.24 | MIT | `runner/pty` | Same as rex. | |
 | PTY (Windows) | `github.com/charmbracelet/x/xpty` | v0.1.4 | MIT | `runner/pty` | ConPTY wrapper rex already uses (`console_windows.go`). | Raw `CreatePseudoConsole` calls (more code). |
 | Terminal emulator | rex's fork of `hinshun/vt10x` in `third_party/vt10x` | in-tree | MIT | `runner/pty`, attach | Screen mirror for terminal-only agents: reading prompts, M6304 detection, attach repaint. rex already fixed scrollback, CSI markers and repaint. | `charmbracelet/x/vt` v0.1.0 (newer, maintained; re-evaluate at M6 when the PTY runner lands). |
-| OS calls | `golang.org/x/sys` | v0.50.0 | BSD-3 | `runner/proc` | Job Objects, `CTRL_BREAK`, `prctl`, peer creds. | |
+| OS calls | `golang.org/x/sys` | v0.50.0 | BSD-3 | `proc` | Job Objects, `CTRL_BREAK`, `prctl`, peer creds. | |
 | Terminal | `golang.org/x/term` | v0.48.0 | BSD-3 | `surface/cli` | TTY detection, raw mode for `attach`. | |
 | File watch | `github.com/fsnotify/fsnotify` | v1.10.1 | BSD-3 | `trigger/fswatch`, config reload, pipeline reload | Standard. Debounce is ours. | Polling (wasteful). |
 | Cron | `github.com/adhocore/gronx` | v1.20.6 | MIT | `trigger/cron` | Zero-dep parser plus `NextTickAfter`. mill owns the timer loop (catch-up, jitter, tz, fake clock), so only parsing and next-time math are needed. `@every` is parsed by mill. | `robfig/cron/v3` (last release 2020); `netresearch/go-cron` v0.19.0 (maintained fork, but brings its own scheduler we'd bypass). |
@@ -101,7 +101,7 @@ Tools run through `go run <pkg>@<version>` from the `Makefile`, exactly like rex
 | Piece | Plan | From rex |
 |---|---|---|
 | `Makefile` | Targets `build`, `test`, `test-race`, `test-e2e`, `vet`, `lint`, `lint-windows`, `vuln`, `cover`, `cover-check`, `fuzz`, `bench`, `bench-check`, `check`, `errors-check`, `layering`. `check` = vet + test-race + lint + lint-windows + cover-check + vuln + errors-check + layering. | Copy and rename. Add `errors-check` (every `M` code has an explain page and a golden test, spec §29.11) and `layering` (import rules, [architecture.md](architecture.md) §3). |
-| `.golangci.yml` | rex's config as the base: same linter set (`bodyclose contextcheck copyloopvar durationcheck errcheck errorlint exhaustive gocritic gosec govet ineffassign misspell nilerr noctx revive staticcheck unparam unused whitespace`, gofmt + goimports). Add `depguard` for layering and `forbidigo` banning `fmt.Print*`/`os.Stdout` outside `surface/cli/core` (rex enforces this with a test; a linter rule is cheaper). Keep gosec G204/G304 excluded with the same rationale. | Copy, drop rex-specific path exclusions. |
+| `.golangci.yml` | rex's config as the base: same linter set (`bodyclose contextcheck copyloopvar durationcheck errcheck errorlint exhaustive gocritic gosec govet ineffassign misspell nilerr noctx revive staticcheck unparam unused whitespace`, gofmt + goimports). Add `depguard` for layering and `forbidigo` banning (exact rules: [layers.md](layers.md) §8.2–§8.3) `fmt.Print*`/`os.Stdout` outside `surface/cli/core` (rex enforces this with a test; a linter rule is cheaper). Keep gosec G204/G304 excluded with the same rationale. | Copy, drop rex-specific path exclusions. |
 | CI | GitHub Actions: Linux runs `make check`; macOS runs `vet test-race lint vuln`; Windows runs `vet test` plus a smoke (`mill run examples/hello --local`, then daemon start, run, stop). `CGO_ENABLED=0` set at workflow level. Separate `fuzz.yml` (nightly, 5 min per target) and `stress.yml` (nightly, `-count=50 -race` on engine and store). | Copy `ci.yml`, `fuzz.yml`, `stress.yml`; drop the ALSA step. |
 | Coverage floors | `tools/coverage/baseline.txt` + `check.sh` | Copy as is. |
 | Bench budgets | `bench/budgets.txt` + `check_budgets.sh` | Copy; scenarios in [testing.md](testing.md) §7. |
@@ -121,6 +121,8 @@ Spec §17.8 promises "edited in place, keeping comments, key order and formattin
 
 rex (`~/Documents/personal/dev/rex`) is the same author's Go client/daemon tool with the same architecture. Recommendation: **copy and diverge**, no shared module for now. Reasons, then the file list.
 
+This is code replication, chosen over a shared library on purpose while both codebases move fast [SAHP ch. 8].
+
 **Why not a shared module (`github.com/tristanbietsch/termkit` or similar):**
 - rex is moving fast (19 PRs this round, uncommitted work in its tree). A shared module couples two release trains and makes every rex refactor a mill dependency bump.
 - The overlap is small and stable: the JSONL codec is ~200 lines, daemonctl ~1.3k, paths ~0.5k. Copying costs an afternoon; a shared module costs a versioning policy.
@@ -137,9 +139,9 @@ rex (`~/Documents/personal/dev/rex`) is the same author's Go client/daemon tool 
 | `internal/daemon/server/server.go` accept loop, drain, `trackConn` | `internal/daemon/server/server.go` | Keep the loop; replace session handlers. |
 | `internal/runtime/daemonctl/*` (find binary next to client, detached spawn with setsid / new process group, `Reachable`, `ErrExitedEarly`, `FindPID`) | `internal/daemonctl` | Rename binary, socket default. |
 | `internal/runtime/paths/paths.go` | `internal/paths` | New layout (spec §20), honors `XDG_*` and `MILL_*` overrides (rex deliberately doesn't; mill has no legacy). |
-| `internal/daemon/state/lock*.go` | `internal/store/lock` | Used for `daemon.lock` and per-run `run.lock`. |
+| `internal/daemon/state/lock*.go` | `internal/lock` (L0; was `internal/store/lock`, D33) | Used for `daemon.lock` and per-run `run.lock`. |
 | `internal/runtime/rexlog/*` | `internal/mlog` | `slog` to file, 0600 perms. |
-| `internal/runtime/redact/redact.go` (argv redaction for logs) | `internal/secrets/redact/argv.go` | Kept for logging command lines; the value redactor is new. |
+| `internal/runtime/redact/redact.go` (argv redaction for logs) | `internal/redact/argv.go` (L0; was `internal/secrets/redact`, D33) | Kept for logging command lines; the value redactor is new. |
 | `internal/daemon/pty/console_unix.go`, `console_windows.go`, `repaint.go`, `modes.go`, `sanitize.go`, `transcript_pause.go` | `internal/runner/pty` | Supervisor loop is new (node-run lifecycle, not sessions). |
 | `third_party/vt10x` (fork with scrollback hook and CSI marker fix) | `third_party/vt10x` | As is, with `replace` in `go.mod`. |
 | `internal/daemon/adapter` ideas (regex classification, hooks file) | `internal/agents/detect` | Rewrite against mill's registry fields; reuse test fixtures style. |
@@ -153,3 +155,14 @@ rex (`~/Documents/personal/dev/rex`) is the same author's Go client/daemon tool 
 | `docs/agents/` structure (HANDOFF, ARCHITECTURE, CONVENTIONS, DECISIONS, modules/) | `docs/agents/` | Same shape, written fresh. |
 
 **New in mill (no rex counterpart):** pipeline parser/lint/compiler, CEL layer, engine (run actor, scheduler, slots, budgets, retries, cache), event-sourced run store and SQLite index, artifact CAS, parts protocol and part host, built-in parts, runners other than PTY, workspace manager (git worktrees), secrets broker and value redactor, trigger host, plugins/lockfile, gateway, MCP client/server, M-code error system.
+
+## 7. Sources
+
+| Decision | Section | Follows |
+|---|---|---|
+| Few pinned dependencies, bumped on purpose | §2–3 | [SEG ch. 21] |
+| Third-party modules allowed per layer | §2 | [CA ch. 14] (stable layers depend on little); [layers.md](layers.md) §8.1 |
+| Tools via `go run` pinned versions, linter in CI | §3–4 | [SEG ch. 20] [SEG ch. 23] |
+| Independent version constants per format | §4 | [RI ch. 14] [DDIA ch. 4] |
+| Copy and diverge from rex, revisit after M5 | §6 | [SAHP ch. 8] |
+| Text-splice YAML edits with golden tests | §5 | [TAOUP ch. 5] (text stays the user's) |

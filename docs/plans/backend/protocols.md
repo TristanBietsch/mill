@@ -2,6 +2,8 @@
 
 The daemon wire protocol (client ↔ milld, spec §16) and the parts protocol (milld ↔ part, spec §9.3) as concrete message catalogs. Both use one codec, `internal/wire/jsonl`, copied from rex's `internal/wire/protocol/codec.go`.
 
+Layers ([layers.md](layers.md)): the codec is L0 (`wire/jsonl`); message structs are L1 (`wire/protocol`, `partproto`), the published languages other programs read [DDD ch. 14]; the client is L5 (`wire/client`), the server L6 (`daemon/server`), the part host L5 (`parthost`). Compatibility rules for both protocols: [versioning.md](versioning.md). Citations: [references.md](references.md); sources table in §4.
+
 ## 1. Shared envelope and codec
 
 ```json
@@ -49,9 +51,12 @@ Unix domain socket on macOS, Linux **and Windows** (AF_UNIX works on Windows 10 
 | `EditPipeline` | `name`, `base_hash`, `ops[]` (node add/set/rm/mv, edge add/rm) | `Ack{hash, diff}` | **new**: server-side `yamledit` so CLI and TUI edits share one implementation |
 | `Lint` | `source` or `name` | `LintResult{diagnostics[]}` | |
 | `Compile` | `pipe` | `Pipeline` | pipe expressions |
+| `DraftPipeline` | `sentence`, `base?` | `Draft{steps, trigger, agent, effort, name, description, reasons, drafter}` | spec §16.3 (wizard, ADR-047); runs `drafter` (L5) in the daemon; M2212 on fallback |
 | `StartRun` | `pipeline` or `source`, `inputs`, `items?`, `input_stream?`, `budget?`, `labels?`, `priority?`, `dry_run?` | `Ack{run_id, number}` | `RunAdded` is broadcast before the Ack |
 | `RunInput` | `run_id`, `items[]` | `Ack` | **new**: streaming stdin when `input_stream:true`; batches ≤ 1 MiB; flow-controlled by Acks (client sends the next batch after the Ack) |
 | `RunInputEnd` | `run_id` | `Ack` | **new** |
+| `RunNode` | `pipeline` or `source`, `node`, `items` or `from_run`, `dry_run?` | `Ack{run_id}`; items follow as `ItemEmitted` | spec §16.3 (editor test-run of one node) |
+| `Estimate` | `pipeline` or `source` | `Estimate{nodes[], total}` (low/high cost, tokens, time) | spec §16.3; from registry prices and `daily` history |
 | `CancelRun` | `run_id`, `reason` | `Ack` (requested, not finished) | |
 | `DeleteRun` | `run_id` | `Ack` after teardown and removal | |
 | `RerunFrom` | `run_id`, `node?`, `budget?` | `Ack{run_id, number}` | |
@@ -124,6 +129,8 @@ Error with the §29.3 object:
 - `RunInput` is ack-paced (one batch in flight), so a fast `jq | mill run --stdin` never floods the daemon.
 
 ### 2.7 Versioning
+
+Per-surface rules, the compatibility matrix and the upgrade path are in [versioning.md](versioning.md) [RI ch. 14].
 
 Additive changes (new optional fields, new intents/events, new `features`) don't bump `v`. Meaning changes bump `v`; the daemon then speaks both versions for one minor release (dispatch on `v` per line). Unknown intent → `Error{bad_intent}`; unknown event → ignored by clients.
 
@@ -218,10 +225,29 @@ Built-ins implement `partproto.Part` (Go interface in [architecture.md](architec
 
 1. **Loopback transport.** `partproto/loopback` wraps any in-process `Part` in a pair of `io.Pipe`s and the real JSONL codec. The conformance suite (`partproto/conformance`) runs every built-in through both the direct path and loopback; results must be identical. CI also runs the full example suite with `MILL_PARTS_LOOPBACK=1`.
 2. **`milld part serve <id>`** (hidden subcommand) exposes any built-in over stdio. A user part can wrap or shadow a built-in by id (spec §10), and `plugins.sandbox = "container"` can later run built-ins in containers too.
-3. **No private hooks.** What built-ins get beyond the protocol is `HostServices` (runner, workspace ops, agent registry, sub-runs, expression evaluator). Each has a protocol equivalent or is explicitly "host-only" in the manifest (`requires_host: ["runner"]`); external parts needing those use the SDK's equivalents (they run their own processes under the runner the host selected for them).
+3. **No private hooks.** What built-ins get beyond the protocol is `HostServices` (runner, workspace ops, sub-runs, expression evaluator, clock), all interfaces declared in `partproto` (L1) and implemented in L4 [CA ch. 11]. The agent built-ins also receive the run's frozen agent registry from `parthost` at construction (architecture.md §4.2). Each has a protocol equivalent or is explicitly "host-only" in the manifest (`requires_host: ["runner"]`); external parts needing those use the SDK's equivalents (they run their own processes under the runner the host selected for them).
 
 Lua parts implement the same lifecycle through function calls (`run(ctx, item)`, `ctx.emit`, `ctx.fail`), adapted to `partproto.Part` by `parthost/luapart`.
 
 ### 3.6 SDK (Go first)
 
 `sdk/go/millpart`: `millpart.Serve(manifest, handlers)` handles Describe, Open/Item/EndOfInput/Cancel/Close, credits, pings and panics (→ `Fail{internal}`). It imports only `internal/wire/jsonl`-equivalent code copied into the SDK module (the SDK is a separate module so plugin authors don't depend on mill's internals). TS and Python SDKs follow the same message tables (M9).
+
+## 4. Sources
+
+| Decision | Section | Follows |
+|---|---|---|
+| One JSONL envelope for both protocols; text on the wire | §1 | [TAOUP ch. 5] [EIP, Envelope Wrapper] |
+| `id` correlates request and reply; `v` marks the format | §1 | [EIP, Correlation Identifier] [EIP, Format Indicator] |
+| Additive evolution, unknown fields ignored; v and v−1 | §1, §2.7 | [DDIA ch. 4] [RI ch. 14] |
+| Loose contracts plus a conformance suite as the consumer test | §3.5 | [SAHP ch. 13] |
+| Handshake with versions and features | §2.2 | [RI ch. 5, Handshaking] |
+| No broadcast before `Hello`; broadcast before `Ack` on one queue | §2.2, §2.6 | [EIP, Durable Subscriber] (resume `from_seq`) |
+| Bounded per-connection queue, drop slow clients | §2.6 | [RI ch. 5, Create Back Pressure] [SRE ch. 22] |
+| Coalesced high-rate events | §2.6 | [RI ch. 5, Shed Load] |
+| Ack-paced `RunInput`; credits for multiplexed parts | §2.6, §3.4 | [RI ch. 5, Create Back Pressure] [CIG ch. 4, Queuing] |
+| Parts as processes over stdio | §3.1 | [TAOUP ch. 7] [FSA ch. 12] |
+| Exactly one `Done`/`Fail` per context; kill after ignored cancels | §3.3 | [RI ch. 5, Timeouts] |
+| Health pings, restart with backoff | §3.3 | [DBI ch. 9] [CIG ch. 5, Healing Unhealthy Goroutines] |
+| Built-ins in-process behind the same contract | §3.5 | [FSA ch. 12] (microkernel plug-ins) |
+| SDK as a separate module | §3.6 | [SAHP ch. 8] |

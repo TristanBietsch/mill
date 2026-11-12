@@ -2,6 +2,8 @@
 
 Test tiers, fakes, fixtures, fuzzing, golden files, benchmarks and the CI gate. Most of the scaffolding is copied from rex (`testutil/testenv`, `golden`, `bench/`, `tools/coverage`, `Makefile`), then extended for an engine that runs other people's processes.
 
+The test strategy of each layer is in [layers.md](layers.md) §4; the layer checks (`internal/archtest`, depguard, forbidigo) in [layers.md](layers.md) §8; benchmark budgets in [performance.md](performance.md). Citations: [references.md](references.md); sources table in §10.
+
 ## 1. Principles
 
 1. **Hermetic by default.** Every package's `TestMain` calls `testenv.RunLeakChecked(m)` (from rex): throwaway `HOME`, `XDG_*`, `MILL_*`, `PATH` trimmed to the test helpers + system dirs, goleak after the run. No test can read the developer's config, dial their daemon or call a real agent.
@@ -9,6 +11,8 @@ Test tiers, fakes, fixtures, fuzzing, golden files, benchmarks and the CI gate. 
 3. **Synthetic data only** (spec §22). Fixtures use invented repos, issues and tokens; a test (`fixtures_lint_test.go`) greps fixtures for token-shaped strings and personal paths.
 4. **Race always.** `go test -race` is the default in `make check`; there's no non-race CI job for Linux/macOS.
 5. **Every invariant has a test** (spec §5.4). The table in §8 maps each one.
+6. **Fakes over mocks** [SEG ch. 13]: real binaries (echo agent, fake CLIs, `mill-test-part`) and in-memory fakes with real behavior; no interaction-verifying mocks of our own interfaces.
+7. **Test sizes follow layers** [SEG ch. 11]: L0–L2 are mostly small (T0) tests; L3–L5 add medium component tests (T1, T2); L6–L7 are covered by larger tests (T3, T4).
 
 ## 2. Tiers
 
@@ -108,8 +112,8 @@ Daemon scripts start `milld` in the background with a socket under `$WORK` (`exe
 | `FuzzRetrySpec`, `FuzzDuration`, `FuzzCronSpec` | `engine/retry`, `trigger/cron` | parse/format round trip |
 | `FuzzSelector` | `core` | copied pattern from rex `selector_fuzz_test.go` |
 | `FuzzPartMessages` | `partproto` | decoding arbitrary part output never panics and never crashes the host's context state machine (sequence fuzz: Item after Done, double Fail, …) |
-| `FuzzEventLogReplay` | `engine` | any byte prefix of a valid log (torn writes) replays to a state the reducer accepts; truncated tail detected; invariant 6 holds |
-| `FuzzRedactorChunks` | `secrets/redact` | for random secrets and random chunk boundaries, no secret (or encoding) survives in the output |
+| `FuzzEventLogReplay` | `core/fold` + `store` | any byte prefix of a valid log (torn writes) replays to a state the reducer accepts; truncated tail detected; invariant 6 holds |
+| `FuzzRedactorChunks` | `redact` | for random secrets and random chunk boundaries, no secret (or encoding) survives in the output |
 | `FuzzJCS` | `engine/cache` | canonical form is idempotent and stable across map orders |
 | `FuzzPathSafety` | `paths` | no accepted path escapes its root (checked against `os.Root` behavior) |
 | `FuzzYAMLEdit` | `pipeline/yamledit` | applying an op then re-parsing yields the intended spec; untouched lines unchanged |
@@ -126,22 +130,7 @@ Daemon scripts start `milld` in the background with a socket under `$WORK` (`exe
 - compiled IR dumps for `examples/`;
 - event logs of deterministic example runs (fake clock, fixed ids) — any change to event shapes shows up in review.
 
-**Benchmarks** (copy rex's `bench/` layout: `budgets.txt`, `check_budgets.sh`, `BASELINE.md`, `make bench`, `make bench-check` fails on >10 % regression):
-
-| Id | Benchmark | Budget (initial target) |
-|---|---|---|
-| B1 | `BenchmarkCodec_EventRoundTrip` | ≤ 12 µs, ≤ 30 allocs (rex S4 is 11 µs) |
-| B2 | `BenchmarkEventAppend_Group` (1k events, group commit) | ≤ 5 µs/event amortized |
-| B3 | `BenchmarkReplay_10kEvents` | ≤ 30 ms |
-| B4 | `BenchmarkCompile_50Nodes` | ≤ 5 ms cold, ≤ 50 µs cached |
-| B5 | `BenchmarkCELEval_Template` | ≤ 5 µs per `${{ }}` |
-| B6 | `BenchmarkItems_Write100k_Small` / `Read` | ≥ 200k items/s |
-| B7 | `BenchmarkScheduler_1kReady` (grant pass) | ≤ 2 ms per pass |
-| B8 | `BenchmarkRedactor_20Secrets` | ≥ 200 MB/s |
-| B9 | `BenchmarkIndexRebuild_10kRuns` (integration tag) | ≤ 20 s |
-| B10 | `BenchmarkDaemonStart_1kRuns` (integration tag) | ≤ 300 ms to Snapshot |
-| B11 | `BenchmarkLocalRun_Hello` (`mill run --local` two sh nodes, integration tag) | ≤ 150 ms wall (the pipe ergonomics budget) |
-| B12 | `BenchmarkStatusPrompt` (`mill prompt`) | ≤ 2 ms (spec §17.11 says ~1 ms) |
+**Benchmarks** (copy rex's `bench/` layout: `budgets.txt`, `check_budgets.sh`, `BASELINE.md`, `make bench`, `make bench-check` fails on >10 % regression): the budget table B1–B16 moved to [performance.md](performance.md) §2 (B1–B12 unchanged, B13–B16 new).
 
 ## 8. Invariants → tests
 
@@ -162,7 +151,7 @@ Daemon scripts start `milld` in the background with a socket under `$WORK` (`exe
 
 ## 9. CI gate
 
-`make check` = `vet` + `test-race` + `lint` + `lint-windows` + `cover-check` + `vuln` + `errors-check` + `layering`. Workflows copied from rex and adjusted:
+`make check` = `vet` + `test-race` + `lint` + `lint-windows` + `cover-check` + `vuln` + `errors-check` + `layering` (`go test ./internal/archtest/`, which also runs inside `test-race`; depguard and forbidigo run inside `lint`). Workflows copied from rex and adjusted:
 
 | Job | OS | Runs |
 |---|---|---|
@@ -174,4 +163,19 @@ Daemon scripts start `milld` in the background with a socket under `$WORK` (`exe
 | stress (nightly) | ubuntu | `go test -race -count=50 ./internal/engine/... ./internal/store/...` + crash-point exploration |
 | bench (on label `perf`) | ubuntu | `make bench bench-check` |
 
-Coverage floors start at what M1 measures, per package, in `tools/coverage/baseline.txt`; engine, store, partproto, secrets/redact and expr start at ≥ 85 %.
+Coverage floors start at what M1 measures, per package, in `tools/coverage/baseline.txt`, never below the layer floor (D39): L0 85 %, L1 95 %, L2 85 %, L3 85 %, L4 85 %, L5 75 %, L6 75 %, L7 70 %. Floors only rise (ratchet) [BEA ch. 2].
+
+## 10. Sources
+
+| Decision | Section | Follows |
+|---|---|---|
+| Hermetic tests, no network, synthetic data | §1 | [SEG ch. 11] [SEG ch. 14] |
+| Fake time everywhere | §1 | [SEG ch. 12] [CIG ch. 5] |
+| Test sizes by layer | §1–2 | [SEG ch. 11] |
+| Real fake binaries over mocks | §3–4 | [SEG ch. 13] |
+| Recorded HTTP for integrations | §4 | [SEG ch. 14] |
+| Fuzzing every parser, decoder and the redactor | §6 | [BSRS ch. 13] [LG ch. 15] |
+| Goldens for every visible output | §7 | [SEG ch. 1, Hyrum's Law] |
+| Every invariant has a test | §8 | [BSRS ch. 13] |
+| Crash-point exploration | §8 | [RI ch. 17] [DBI ch. 5] |
+| CI gate with layering and coverage ratchets | §9 | [SEG ch. 23] [BEA ch. 4] |

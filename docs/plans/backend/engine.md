@@ -2,6 +2,8 @@
 
 How a pipeline file becomes an execution graph, and how the engine runs it: items, modes, scheduling, budgets, retries, cache, cancellation, recovery, sub-pipelines and loops. Refines spec §6, §7.4, §8, §15.
 
+Layers ([layers.md](layers.md)): compile is L2 (`pipeline`, `expr`, `schema`); the engine, scheduler, budgets, retries and cache are L4; the reducer is L1 (`core/fold`, D31). Citations use the keys in [references.md](references.md); the sources table is §13.
+
 ## 1. Compile: YAML → Spec → IR
 
 `pipeline.Compile(src Source, reg PartRegistry, opts) (*ir.Graph, Diagnostics)`. Pure function of its inputs; results cached by `(bundle hash, registry hash)` with `singleflight`.
@@ -12,7 +14,7 @@ How a pipeline file becomes an execution graph, and how the engine runs it: item
 | 2. Hash | `pipeline` | `BundleHash = sha256("mill-bundle-v1\n" + path + "\n" + sha256(bytes) + sorted(ref path + sha256))`. This is the version recorded on the run (invariant 10). Editing a prompt file is a new version. | |
 | 3. Parse | `pipeline` (yaml/v4 Node API) | `Spec` with a `Pos{File, Line, Col}` on every field; unknown keys → warning with did-you-mean | M2101, M3001 unknown key |
 | 4. Templates | `expr` | Every string scanned for `${{ … }}`. The scanner is CEL-aware: it tracks string literals so `"}}"` inside a CEL string doesn't close the expression. Each expression is parsed and type-checked with cel-go, and its references are collected by walking the checked AST (`nodes.X…`, `inputs.Y`, `secrets.Z`, `item`, `items`, `event`, `env`, `run`). | M3012 unknown node, M3013 unknown input, M3101 type error, M9201 undeclared secret |
-| 5. Resolve parts | `parthost` | `uses` → `PartRef{ID, Version, Capability, Manifest}` via resolution order and lockfile | M5101 not found, M5102 version |
+| 5. Resolve parts | `pipeline.Resolver` port, implemented by `parthost` (L5) | `uses` → `PartRef{ID, Version, Capability, Manifest}` via resolution order and lockfile | M5101 not found, M5102 version |
 | 6. Validate `with` | `schema` | Literal values validated against the part's config schema now; expression-valued fields validated against the schema's type when CEL can infer it, otherwise at runtime after evaluation | M3201 config invalid |
 | 7. Infer edges | `pipeline` | data edges + order edges (§2) | M3020 cycle, M3021 ambiguous input |
 | 8. Lint | `pipeline` | §7.7 checks + policy (destructive, runners), secrets in argv, unreachable nodes | M32xx, M9xxx |
@@ -139,6 +141,7 @@ One goroutine, one ready queue across all runs.
 | `runs` | `max_concurrent_runs` (8) | taken when a run moves `queued → working`; held until the run is terminal |
 | `nodes` | `max_concurrent_nodes` (16) | every node-run except control/data parts that declare `flags.light` (map, filter, if, assert, …, run inline in the actor's worker pool and don't count) |
 | `agents` | `max_concurrent_agents` (4) | node-runs whose part `IsAgent` |
+| `agent:<id>` (new) | registry `max_concurrent` for that agent (unset = unlimited) | agent node-runs of that agent id; held while its circuit breaker is open ([resilience.md](resilience.md) §6, D36) |
 | `runner:<id>` | `runners.<id>.max_concurrent` (unset = unlimited) | node-runs on that runner |
 | `run-agents:<run>` | pipeline `budget.max_agents` | agent node-runs of that run |
 | `node:<run>/<node>` | node `concurrency` (default 4 for `each`) | `each` node-runs |
@@ -149,6 +152,9 @@ One goroutine, one ready queue across all runs.
 2. Walk the queue. For each request, if **all** its pools have capacity, take them atomically (single goroutine, no partial holds) and send the `Grant`.
 3. If not, skip it, but **reserve**: a request that has been skipped for longer than `sched.starvation_after` (30 s) blocks later requests that need any of the same pools. This prevents a stream of small node-runs from starving a wide agent fan-out.
 4. Grants are delivered on a buffered channel per run actor; a run actor that has since cancelled returns the grant immediately.
+5. A pool whose breaker is open grants nothing until its half-open probe; requests needing it stay queued and show why on the board (D36).
+
+Slot pools are bulkheads [RI ch. 5, Bulkheads]; the single scheduler goroutine is confinement [CIG ch. 4]. `Engine.Start` refuses new runs past `max_queued_runs` (1000) with M4108 [RI ch. 5, Create Back Pressure].
 
 **Invariant 7.** Every `Grant` carries an id. The actor records `GrantTaken{id}` in memory and must call `Release(id)` when the node-run reaches a terminal state. `sched.AssertDrained()` runs in every engine test's cleanup.
 
@@ -226,7 +232,7 @@ Exit codes of killed processes are ignored once `cancelling` is set, which is ho
 
 On startup (`Engine.Recover`), for each run in `live/` whose `run.lock` is free:
 
-1. **Replay.** Read `events.jsonl` sequentially through the same reducer used live (`engine.Apply(state, ev)`). A torn last line (no trailing newline or invalid JSON at EOF) is truncated after copying it to `events.jsonl.torn-<ts>`; anything invalid before the last line is corruption → run `crashed` with M4302 and `mill doctor` reports it.
+1. **Replay.** Read `events.jsonl` sequentially through the same reducer used live (`fold.Apply(state, ev)` in `core/fold`, L1; the index rebuild uses the same function, D31). A torn last line (no trailing newline or invalid JSON at EOF) is truncated after copying it to `events.jsonl.torn-<ts>`; anything invalid before the last line is corruption → run `crashed` with M4302 and `mill doctor` reports it.
 2. **Orphans.** For each node-run whose last state is `working`, `NodeRunStarted` recorded `{pid, pgid, start_time}` (and container name). If a process with that pgid exists and its start time matches (`/proc/<pid>/stat` on Linux, `sysctl kern.proc.pid` on macOS; Windows needs nothing: Job Objects with `KILL_ON_JOB_CLOSE` died with milld), kill the group. Containers: `docker rm -f` by label. This is done **before** any re-run so an idempotent restart never runs twice in parallel.
 3. **Decide** per spec §15.7: `queued`/`pending`/`retrying` → re-enqueue (retry timers re-armed from `retry_at`); `working` + `resumable` → open the part with `Resume(last Checkpoint)`; `working` + `idempotent` → new attempt with reason `daemon_restart`; otherwise `crashed`, M4301, transcript and partial items kept. Terminal agents (PTY) are always `crashed`.
 4. Item files may have uncommitted tails (written but no `ItemsCommitted` event): truncate them to the last committed byte offset recorded in the event.
@@ -263,3 +269,28 @@ Determinism requirement for this to work: the reducer is pure (no clock reads, n
 | `keep_workspaces` | `on_failure` | spec |
 | `stream.window` | 256 items | |
 | run priority | 0 | |
+
+## 13. Sources
+
+| Decision | Section | Follows |
+|---|---|---|
+| Compile is a pure, cached function of the bundle | §1 | [DDIA ch. 12] (derived data from immutable inputs) |
+| Bundle hash as the run's version | §1 | [DDIA ch. 4] |
+| Steps as filters over item streams; Unix pipeline model | §2–3 | [FSA ch. 11] [EIP, Pipes and Filters] [TAOUP ch. 11] [DDIA ch. 10] |
+| References order, primary upstream carries data (ADR-028) | §2 | [EIP, Pipes and Filters] |
+| Branch ports, error port | §2, §9 | [EIP, Content-Based Router] [EIP, Dead Letter Channel] |
+| Items committed to files before downstream sees them | §3 | [EIP, Guaranteed Delivery] [DDIA ch. 11] |
+| `each` mode and `merge` | §3–4 | [EIP, Splitter] [EIP, Aggregator] |
+| Large payloads as artifacts | §3 | [EIP, Claim Check] |
+| Stream mode backpressure by window | §3 | [RI ch. 5, Create Back Pressure] [DDIA ch. 11] |
+| Terminal states final; `retrying` is the next attempt | §4 | [DDD ch. 6] (aggregate invariants) |
+| One scheduler, slot pools as bulkheads, aging against starvation | §5 | [CIG ch. 4] [RI ch. 5, Bulkheads] |
+| Budgets stop runaway work | §6 | [RI ch. 5, Governor] |
+| Active wall time, not calendar time | §6 | [DDIA ch. 8] |
+| Retries: idempotent only by default, full jitter, `retry_after` | §7 | [BM ch. 12] [RI ch. 4, Dogpile] [SRE ch. 24] |
+| Canonical JSON cache keys over data, not metadata | §8 | [DDIA ch. 4] |
+| One teardown path, exit codes ignored once cancelling | §9 | [BSRS ch. 6] [RI ch. 5, Timeouts] |
+| Fail fast on the first failure by default | §9 | [RI ch. 5, Fail Fast] |
+| Replay through the same pure reducer; record every outside decision | §10 | [DDIA ch. 11] [DBI ch. 5] |
+| Kill orphans before re-running; non-idempotent work `crashed` | §10 | [RI ch. 5, Let It Crash] [BSRS ch. 9] |
+| Child runs as real runs; budgets propagate | §11 | [RI ch. 5, Governor] (budgets propagate to children) |

@@ -1,6 +1,6 @@
 # Architecture
 
-Packages, boundaries, core interfaces, who owns which goroutine, and how a run moves from trigger to terminal state. Refines spec §5 and §27.4.
+Packages, core interfaces, who owns which goroutine, and how a run moves from trigger to terminal state. Refines spec §5 and §27.4. The layer of every package and the import rules are in [layers.md](layers.md) (the backbone since the 2026-11-12 refinement); citations use the keys in [references.md](references.md).
 
 ## 1. Shape in one paragraph
 
@@ -43,107 +43,113 @@ Refines §27.4. Changes from the spec's layout, with reasons:
 - `store/`, `runner/`, `workspace/`, `secrets/`, `trigger/` move out of `daemon/` for the same reason. `daemon/` keeps only what exists because there's a daemon: server, boot wiring, reload, status file.
 - The pipe-expression parser moves from `surface/pipe` to `pipeline/pipe`: it's a compiler front end, and `Compile` intents run it in the daemon.
 - `errs/` is new: the §29 error object, codes, classes, explain pages. Every layer imports it.
-- `core/` is new: plain data types shared by everything (ids, states, items, refs). No logic beyond validation.
+- `core/` is new: plain data types shared by everything (ids, states, items, refs). No logic beyond validation and the pure reducer in `core/fold`.
+- 2026-11-12 refinement ([layers.md](layers.md), D31–D33): the event catalog and the reducer move to `core/event` and `core/fold` so the index can rebuild without importing the engine; three L0 leaves leave higher directories (`lock`, `proc`, `redact`); the runner interface moves into `partproto`; `metrics`, `assemble` and `archtest` are new. The right-hand column is the layer.
 
 ```
 cmd/
-  mill/                 main: dispatch to surface/cli
-  milld/                main: daemon/boot.Run
+  mill/                 main: dispatch to surface/cli                                          L7
+  milld/                main: daemon/boot.Run                                                   L7
 internal/
-  core/                 ids, State enum + transition table, Item, FileRef, WorkspaceRef, Usage, Budget, selectors
-  errs/                 Error{Code,Class,Message,Where,Suggestions,Help,Retryable,Cause}, codes.go, classes, explain/*.md (embed), exit-code map
-  clock/                Clock interface (real, fake) — every timer goes through it
-  paths/                config/data/state/runtime dirs, socket path, MILL_* overrides, safety checks
-  mlog/                 slog to file (from rex rexlog)
+  errs/                 Error{Code,Class,Message,Where,Suggestions,Help,Retryable,Cause}, codes, explain/*.md, exit codes   L0
+  clock/                Clock interface (real, fake): every timer goes through it               L0
+  paths/                config/data/state/runtime dirs, socket path, MILL_* overrides, CheckRoot L0
+  mlog/                 slog to file (from rex rexlog), rotation, redacting handler             L0
+  version/              Version (ldflags), build info, milestone.txt for the layer ratchet      L0
+  metrics/              counters, gauges, histograms; snapshot for Stats (new, D35)             L0
+  lock/                 daemon.lock, run.lock (from rex; was store/lock, D33)                   L0
+  proc/                 process groups and kill per OS, Identity (was runner/proc, D33)         L0
+  redact/               streaming value redactor, argv redaction (from rex; was secrets/redact, D33)   L0
+  wire/jsonl/           envelope + codec (from rex), shared by daemon and parts protocol        L0
 
-  wire/jsonl/           envelope + codec (from rex), shared by daemon and parts protocol
-  wire/protocol/        daemon intents/events payload structs, error codes, Hello/Snapshot
-  wire/client/          dial, Hello, Do(ctx, intent) → reply, event stream
-  partproto/            parts protocol message structs, Part/Session/Emitter interfaces, stdio transport, loopback transport, conformance suite
+  core/                 ids, State + transition table, Item, FileRef, WorkspaceRef, Usage, Budget, selectors   L1
+  core/event/           event catalog structs, log_v, decoders per version (new, D31)           L1
+  core/fold/            pure reducer Apply(RunState, Event); ledger fold (new, D31)              L1
+  partproto/            parts protocol messages; Part/Session/Emitter; HostServices incl. the runner
+                        contract (Runner, ProcSpec, Proc; moved from runner, D33); loopback; conformance   L1
+  wire/protocol/        daemon intents/events payload structs, protocol error codes, Hello/Snapshot   L1
 
-  pipeline/             Spec (decoded YAML with positions), Parse, Lint, InferEdges, Compile → ir
-  pipeline/ir/          immutable compiled graph (Graph, Node, Edge, Port, ExprRef)
-  pipeline/pipe/        pipe-expression lexer/parser → Spec
-  pipeline/yamledit/    surgical YAML edits (node/edge commands, SavePipeline)
-  pipeline/layout/      layered DAG layout for render/editor (sidecar read/write)
-  expr/                 CEL env, ${{ }} template scanner, helpers, secret handle type, cost limits
-  schema/               mill output shorthand → JSON Schema, validator wrapper, error mapping
+  expr/                 CEL env, ${{ }} template scanner, helpers, secret handle type, cost limits   L2
+  schema/               output shorthand → JSON Schema, validator wrapper, error mapping        L2
+  pipeline/             Source, Spec (positions), Parse, Lint, InferEdges, Compile(src, Resolver) → ir   L2
+  pipeline/ir/          immutable compiled graph (Graph, Node, Edge, Port, PartRef)              L2
+  pipeline/pipe/        pipe-expression lexer/parser → Spec                                     L2
+  pipeline/edit/        every edit operation and quick fix (CLI, daemon, TUI)                   L2
+  pipeline/yamledit/    text-splice YAML edits under pipeline/edit                              L2
+  pipeline/layout/      layered DAG layout for render/editor (sidecar read/write)               L2
 
-  engine/               Engine, run actor, reducer (fold events → RunState), readiness, outputs
-  engine/sched/         scheduler loop, ready queue, slot pools, priority/aging
-  engine/budget/        ledger, limits, warnings
-  engine/retry/         policy parsing (exp/linear/fixed), matchers, backoff with jitter
-  engine/cache/         key derivation (canonical JSON), lookup/store
+  store/                RunStore: run dirs, events.jsonl appender (group commit), items, logs, run.json, live markers   L3
+  store/cas/            content-addressed artifact store (sha256), materialization, walk for GC L3
+  store/index/          SQLite schema, write-behind indexer, queries, rebuild via core/fold     L3
 
-  store/                RunStore: run dirs, events.jsonl appender (group commit), item files, logs, run.json snapshot, live markers
-  store/cas/            content-addressed artifact store (sha256), materialization, GC
-  store/index/          SQLite schema, write-behind indexer, queries, rebuild
-  store/lock/           daemon.lock, run.lock (from rex)
+  engine/               Engine, run actor, readiness, outputs, recovery, bus; ports PartSource, SecretResolver,
+                        Workspaces, Runners, Sink                                               L4
+  engine/sched/         scheduler loop, ready queue, slot pools, priority/aging, breaker holds  L4
+  engine/budget/        limits, warnings (ledger fold lives in core/fold)                       L4
+  engine/retry/         policy parsing (exp/linear/fixed), matchers, backoff with jitter        L4
+  engine/cache/         key derivation (canonical JSON), lookup/store                           L4
+  runner/               runner registry, selection, per-runner caps                             L4
+  runner/local/ runner/pty/ runner/container/ runner/ssh/                                       L4
+  workspace/            git worktrees, temp dirs, cleanup, snapshot/reset for retries, path safety   L4
+  secrets/              Broker, grants, backends (env, keychain, op, vault, agefile)            L4
 
-  parthost/             registry + resolution order, part pool, health pings, transports wiring, PartCall routing
+  parthost/             registry + resolution order, part pool, health pings, MCP servers, PartCall;
+                        implements pipeline.Resolver and engine.PartSource                     L5
+  parthost/luapart/     Lua parts adapted to partproto.Part                                     L5
   parts/builtin/        sh exec check lua map filter reduce sort uniq take skip batch merge split jq template parse
                         if switch loop assert handoff wait pipeline fail noop
                         agent agent.fanout agent.judge agent.review agent.loop agent.extract
                         git.worktree git.commit git.push git.diff gh.pr gh.issue gh.comment
-                        http mcp file.* stdin stdout notify (n8n.call, zapier.call later)
-  agents/               registry (merge by id), argv builder, headless output parsers, error normalization, usage extraction
-  agents/detect/        terminal-agent state detection (regex/idle/hooks), auto_answer
-  drafter/              wizard describe drafter: Ollama client, ResolveModel, health, prompt + output guard, keyword fallback (added 2026-11-12, ADR-047)
-  runner/               Runner interface, selection, per-runner caps
-  runner/proc/          process groups and kill per OS (proc_unix.go, proc_windows.go Job Objects)
-  runner/local/ runner/pty/ runner/container/ runner/ssh/ (runner/remote, runner/external later)
-  workspace/            git worktrees, temp dirs, cleanup policies, snapshot/reset for retries, path safety
-  secrets/              Broker, backends (env, keychain, op, vault, agefile), grants
-  secrets/redact/       streaming value redactor, argv redaction (from rex)
+                        http mcp file.* stdin stdout notify (n8n.call, zapier.call later)       L5
+  agents/               registry (merge by id), argv builder, headless output parsers, error normalization, usage   L5
+  agents/detect/        terminal-agent state detection (regex/idle/hooks), auto_answer          L5
+  drafter/              wizard describe drafter: Ollama client, ResolveModel, health, prompt + output guard,
+                        keyword fallback (ADR-047)                                              L5
+  trigger/              Host: arm/disarm, concurrency policy, dedupe, persistent trigger state  L5
+  trigger/cron/ trigger/poll/ trigger/runevent/ trigger/fswatch/ trigger/webhook/ trigger/githook/ trigger/once/   L5
+  config/               layered loading, immutable Snapshot, reload, --why                      L5
+  config/settings/      settings registry (from rex types), settings.lua writer                 L5
+  luaapi/               mill.* API (config phase, runtime phase), sandbox profiles, hooks dispatcher, LuaLS types   L5
+  plugins/              manifest, resolver, installer, lockfile, permissions, pack, import/export (M9+)   L5
+  wire/client/          dial, Hello, Do(ctx, intent) → reply, event stream                      L5
+  daemonctl/            spawn/find/reach milld (from rex)                                       L5
+  runner/remote/ runner/external/   (M10) speak to another milld or a plugin                    L5
 
-  trigger/              Host: arm/disarm, concurrency policy, dedupe, persistent trigger state
-  trigger/cron/ trigger/poll/ trigger/runevent/ trigger/fswatch/ trigger/webhook/ trigger/githook/ trigger/once/
+  daemon/server/        socket listener, conns, handlers (intent → engine/store calls)          L6
+  daemon/boot/          wiring: lock, config, recovery, engine, triggers, server, status file, signals   L6
+  daemon/status/        tiny status file for `mill prompt` / completion                         L6
+  gateway/              HTTP + WebSocket front door (webhooks, remote API) (M7+)                L6
+  assemble/             shared wiring: config.Snapshot → engine + adapters (new, D32, M2)       L6
 
-  config/               layered loading (defaults, settings.lua, init.lua, .mill/mill.lua, env, flags), reload, --why
-  config/settings/      settings registry (from rex types), settings.lua writer
-  luaapi/               mill.* API (config phase, runtime phase), sandbox profiles, hooks dispatcher, LuaLS types generator
-  plugins/              manifest, resolver, installer, lockfile, permissions, pack, import/export (M9+)
-
-  daemon/server/        socket listener, conns, handlers (intent → engine/store calls)
-  daemon/boot/          wiring: lock, config, recovery, engine, triggers, server, status file, signals
-  daemon/status/        tiny status file for `mill prompt` / completion
-  daemonctl/            spawn/find/reach milld (from rex)
-  gateway/              HTTP + WebSocket front door (webhooks, remote API) (M7+)
-
-  surface/cli/          subcommands; surface/cli/core output kit (from rex)
-  surface/tui/          splash, board, run popup, editor, settings (out of scope here)
-  surface/sound/        soundsets, mixer, silent fallback
-  surface/mcpserver/    `mill mcp serve`
-  testutil/             testenv, golden, fakeclock helpers, fake parts, echo agent harness
-sdk/go/                 parts SDK (thin wrapper over partproto) — later ts/, python/
-third_party/vt10x/      rex fork
+  surface/cli/          subcommands; surface/cli/core output kit (from rex)                     L7
+  surface/cli/local/    --local and offline entry: the one surface package that reaches execution (via assemble)   L7
+  surface/tui/          splash, board, run popup, editor (canvas/, editor/, settings/) (out of scope here)   L7
+  surface/sound/        soundsets, mixer, silent fallback                                       L7
+  surface/mcpserver/    `mill mcp serve` (a surface for MCP clients, through wire/client)       L7
+  testutil/             testenv, golden, fakeclock helpers, fake parts, echo agent, fake CLIs   T
+  archtest/             layer checker over `go list` (layers.md §8.1)                           T
+sdk/go/                 parts SDK (separate module; imports nothing from mill) — later ts/, python/
+third_party/vt10x/      rex fork (imported as github.com/hinshun/vt10x via replace)             L0
 examples/               example pipelines (integration tests)
 ```
 
 ## 3. Dependency direction
 
-Lower layers never import higher ones. Enforced by `depguard` rules plus a `layering_test.go` that runs `go list -deps` and fails on violations (`make layering`).
+Replaced by [layers.md](layers.md): eight layers (L0 platform, L1 domain and contracts, L2 language, L3 persistence, L4 execution, L5 integration, L6 service, L7 surface), ports declared in the consuming layer, composition only in `daemon/boot`, `assemble` and `surface/cli/local`, and the exact `archtest`, depguard and forbidigo rules that enforce it in `make check` [FSA ch. 10] [CA ch. 22] [BEA ch. 4].
 
-| Layer | Packages | May import |
-|---|---|---|
-| 0 base | `core`, `errs`, `clock`, `paths`, `mlog`, `wire/jsonl` | stdlib only (+ each other where acyclic) |
-| 1 language | `expr`, `schema`, `pipeline/**`, `partproto`, `wire/protocol` | layer 0, cel-go, yaml, jsonschema |
-| 2 services | `store/**`, `secrets/**`, `workspace`, `runner/**`, `agents/**`, `config/**`, `luaapi`, `drafter` | layers 0–1 (`drafter` gets its settings as a `Config` and its `agent` backend as an interface, both from `daemon/boot`) |
-| 3 execution | `engine/**`, `parthost`, `parts/builtin/**`, `trigger/**`, `plugins` | layers 0–2 |
-| 4 hosts | `daemon/**`, `gateway`, `surface/mcpserver`, `wire/client`, `daemonctl` | layers 0–3 |
-| 5 surface | `surface/cli`, `surface/tui`, `surface/sound` | layers 0–1, `wire/client`, `daemonctl`, `config`; **plus `engine` + `parthost` + `store` only from `surface/cli/local`** (the `--local` entry) |
-
-Rules that matter more than the table:
-1. `engine` sees parts only through `partproto.Part`. It never imports `parts/builtin`. `parthost` registers built-ins.
-2. `parts/builtin/*` never import `engine` or `store`. They get everything (runner, workspace, artifacts, secrets) through the `OpenRequest` capabilities object. This is what keeps them replaceable by an external part (spec §9: built-ins get no special internals).
-3. `surface/tui` never reads run directories directly; it goes through the daemon. `surface/cli` may read run files read-only for `mill runs --store <dir>` and `mill logs` when the daemon is down (spec §17.12).
-4. Only `daemon/boot` and `surface/cli/local` construct an `engine.Engine`.
+The four rules that used to be listed here still hold and are now checked by machine:
+1. `engine` sees parts only through `partproto.Part` (via its `PartSource` port); it never imports `parts/builtin` or `parthost` (archtest A2).
+2. `parts/builtin/*` never import `engine`, `store`, `runner`, `workspace` or `secrets`; everything arrives through `OpenRequest` and `HostServices` (A6).
+3. `surface/tui` never reads run directories; it goes through the daemon. Offline reads (`mill runs --store`, `mill logs` with the daemon down) go through `surface/cli/local` (A3).
+4. Only `daemon/boot`, `assemble` and `surface/cli/local` construct an `engine.Engine` (A14 and forbidigo).
 
 ## 4. Core interfaces
 
 Go sketches. Names are the plan; signatures may change during M1 but the ownership rules may not.
 
 ### 4.1 Shared data (`core`)
+
+Value types with no behavior beyond validation: the domain's vocabulary, isolated from storage and processes [DDD ch. 4]. Money is integer micro-USD.
 
 ```go
 package core
@@ -199,7 +205,7 @@ type Usage struct {
 
 ### 4.2 Parts (`partproto`)
 
-One interface for every node, trigger, sink and runner part. Built-ins implement it in Go; the stdio transport implements it by speaking JSONL to a process; the Lua host implements it with a Lua state.
+The engine is a microkernel and parts are its plug-ins [FSA ch. 12]; this contract is a published language [DDD ch. 14]. One interface for every node, trigger, sink and runner part. Built-ins implement it in Go; the stdio transport implements it by speaking JSONL to a process; the Lua host implements it with a Lua state.
 
 ```go
 package partproto
@@ -243,10 +249,11 @@ type OpenRequest struct {
 
 // HostServices is what built-ins get instead of importing engine/store.
 // Over stdio an external part has the same powers through messages (Artifact, Log, …) or not at all.
+// The agent registry is not here: partproto (L1) can't depend on agents (L5). The agent built-ins get
+// the run's frozen agents.Registry from parthost when it constructs their Session (layers.md §3 rule 4).
 type HostServices struct {
-	Runner    Runner          // where to start processes for this node-run
+	Runner    Runner          // where to start processes for this node-run (partproto.Runner, §4.3)
 	Workspace WorkspaceOps    // create worktree, snapshot, diff
-	Agents    AgentRegistry   // read-only registry view
 	Expr      Evaluator       // per-item `with` evaluation
 	SubRuns   SubRunStarter   // for `pipeline` and `loop`
 	Clock     clock.Clock
@@ -271,10 +278,12 @@ func Each(fn func(ctx context.Context, c *NodeCtx, it core.Item) ([]Out, error))
 func Stream(fn func(ctx context.Context, c *NodeCtx, in <-chan core.Item, out Emitter) error) Part
 ```
 
-### 4.3 Runners (`runner`)
+### 4.3 Runners (contract in `partproto`, implementations in `runner/*`)
+
+The interface lives in `partproto` (L1) so `HostServices.Runner` needs nothing above L1; `runner` (L4) keeps selection and caps, and `runner/local`, `runner/pty`, … implement it (D33).
 
 ```go
-package runner
+package partproto // runner contract (moved from package runner, D33)
 
 type Runner interface {
 	ID() string
@@ -304,7 +313,7 @@ type Proc interface {
 	Interrupt() error           // SIGTERM to group / CTRL_BREAK
 	Kill() error                // SIGKILL to group / TerminateJobObject; idempotent
 	Wait() (ExitStatus, error)
-	Identity() ProcIdentity     // pgid + start time, recorded before Start returns for crash recovery
+	Identity() proc.Identity    // pgid + start time (proc is L0), recorded before Start returns for crash recovery
 }
 ```
 
@@ -346,7 +355,7 @@ package engine
 // a full queue drops and counts (spec §2.10: optional never blocks core).
 type Sink interface {
 	Name() string
-	Deliver(ctx context.Context, ev store.Event) error
+	Deliver(ctx context.Context, ev event.Event) error // event is core/event (D31)
 }
 ```
 
@@ -379,7 +388,7 @@ type Run interface {
 	Append(ev Event, durability Durability) (seq uint64, err error) // owner only; Sync waits for fsync
 	Items(nr core.NodeRunID, port string) ItemFile                  // append (owner) / read+tail (any)
 	Log(nr core.NodeRunID, stream string) io.WriteCloser            // redacting writer, owner only
-	Events(fromSeq uint64) iter.Seq2[Event, error]
+	Events(fromSeq uint64) iter.Seq2[event.Event, error]
 	Tail(ctx context.Context, fromSeq uint64) <-chan Event          // for Subscribe replay+follow
 	WriteSnapshot(s RunSnapshot) error                              // run.json, atomic rename
 	Finish() error                                                  // remove live marker, release run.lock
@@ -433,6 +442,8 @@ type Scheduler interface {
 ```
 
 ## 5. Goroutines and ownership
+
+The model, context rules, bounded queues, stall detection and shutdown order are in [concurrency.md](concurrency.md) and [resilience.md](resilience.md) §4. This table is the ownership map [CIG ch. 2] [CIG ch. 4].
 
 | Goroutine | Count | Owns (only writer) | Talks to |
 |---|---|---|---|
@@ -607,7 +618,28 @@ Only `milld` (or the `--local` process) ever spawns children. The `mill` client 
 
 ## 8. Configuration flow
 
+Detail (layers, validation phases, apply modes, trust-widening keys) in [configuration.md](configuration.md).
+
 1. `config.Load(layers)` evaluates Lua layers in order (spec §19.2) into a `config.Snapshot` (settings, agents, MCP servers, runners, secret backends, plugin specs, hooks as Lua function refs).
 2. The snapshot is immutable. Reload builds a new one; on error the old one stays and the error is published (`config_error` on the bus, M8xxx).
 3. Consumers subscribe and apply: scheduler resizes pools, parthost diffs MCP/runner definitions, trigger host re-arms only changed triggers. Running runs keep the snapshot they started with for agent registry and runner definitions (invariant 10 extended to config): the run header records the config snapshot hash.
 4. The client loads the same layers for TUI settings, keymaps and themes, with runtime-only API calls (`mill.on`, `mill.command` bodies) recorded but not executed.
+
+## 9. Sources
+
+| Decision | Section | Follows |
+|---|---|---|
+| Engine as a library hosted by `milld` and `--local` | §1 | [FSA ch. 12] [CA ch. 26] |
+| Layers and dependency rule | §2–3 | [FSA ch. 10] [CA ch. 22] [DDD ch. 4]; detail in [layers.md](layers.md) |
+| Domain value types in `core` | §4.1 | [DDD ch. 4] |
+| One part contract for built-ins and external parts | §4.2 | [FSA ch. 12] [DDD ch. 14] [TAOUP ch. 7] |
+| Accept interfaces, declared by the consumer | §4 | [LG ch. 7] [CA ch. 11] |
+| Sinks as async, droppable taps | §4.4 | [EIP, Wire Tap] [RI ch. 5, Bulkheads] |
+| CAS with dedupe and atomic rename | §4.4 | [EIP, Claim Check] [DDIA ch. 3] |
+| Run store as append-only log with derived index | §4.5 | [DDIA ch. 11] [DDIA ch. 12] |
+| One writer per run, one owner of slots | §5 | [CIG ch. 4, Confinement] [DDD ch. 6] |
+| Lifecycle sequences: write-ahead before spawn, broadcast after append | §6 | [DBI ch. 5] |
+| Trigger coordinator holds queued fires | §6.3 | [SRE ch. 24] [EIP, Idempotent Receiver] |
+| One teardown path | §6.4 | [BSRS ch. 6] |
+| Process groups per step | §7 | [TAOUP ch. 7] [RI ch. 5, Bulkheads] |
+| Immutable config snapshot, last-good on reload | §8 | [SRW ch. 14] |

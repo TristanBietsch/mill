@@ -2,6 +2,8 @@
 
 Where node-runs execute and how processes are started, watched and killed: runners, process groups per OS, PTYs and terminal-only agents, workspaces, the agent registry, and the structured-output pipeline. Refines spec §11, §12, §6.4.
 
+Layers ([layers.md](layers.md)): process groups are L0 (`proc`, was `runner/proc`, D33); the runner contract is L1 (`partproto.Runner`); runners, workspaces and secrets are L4; agents and `agents/detect` are L5. Timeouts and bulkheads for everything here: [resilience.md](resilience.md). Citations: [references.md](references.md); sources table in §10.
+
 ## 1. Runners
 
 | Runner | Milestone | How | Caps |
@@ -19,7 +21,7 @@ Which parts use a runner: process-launching built-ins (`sh`, `exec`, `check`, ev
 
 ## 2. Process groups and kill semantics
 
-`internal/runner/proc` hides the OS differences behind `Start/Interrupt/Kill/Wait/Identity`.
+`internal/proc` (L0) hides the OS differences behind `Start/Interrupt/Kill/Wait/Identity`.
 
 | | macOS | Linux | Windows |
 |---|---|---|---|
@@ -94,7 +96,7 @@ type Entry struct {
 
 **Usage extraction:** headless JSON via `json_path` (e.g. Claude's result object `usage.input_tokens`), JSONL streams by summing per-event deltas, text via regex; emitted as `Usage` events. Unknown → tokens 0 with `usage_unknown: true` (budgets then can't see that node; lint warns when a budget is set).
 
-**Error normalization:** the last 64 KiB of stdout+stderr and the exit code are matched against `errors` rules in order; the first match sets class/code/retry_after/help. No match + non-zero exit → class `agent`, code M6300.
+**Error normalization** (the anticorruption layer between vendor CLIs and mill's error classes [DDD ch. 14]; translation point T3 in [errors.md](errors.md)): the last 64 KiB of stdout+stderr and the exit code are matched against `errors` rules in order; the first match sets class/code/retry_after/help. No match + non-zero exit → class `agent`, code M6300.
 
 **`echo` agent** for tests: an entry whose command is the test helper binary `mill-echo-agent` (built by tests, see [testing.md](testing.md) §3), never shipped in release builds' default registry except as `echo` with `enabled_by_default: false`.
 
@@ -152,3 +154,20 @@ Concurrency: `git worktree add` on one repo takes `.git/worktrees` locks; the wo
 ## 9. Dry run
 
 `--dry-run` (spec §17.10, §22): parts with `flags.destructive` don't execute; instead their `Open` gets `context.dry_run: true` and built-ins report what they would do (`would open draft PR "fix: …" on acme/app`) as their output item with `dry_run: true`. `sh`/`exec` are not flagged destructive by default and run for real (in workspaces); a node can set `destructive: true` to make dry runs skip it (then its output is `{dry_run: true, would_run: "<argv redacted>"}`). **Agent nodes are stubbed:** the agent CLI isn't started; the node emits one item shaped by its `output` schema (empty strings, zeros, first enum value) with `dry_run: true`, and records no usage. `git.push`, `gh.*` and other destructive parts report what they would do. Other non-destructive parts run normally. Decision D17 (user, 2026-11-11; spec §17.10).
+
+## 10. Sources
+
+| Decision | Section | Follows |
+|---|---|---|
+| Runners behind one contract; selection by policy | §1 | [FSA ch. 12] [CA ch. 11] |
+| Process group / Job Object per node-run; kill the group | §2 | [TAOUP ch. 7] [RI ch. 5, Bulkheads] |
+| Recorded identity before kill on recovery | §2 | [DBI ch. 5] (redo only what the log proves) |
+| Clean env by allowlist; secrets only via env or protocol | §3 | [BSRS ch. 5] |
+| Headless first, terminal mode as fallback | §4 | principle 8; [TAOUP ch. 11] (programs as filters) |
+| Agent that asks a question fails at once (M6304) | §4 | ADR-001; [RI ch. 5, Fail Fast] |
+| Agents described as data, merged by id | §5 | [DDD ch. 14, Published Language] |
+| Vendor errors normalized into classes | §5 | [DDD ch. 14, Anticorruption Layer] |
+| Structured output: validate, retry once, then fail | §6 | [RI ch. 5, Fail Fast] |
+| Worktree per node-run, snapshot before retry | §7 | [RI ch. 5, Bulkheads] [BSRS ch. 9] |
+| `os.Root` for every path inside a root | §7 | [BSRS ch. 12] |
+| Daemon stop is a crash; drain on request | §8 | [RI ch. 5, Let It Crash] [RI ch. 13] |
