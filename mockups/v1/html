@@ -1,0 +1,1707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mill prototype v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=IBM+Plex+Sans:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  /* one visual world: a dark desk with a terminal on it; color only means state */
+  --desk: #0b0c0d;
+  --ink: #c9ccc6;
+  --muted: #6d7378;
+  --rule: #24282c;
+  --t-bg: #101214;
+  --t-fg: #d6d9d3;
+  --t-dim: #7a8086;
+  --t-dim2: #474c51;
+  --t-dim3: #34393e;
+  --t-sel: #20252a;
+  --t-blu: #74aee0;
+  --t-amb: #e5b248;
+  --t-amb2: #b8925a;
+  --t-grn: #8dbb7c;
+  --t-red: #dd7a70;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--desk); color: var(--ink); font-family: var(--sans); display: flex; flex-direction: column; align-items: center; }
+.top { width: 100%; max-width: 1240px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 16px 10px; }
+.top h1 { font-family: var(--mono); font-size: 15px; margin: 0; font-weight: 700; color: #eef0eb; }
+.top h1 span { color: var(--t-blu); }
+.top p { margin: 0; font-size: 13px; color: var(--muted); flex: 1 1 320px; }
+.top .btns { display: flex; gap: 6px; flex-wrap: wrap; }
+.top button { font-family: var(--mono); font-size: 12px; background: transparent; color: var(--ink); border: 1px solid #3a3f44; padding: 4px 9px; cursor: pointer; }
+.top button[aria-pressed="true"] { background: var(--ink); color: var(--desk); border-color: var(--ink); }
+.top button:hover, .top button:focus-visible { border-color: var(--ink); outline: none; }
+.term { border: 1px solid #2a2e32; background: var(--t-bg); margin: 0 16px 16px; max-width: calc(100vw - 32px); overflow: auto; }
+.bar { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 11px; color: var(--t-dim); border-bottom: 1px solid #22262a; padding: 4px 10px; }
+.scr { font-family: var(--mono); font-size: 13px; line-height: 1.22; color: var(--t-fg); padding: 10px 10px 12px; width: max-content; white-space: pre; font-variant-ligatures: none; outline: none; cursor: default; }
+.ln { height: 1.22em; }
+.ln > span { display: inline-block; height: 1.22em; vertical-align: top; }
+.g { display: inline-block; width: 1ch; text-align: center; font-weight: inherit; }
+.b { color: #f1f3ee; font-weight: 700; }
+.dim { color: var(--t-dim); } .dim2 { color: var(--t-dim2); } .dim3 { color: var(--t-dim3); }
+.mark { color: var(--t-blu); font-weight: 700; }
+.hd { color: #f1f3ee; font-weight: 700; }
+.blu { color: var(--t-blu); } .amb { color: var(--t-amb); } .amb2 { color: var(--t-amb2); }
+.grn { color: var(--t-grn); } .red { color: var(--t-red); } .out { color: #b9bdb6; }
+.sel { background: var(--t-sel); }
+.stl { background: #1b1f23; }
+.pop { background: #15181b; }
+.fold { background: #15181b; }
+.chip { background: #1b1f23; color: var(--t-dim); }
+.chip-on { background: var(--t-blu); color: #0c0e10; font-weight: 700; }
+.inv { background: var(--t-blu); color: #0c0e10; font-weight: 700; }
+.inva { background: var(--t-amb); color: #0c0e10; font-weight: 700; }
+.invr { background: var(--t-red); color: #0c0e10; font-weight: 700; }
+.invg { background: var(--t-grn); color: #0c0e10; font-weight: 700; }
+.hit { background: #5a4515; color: #ffd98a; }
+.cur { background: #f1f3ee; color: #0c0e10; }
+.c1 { color: #8a9099; } .c2 { color: #9c8fd0; } .c3 { color: #74aee0; } .c4 { color: #d48fb6; } .c5 { color: #8dbb7c; } .c6 { color: #e5b248; }
+.foot { font-size: 12px; color: var(--muted); padding: 0 16px 20px; max-width: 1240px; width: 100%; font-family: var(--mono); }
+.foot b { color: var(--ink); }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
+</style>
+</head>
+<body>
+<div class="top">
+  <h1><span>≋</span> mill · prototype v2</h1>
+  <p>One board, everything else over it. Click the terminal, then use the keyboard or mouse. All data is made up; issue-to-pr plays out live, including a rate-limit retry.</p>
+  <div class="btns">
+    <button id="b-tui" aria-pressed="true">TUI</button>
+    <button id="b-sh" aria-pressed="false">Shell</button>
+    <button id="b-snd" aria-pressed="true">Sound on</button>
+    <button id="b-saver">Screensaver</button>
+  </div>
+</div>
+<div class="term">
+  <div class="bar"><span id="bar-l">mill</span><span>124×34</span></div>
+  <div class="scr" id="scr" tabindex="0" aria-label="mill terminal prototype. Focus and type to use it."></div>
+</div>
+<div class="foot"><b>Keys</b> j/k move · enter open run · L log · v detailed rows · n new (wizard) · e edit · R run · F rerun from failed · i λ prompt · / search (state:failed tag:code ok:&lt;90) · t tags · s sort · V views · tab next failed · 1/2/3 sections · S settings · ? help · :plugins · :stats · :bg · :sh</div>
+
+<script>
+"use strict";
+const W = 124, H = 34;
+const SPIN = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏";
+const esc = s => s.replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const len = s => [...s].length;
+const trunc = (s, n) => len(s) <= n ? s : [...s].slice(0, n - 1).join("") + "…";
+
+/* ------------------------------------------------------------------ grid */
+class G {
+  constructor(w, h) { this.w = w; this.h = h; this.c = []; for (let y = 0; y < h; y++) { const r = []; for (let x = 0; x < w; x++) r.push([" ", ""]); this.c.push(r); } }
+  put(x, y, t, cls = "") { if (y < 0 || y >= this.h) return x + len(t); for (const ch of t) { if (x >= this.w) break; if (x >= 0) this.c[y][x] = [ch, cls]; x++; } return x; }
+  rput(xr, y, t, cls = "") { return this.put(xr - len(t) + 1, y, t, cls); }
+  segs(x, y, parts) { for (const [t, c] of parts) x = this.put(x, y, t, c); return x; }
+  rsegs(xr, y, parts) { const n = parts.reduce((a, [t]) => a + len(t), 0); return this.segs(xr - n + 1, y, parts); }
+  bg(x1, x2, y, extra) { if (y < 0 || y >= this.h) return; for (let x = Math.max(0, x1); x <= Math.min(this.w - 1, x2); x++) { const [ch, c] = this.c[y][x]; this.c[y][x] = [ch, (c + " " + extra).trim()]; } }
+  setcls(x1, x2, y, cls) { for (let x = x1; x <= x2; x++) if (x >= 0 && x < this.w) this.c[y][x] = [this.c[y][x][0], cls]; }
+  hl(x1, x2, y, cls = "dim", ch = "─") { for (let x = x1; x <= x2; x++) if (x >= 0 && x < this.w) this.c[y][x] = [ch, cls]; }
+  vl(x, y1, y2, cls = "dim", ch = "│") { for (let y = y1; y <= y2; y++) if (y >= 0 && y < this.h) this.c[y][x] = [ch, cls]; }
+  clear(x, y, w, h) { for (let yy = y; yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) if (yy >= 0 && yy < this.h && xx >= 0 && xx < this.w) this.c[yy][xx] = [" ", ""]; }
+  box(x, y, w, h, cls = "dim", tparts = null) {
+    this.put(x, y, "┌" + "─".repeat(w - 2) + "┐", cls);
+    this.put(x, y + h - 1, "└" + "─".repeat(w - 2) + "┘", cls);
+    for (let yy = y + 1; yy < y + h - 1; yy++) { this.c[yy][x] = ["│", cls]; this.c[yy][x + w - 1] = ["│", cls]; }
+    if (tparts) { this.put(x + 1, y, " ", cls); const e = this.segs(x + 2, y, tparts); this.put(e, y, " ", cls); }
+  }
+  dbox(x, y, w, h, cls) {
+    this.put(x, y, "┌" + "┄".repeat(w - 2) + "┐", cls);
+    this.put(x, y + h - 1, "└" + "┄".repeat(w - 2) + "┘", cls);
+    for (let yy = y + 1; yy < y + h - 1; yy++) { this.c[yy][x] = ["┆", cls]; this.c[yy][x + w - 1] = ["┆", cls]; }
+  }
+  render() {
+    let out = "";
+    for (const row of this.c) {
+      let line = "", cur = null, buf = "";
+      const flush = () => { if (buf) line += cur ? `<span class="${cur}">${buf}</span>` : buf; };
+      for (const [ch, c] of row) {
+        if (c !== cur) { flush(); buf = ""; cur = c; }
+        const o = ch.codePointAt(0);
+        if (o < 128) buf += esc(ch);
+        else buf += `<b class="g">${esc(ch)}</b>`;
+      }
+      flush();
+      out += `<div class="ln">${line}</div>`;
+    }
+    return out;
+  }
+}
+
+/* ------------------------------------------------------------------ sound */
+const AU = { ctx: null, master: null, lastTick: 0, muted: false };
+function audioInit() {
+  if (AU.ctx) return;
+  try { AU.ctx = new (window.AudioContext || window.webkitAudioContext)(); AU.master = AU.ctx.createGain(); AU.master.connect(AU.ctx.destination); setVolume(); }
+  catch (e) { AU.ctx = null; }
+}
+function setVolume() { if (AU.master) AU.master.gain.value = AU.muted ? 0 : setting("sound.volume") / 100; }
+function tone(f, d, o = {}) {
+  const c = AU.ctx; if (!c) return;
+  const t = c.currentTime + (o.at || 0), osc = c.createOscillator(), g = c.createGain();
+  osc.type = o.type || "sine"; osc.frequency.setValueAtTime(f, t);
+  if (o.to) osc.frequency.exponentialRampToValueAtTime(o.to, t + d);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(o.v || 0.2, t + (o.a || 0.003)); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+  osc.connect(g); g.connect(AU.master); osc.start(t); osc.stop(t + d + 0.03);
+}
+function noise(d, o = {}) {
+  const c = AU.ctx; if (!c) return;
+  const t = c.currentTime + (o.at || 0), n = Math.max(1, Math.floor(c.sampleRate * d)), b = c.createBuffer(1, n, c.sampleRate), data = b.getChannelData(0);
+  for (let i = 0; i < n; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 2);
+  const s = c.createBufferSource(); s.buffer = b;
+  const fl = c.createBiquadFilter(); fl.type = o.type || "bandpass"; fl.frequency.value = o.f || 2000; fl.Q.value = o.q || 1;
+  const g = c.createGain(); g.gain.value = o.v || 0.2;
+  s.connect(fl); fl.connect(g); g.connect(AU.master); s.start(t);
+}
+const SETS = {
+  millrace: {
+    tick: () => noise(.014, { f: 2600, q: 5, v: .35 }),
+    open: () => noise(.07, { f: 900, q: .7, v: .3 }),
+    back: () => noise(.05, { f: 520, q: .7, v: .25 }),
+    toggle: () => { noise(.012, { f: 3200, q: 6, v: .3 }); noise(.012, { f: 2200, q: 6, v: .25, at: .035 }); },
+    error: () => tone(170, .14, { type: "triangle", v: .22, to: 110 }),
+    place: () => noise(.04, { f: 480, q: 2, v: .5 }),
+    connect: () => tone(196, .14, { type: "triangle", v: .2, to: 294 }),
+    disconnect: () => tone(294, .12, { type: "triangle", v: .18, to: 180 }),
+    save: () => { tone(660, .16, { v: .1 }); tone(990, .22, { v: .07, at: .06 }); },
+    lint_ok: () => tone(880, .12, { v: .09 }),
+    lint_fail: () => { tone(210, .09, { type: "triangle", v: .2 }); tone(175, .11, { type: "triangle", v: .2, at: .1 }); },
+    run_start: () => noise(.22, { f: 650, q: .5, v: .25, type: "lowpass" }),
+    node_done: () => tone(1150, .1, { v: .16, to: 420 }),
+    retry: () => { noise(.025, { f: 820, q: 3, v: .4 }); noise(.025, { f: 700, q: 3, v: .35, at: .08 }); },
+    run_done: () => { noise(.28, { f: 480, q: .6, v: .18, type: "lowpass" }); tone(523, .5, { v: .1, at: .14 }); tone(784, .65, { v: .08, at: .26 }); },
+    run_failed: () => { tone(92, .38, { v: .35, to: 52 }); noise(.09, { f: 300, q: 1, v: .35 }); },
+  },
+  foundry: {
+    tick: () => tone(1900, .008, { type: "square", v: .05 }),
+    open: () => { noise(.06, { f: 1500, q: 1.5, v: .25 }); tone(140, .07, { type: "square", v: .06 }); },
+    back: () => tone(120, .06, { type: "square", v: .06 }),
+    toggle: () => { tone(2400, .01, { type: "square", v: .05 }); tone(1600, .012, { type: "square", v: .05, at: .03 }); },
+    error: () => tone(110, .18, { type: "sawtooth", v: .09 }),
+    place: () => { noise(.05, { f: 300, q: 1.2, v: .5 }); tone(80, .08, { type: "square", v: .08 }); },
+    connect: () => noise(.08, { f: 1800, q: 8, v: .25 }),
+    disconnect: () => noise(.06, { f: 1200, q: 8, v: .2 }),
+    save: () => { tone(1200, .25, { v: .07 }); tone(2400, .2, { v: .04 }); },
+    lint_ok: () => tone(1400, .15, { v: .06 }),
+    lint_fail: () => tone(90, .2, { type: "sawtooth", v: .08 }),
+    run_start: () => noise(.3, { f: 200, q: .5, v: .3, type: "lowpass" }),
+    node_done: () => { tone(1300, .18, { v: .07 }); tone(2600, .12, { v: .04 }); },
+    retry: () => { tone(160, .05, { type: "square", v: .07 }); tone(160, .05, { type: "square", v: .07, at: .1 }); },
+    run_done: () => { noise(.12, { f: 250, q: 1, v: .4 }); tone(988, .7, { v: .08, at: .12 }); },
+    run_failed: () => { noise(.5, { f: 180, q: .4, v: .4, type: "lowpass" }); tone(65, .5, { type: "sawtooth", v: .08 }); },
+  },
+  chiptune: {
+    tick: () => tone(1320, .02, { type: "square", v: .04 }),
+    open: () => { tone(660, .04, { type: "square", v: .05 }); tone(990, .05, { type: "square", v: .05, at: .04 }); },
+    back: () => { tone(990, .04, { type: "square", v: .05 }); tone(660, .05, { type: "square", v: .05, at: .04 }); },
+    toggle: () => tone(1760, .03, { type: "square", v: .04 }),
+    error: () => tone(220, .14, { type: "square", v: .06, to: 110 }),
+    place: () => tone(523, .06, { type: "square", v: .05 }),
+    connect: () => [523, 659, 784].forEach((f, i) => tone(f, .05, { type: "square", v: .05, at: i * .04 })),
+    disconnect: () => [784, 659, 523].forEach((f, i) => tone(f, .05, { type: "square", v: .05, at: i * .04 })),
+    save: () => [784, 1047].forEach((f, i) => tone(f, .07, { type: "square", v: .05, at: i * .06 })),
+    lint_ok: () => tone(1047, .08, { type: "square", v: .04 }),
+    lint_fail: () => [330, 262].forEach((f, i) => tone(f, .08, { type: "square", v: .05, at: i * .08 })),
+    run_start: () => [392, 523].forEach((f, i) => tone(f, .07, { type: "square", v: .05, at: i * .07 })),
+    node_done: () => tone(1568, .06, { type: "square", v: .04 }),
+    retry: () => [440, 440].forEach((f, i) => tone(f, .05, { type: "square", v: .05, at: i * .1 })),
+    run_done: () => [523, 659, 784, 1047].forEach((f, i) => tone(f, .09, { type: "square", v: .05, at: i * .08 })),
+    run_failed: () => [392, 330, 262, 196].forEach((f, i) => tone(f, .12, { type: "square", v: .06, at: i * .1 })),
+  },
+  bell: {
+    error: () => tone(660, .2, { v: .08 }),
+    run_done: () => tone(880, .7, { v: .12 }),
+    run_failed: () => { tone(440, .45, { v: .12 }); tone(415, .55, { v: .1, at: .22 }); },
+  },
+  off: {},
+};
+const GROUP = { tick: "interface", open: "interface", back: "interface", toggle: "interface", error: "interface",
+  place: "editing", connect: "editing", disconnect: "editing", save: "editing", lint_ok: "editing", lint_fail: "editing",
+  run_start: "runs", node_done: "runs", retry: "runs", run_done: "runs", run_failed: "runs" };
+function play(ev, force = false) {
+  if (!AU.ctx || AU.muted) return;
+  if (!force && !setting("sound." + GROUP[ev])) return;
+  if (ev === "tick") { const n = performance.now(); if (n - AU.lastTick < 40) return; AU.lastTick = n; }
+  const fn = (SETS[setting("sound.set")] || {})[ev];
+  if (AU.ctx.state === "suspended") AU.ctx.resume();
+  if (fn) try { fn(); } catch (e) {}
+}
+function sayMill() {
+  if (!setting("sound.voice") || AU.muted || !("speechSynthesis" in window)) return;
+  try {
+    const u = new SpeechSynthesisUtterance("mill");
+    const vs = speechSynthesis.getVoices();
+    const pick = vs.find(v => /Daniel|Google UK English Male|Fred|Alex/i.test(v.name)) || vs.find(v => /^en/i.test(v.lang));
+    if (pick) u.voice = pick;
+    u.pitch = 0.55; u.rate = 0.82; u.volume = setting("sound.volume") / 100;
+    speechSynthesis.speak(u);
+  } catch (e) {}
+}
+
+/* ------------------------------------------------------------------ settings */
+const SECTIONS = [
+  ["General", [
+    { id: "editor", label: "editor", type: "text", val: "$EDITOR", note: "used by E and mill edit" },
+    { id: "notify", label: "notify", type: "enum", vals: ["desktop", "bell", "off"], val: "desktop", note: "desktop notification when a run fails" },
+    { id: "telemetry", label: "telemetry", type: "bool", val: false, note: "never on by default" },
+  ]],
+  ["Runs", [
+    { id: "max_concurrent_runs", label: "max runs", type: "num", min: 1, max: 64, val: 8, note: "global run cap" },
+    { id: "max_concurrent_agents", label: "max agents", type: "num", min: 1, max: 16, val: 4, note: "set in init.lua:7", src: "init.lua:7" },
+    { id: "keep_workspaces", label: "keep workspaces", type: "enum", vals: ["never", "on_failure", "always"], val: "on_failure", note: "worktree cleanup" },
+    { id: "retention", label: "retention", type: "enum", vals: ["7d", "30d", "90d", "forever"], val: "30d", note: "how long finished runs are kept" },
+  ]],
+  ["Agents", [
+    { id: "default_agent", label: "default agent", type: "enum", vals: ["claude", "codex", "gemini", "aider"], val: "claude", note: "for agent nodes without one" },
+    { id: "trusted_dirs", label: "trusted dirs", type: "text", val: "~/code", note: "folder-trust prompts answered only here" },
+  ]],
+  ["Plugins", [
+    { id: "plugins.auto_update", label: "auto update", type: "enum", vals: ["off", "patch", "minor"], val: "off", note: "never adds permissions on its own" },
+    { id: "plugins.sandbox", label: "sandbox", type: "enum", vals: ["none", "container"], val: "none", note: "run executable parts in containers" },
+  ]],
+  ["Appearance", [
+    { id: "theme", label: "theme", type: "enum", vals: ["auto", "dark", "light"], val: "auto", note: "" },
+    { id: "density", label: "density", type: "enum", vals: ["normal", "compact"], val: "normal", note: "" },
+    { id: "reduce_motion", label: "reduce motion", type: "bool", val: false, note: "no spinners, no screensaver drift" },
+    { id: "screensaver.enabled", label: "screensaver", type: "bool", val: true, note: "logo and counts when idle" },
+    { id: "screensaver.after_minutes", label: "after", type: "num", min: 1, max: 120, val: 1, note: "idle minutes (5 by default; 1 in this demo)" },
+  ]],
+  ["Sound", [
+    { id: "sound.set", label: "soundset", type: "enum", vals: ["millrace", "foundry", "chiptune", "bell", "off"], val: "millrace", note: "millrace · foundry · chiptune · bell · off" },
+    { id: "sound.volume", label: "volume", type: "num", min: 0, max: 100, step: 10, val: 60, note: "" },
+    { id: "sound.voice", label: "startup voice", type: "bool", val: true, note: "says \"mill\" when the TUI opens" },
+    { id: "sound.interface", label: "interface", type: "bool", val: true, note: "tick · open · back · toggle · error" },
+    { id: "sound.editing", label: "editing", type: "bool", val: true, note: "place · connect · save · lint" },
+    { id: "sound.runs", label: "runs", type: "bool", val: true, note: "run start · node done · retry · done · failed" },
+    { id: "sound.when", label: "when", type: "enum", vals: ["always", "unfocused"], val: "always", note: "" },
+    { id: "sound.quiet_hours", label: "quiet hours", type: "text", val: "22:00-08:00", note: "no sounds in this window" },
+    { kind: "preview", ev: "tick", label: "tick", note: "moving the cursor" },
+    { kind: "preview", ev: "open", label: "open", note: "opening a screen or run" },
+    { kind: "preview", ev: "connect", label: "connect", note: "drawing an edge" },
+    { kind: "preview", ev: "node_done", label: "node done", note: "a node finished" },
+    { kind: "preview", ev: "retry", label: "retry", note: "a node is retrying" },
+    { kind: "preview", ev: "run_done", label: "run done", note: "a run finished" },
+    { kind: "preview", ev: "run_failed", label: "run failed", note: "a run failed" },
+  ]],
+  ["Gateway", [
+    { id: "gateway.listen", label: "listen", type: "text", val: "off", note: "e.g. 127.0.0.1:7337" },
+    { id: "gateway.public_url", label: "public url", type: "text", val: "", note: "tunnel or hosted relay" },
+  ]],
+  ["Advanced", [
+    { id: "mouse_enabled", label: "mouse", type: "bool", val: true, note: "click and wheel in the TUI" },
+    { id: "workspace_root", label: "workspace root", type: "text", val: "~/.local/share/mill/workspaces", note: "" },
+  ]],
+];
+const SETTING = {}; for (const [, rows] of SECTIONS) for (const r of rows) if (r.id) SETTING[r.id] = r;
+const setting = id => SETTING[id] ? SETTING[id].val : undefined;
+
+/* ------------------------------------------------------------------ data */
+const PIPES = [
+  { name: "nightly-sweep", state: "failed", ago: "9h", desc: "Fix new vulnerabilities and open a draft PR.", hist: "✓✓✓✓✓✓✓✓✗✓✓✓✓✓✓✓✓✓✓✓✓✓✗✓✓✓✓✓✓✗", typ: "6m", cost: 0.30, trigger: "cron 03:00", detail: "build · make check failed on all 3 tries", next: "in 14h", tags: ["code"], scope: "project", lastSec: 9 * 3600 },
+  { name: "issue-to-pr", state: "retrying", ago: "", desc: "Turn labeled issues into reviewed draft PRs.", hist: "✓✓✓✗✓✓✓✓✓✓✓✗✓✓✓✓✓✓✓✓✓✓✓✗✓✓✓✓✓", typ: "14m", cost: 3.80, trigger: "webhook /github", detail: "", next: "on webhook", tags: ["code", "github"], scope: "project", lastSec: 0, live: true },
+  { name: "inbox-triage", state: "running", ago: "", desc: "Sort new mail and draft replies.", hist: "✓".repeat(29), typ: "19s", cost: 0.02, trigger: "every 15m", detail: "classify · 4 of 9 messages", next: "every 15m", tags: ["mail"], scope: "user", lastSec: 0, cycle: 0 },
+  { name: "morning-brief", state: "ok", ago: "4h", desc: "Weekday digest of feeds, markets and calendar.", hist: "✓".repeat(30), typ: "48s", cost: 0.08, trigger: "cron 07:30", detail: "", next: "07:30", tags: ["daily"], scope: "user", lastSec: 4 * 3600 },
+  { name: "docs-drift", state: "ok", ago: "2h", desc: "Keep docs in step with the source.", hist: "✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✗✓✓✓✓", typ: "2m", cost: 0.11, trigger: "merge to main", detail: "", next: "on merge", tags: ["code"], scope: "project", lastSec: 2 * 3600 },
+  { name: "release-notes", state: "ok", ago: "3d", desc: "Draft release notes when a tag is pushed.", hist: "✓".repeat(14), typ: "1m", cost: 0.06, trigger: "tag v*", detail: "", next: "on tag", tags: ["code"], scope: "project", lastSec: 3 * 86400 },
+  { name: "best-of-3", state: "draft", ago: "", desc: "Three agents, one task, keep the best.", hist: "", typ: "-", cost: null, trigger: "manual", detail: "", next: "never run", tags: ["code"], scope: "project", lastSec: 1e12 },
+];
+const STATE_ORDER = { failed: 0, retrying: 1, running: 2, ok: 3, draft: 4 };
+const STATE_GL = { failed: ["✗", "red"], retrying: ["↻", "amb"], running: ["⠋", "blu"], ok: ["✓", "grn"], draft: ["○", "dim"] };
+
+/* ------------------------------------------------------------------ run simulation */
+const SIM = { speed: 6, start: 440, now: 440, lastReal: null, done: false, fired: {} };
+const simSpeed = t => (t >= RETRY_FROM - 2 && t < RETRY_TO) ? 1.5 : 6;
+const RUN_NODES = [
+  { id: "webhook", gl: "⌁", sub: "/github", s: 0, e: 0.5 },
+  { id: "ws", gl: "⑂", sub: "git.worktree", s: 0.5, e: 1.3 },
+  { id: "plan", gl: "◆", sub: "claude/opus", s: 2, e: 340, agent: true, note: "5m38s · 210K tk · $0.94" },
+  { id: "scope", gl: "⊢", sub: "risk·files", s: 340, e: 340.6, note: "pass · risk medium, 3 files" },
+  { id: "build", gl: "↻", sub: "sonnet·loop", s: 341, e: 560, agent: true },
+  { id: "review", gl: "◇", sub: "codex·review", s: 560, e: 640, agent: true, note: "approve · 2 nits" },
+  { id: "pr", gl: "⇡", sub: "gh.pr draft", s: 640, e: 645, note: "draft PR #1293" },
+  { id: "ping", gl: "◎", sub: "mcp:slack", s: 645, e: 646, note: "posted to #dev" },
+];
+const RETRY_FROM = 421, RETRY_TO = 461;
+const RUN_XS = [1, 21, 41, 61];
+const RUN_POS = { webhook: [1, 4], ws: [21, 4], plan: [41, 4], scope: [61, 4], build: [61, 12], review: [41, 12], pr: [21, 12], ping: [1, 12] };
+const runItems = () => Object.entries(RUN_POS).map(([id, [x, y]]) => ({ id, x1: x, x2: x + 15, y1: y, y2: y + 4 }));
+const RUN_END = 646;
+function nodeState(n) {
+  const t = SIM.now;
+  if (n.id === "build") {
+    if (t < n.s) return "pending";
+    if (t >= RETRY_FROM && t < RETRY_TO) return "retrying";
+    if (t >= n.e) return "done";
+    return "working";
+  }
+  if (t < n.s) return "pending";
+  if (t >= n.e) return "done";
+  return "working";
+}
+const SIM_EVENTS = [
+  { t: 461, node: "build", lvl: "INF", msg: "retrying loop 2/3", sound: null },
+  { t: 470, node: "build", lvl: "OUT", msg: "The retry helper wasn't wired into NewSender. Wiring it in." },
+  { t: 535, node: "build", lvl: "OUT", msg: "$ make check   ok (14.2s)" },
+  { t: 560, node: "build", lvl: "INF", msg: "done 3m39s · 402K tk · $1.71", sound: "node_done" },
+  { t: 561, node: "review", lvl: "INF", msg: "start codex · independent · diff 3 files +88 -12" },
+  { t: 640, node: "review", lvl: "INF", msg: "verdict approve · 2 nits (naming, a missing doc comment)", sound: "node_done" },
+  { t: 645, node: "pr", lvl: "INF", msg: "draft PR #1293 opened: \"fix: webhook sender drops events on 429\"", sound: "node_done" },
+  { t: 646, node: "ping", lvl: "INF", msg: "posted to #dev", sound: "node_done" },
+  { t: 646.2, node: "run", lvl: "INF", msg: "run done 10m46s · 812K tk · $4.40", sound: "run_done" },
+];
+function simReset(fromBuild) {
+  SIM.start = 440; SIM.now = 440; SIM.lastReal = performance.now(); SIM.done = false; SIM.fired = {};
+  LOG.splice(BASE_LOG_LEN);
+  if (fromBuild) { S.run.num++; LOG.push({ t: "13:20:00.000", node: "run", lvl: "INF", msg: `issue-to-pr#${S.run.num} started from build · reusing webhook, ws, plan, scope` }); }
+}
+function simStep() {
+  const nowReal = performance.now();
+  if (SIM.lastReal == null) SIM.lastReal = nowReal;
+  const dt = Math.min(0.5, (nowReal - SIM.lastReal) / 1000); SIM.lastReal = nowReal;
+  if (!SIM.done) {
+    SIM.now += dt * simSpeed(SIM.now);
+    for (const [i, ev] of SIM_EVENTS.entries()) {
+      if (!SIM.fired[i] && SIM.now >= ev.t) {
+        SIM.fired[i] = true;
+        LOG.push({ t: clock(ev.t), node: ev.node, lvl: ev.lvl, msg: ev.msg });
+        if (ev.sound) play(ev.sound);
+        S.dirty = true;
+      }
+    }
+    if (SIM.now >= RUN_END + 0.3) {
+      SIM.done = true; SIM.now = RUN_END + 0.3;
+      const p = PIPES.find(p => p.name === "issue-to-pr"); p.state = "ok"; p.lastSec = 1; p.hist += "✓";
+      if (S.popup !== "run") toast(`✓ issue-to-pr#${S.run.num} done · draft PR #1293`, "grn");
+    }
+  }
+  const p = PIPES.find(p => p.name === "issue-to-pr");
+  if (!SIM.done) p.state = SIM.now < RETRY_TO && SIM.now >= RETRY_FROM ? "retrying" : "running";
+}
+function clock(sec) {
+  const base = 12 * 3600 + 4 * 60 + 1, t = base + sec, h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), s = Math.floor(t % 60), ms = Math.floor((t % 1) * 1000);
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}.${String(ms).padStart(3, "0")}`;
+}
+
+/* ------------------------------------------------------------------ log data */
+const LOG = [
+  { t: "12:04:01.112", node: "webhook", lvl: "INF", msg: 'event issues.labeled #1287 "Webhook sender drops events on 429"' },
+  { t: "12:04:01.130", node: "ws", lvl: "INF", msg: "git worktree add mill/issue-1287 (base main @ 9c1e2f0)" },
+  { t: "12:04:01.904", node: "ws", lvl: "INF", msg: "done 0.8s" },
+  { t: "12:04:02.010", node: "plan", lvl: "INF", msg: "start claude/opus effort=high headless" },
+  { fold: "plan", node: "plan", t: "12:04:02", title: "agent output · 214 lines", lines: ["Reading issue #1287 and sender.go …", "The sender posts once and treats any non-2xx as fatal.", "Plan: 1) retry helper with backoff, 2) idempotency key, 3) tests for 429 and timeouts.", "Risk: medium. Files: sender.go, retry.go, sender_test.go."] },
+  { t: "12:09:39.882", node: "plan", lvl: "INF", msg: "MILL_OUTPUT written 1.9 KB · schema ok (plan, files, risk)" },
+  { t: "12:09:40.001", node: "plan", lvl: "INF", msg: "done 5m38s · 210K tk · $0.94" },
+  { t: "12:09:40.003", node: "scope", lvl: "INF", msg: "assert passed: risk medium, 3 files (limit 8)" },
+  { t: "12:09:40.010", node: "build", lvl: "INF", msg: "start claude/sonnet loop 1/3" },
+  { fold: "build1", node: "build", t: "12:09:41", title: "agent output", lines: ["Reading sender.go, retry.go", "The sender treats any non-2xx as fatal, so a 429 drops the event.", "Adding RetryWithBackoff(5, 2s, x2) around Post, honoring Retry-After.", "$ make check", "!--- FAIL: TestSender_429 (0.02s) expected 5 attempts, got 1"] },
+  { t: "12:10:51.220", node: "build", lvl: "WRN", msg: "check failed (exit 1) · feeding failure back · loop 2/3" },
+  { t: "12:11:02.004", node: "build", lvl: "WRN", msg: "M6201 provider returned 429 (rate limited) · retry 1 of 2 in 40s" },
+];
+const BASE_LOG_LEN = LOG.length;
+const NODE_COLOR = { webhook: "c1", ws: "c2", plan: "c3", scope: "c6", build: "c5", review: "c4", pr: "c3", ping: "c2", run: "dim" };
+function lineText(l) { return l.kind === "line" ? `${l.e.t} ${l.e.node} ${l.e.lvl} ${l.e.msg}` : l.kind === "fold" ? `${l.e.t} ${l.e.node} ${l.e.title}` : l.text; }
+function logLines() {
+  const out = [];
+  for (const e of LOG) {
+    if (S.log.only && e.node !== S.log.only) continue;
+    if (e.fold) {
+      const open = !S.log.folds[e.fold];
+      out.push({ kind: "fold", e, open, node: e.node });
+      if (open) for (const l of e.lines) out.push({ kind: "out", node: e.node, text: l.replace(/^!/, ""), err: l.startsWith("!") });
+    } else if (e.lvl === "OUT") out.push({ kind: "out", node: e.node, text: e.msg });
+    else out.push({ kind: "line", e });
+  }
+  return out;
+}
+
+/* ------------------------------------------------------------------ plugins data */
+const PLUG = {
+  installed: [
+    { st: "↑", cls: "amb", name: "acme/linear", ver: "1.2.0", up: "1.3.0", prov: "5 parts · 1 template", src: "registry", health: ["✓ ok", "grn"], used: ["issue-to-pr", "bug-intake"], desc: "Linear issues, comments and projects for mill",
+      parts: "linear.issue.create · linear.issue.update · linear.comment · linear.poll · linear.webhook", perms: [["network ", "dim"], ["api.linear.app", ""], ["   destructive ", "dim"], ["linear.issue.update", "amb2"]], secret: "LINEAR_API_KEY", change: "+ linear.project.list  ·  fix: poll no longer re-fires on edited issues" },
+    { st: "✓", cls: "grn", name: "mill/github", ver: "1.4.2", prov: "8 parts · 2 triggers", src: "registry", health: ["✓ ok", "grn"], used: ["issue-to-pr", "docs-drift", "release-notes", "best-of-3", "nightly-sweep", "pr-fixer"], desc: "GitHub issues, PRs, comments and webhooks",
+      parts: "gh.pr · gh.issue · gh.comment · gh.release · gh.poll · gh.webhook", perms: [["network ", "dim"], ["api.github.com", ""], ["   destructive ", "dim"], ["gh.pr · gh.comment · gh.release", "amb2"]], secret: "GITHUB_TOKEN" },
+    { st: "✓", cls: "grn", name: "mill/slack", ver: "1.1.0", prov: "3 parts", src: "registry", health: ["✓ ok", "grn"], used: ["issue-to-pr", "morning-brief", "nightly-sweep", "failure-digest"], desc: "Post and read Slack messages",
+      parts: "slack.post · slack.react · slack.poll", perms: [["network ", "dim"], ["slack.com", ""], ["   destructive ", "dim"], ["slack.post", "amb2"]], secret: "SLACK_TOKEN" },
+    { st: "✓", cls: "grn", name: "mill/rex", ver: "0.3.0", prov: "handoff · runner · trigger", src: "registry", health: ["✓ rex found", "grn"], used: ["pr-fixer"], desc: "Hand work to rex sessions, run agents on the rex board",
+      parts: "rex.session (handoff) · rex (runner) · rex.event (trigger)", perms: [["socket ", "dim"], ["rex-daemon", ""]], secret: null },
+    { st: "↑", cls: "amb", name: "mill/openapi", ver: "0.6.1", up: "0.7.0", prov: "plugin generator", src: "registry", health: ["✓ ok", "grn"], used: [], desc: "Generate a plugin from any OpenAPI spec",
+      parts: "openapi (generator)", perms: [["network ", "dim"], ["per generated plugin", ""]], secret: null, change: "+ OpenAPI 3.1 webhooks become triggers  ·  needs no new permissions" },
+    { st: "✗", cls: "red", name: "notion", ver: "mcp", prov: "12 tools", src: "mill.mcp in init.lua", health: ["✗ M6202 auth", "red"], used: ["notes-to-post"], desc: "Notion MCP server",
+      parts: "notion.search · notion.page.create · notion.page.update · … (12)", perms: [["network ", "dim"], ["api.notion.com", ""]], secret: "NOTION_TOKEN" },
+    { st: "◇", cls: "blu", name: "standup", ver: "dev", prov: "1 command · 1 part", src: "~/code/mill-plugin-standup", health: ["↻ hot reload", "blu"], used: [], desc: "Local plugin under development",
+      parts: ":standup command · standup.collect", perms: [["filesystem ", "dim"], ["~/notes", ""]], secret: null },
+    { st: "✓", cls: "grn", name: "lofi-water", ver: "1.0.0", prov: "soundset", src: "gh:someone/lofi-water", health: ["✓ ok", "grn"], used: [], desc: "A softer, slower take on millrace",
+      parts: "soundset lofi-water", perms: [], secret: null },
+  ],
+  available: [
+    { name: "mill/jira", ver: "1.0.4", prov: "6 parts · 1 trigger", desc: "Jira issues and transitions" },
+    { name: "mill/s3", ver: "0.9.0", prov: "artifact store", desc: "Keep large artifacts in S3-compatible storage" },
+    { name: "acme/pagerduty", ver: "2.1.0", prov: "3 parts", desc: "Open and resolve incidents" },
+    { name: "mill/otel", ver: "1.2.0", prov: "sink", desc: "Export runs as OpenTelemetry traces" },
+    { name: "someone/typewriter", ver: "0.2.0", prov: "soundset", desc: "Mechanical keys and a carriage-return bell" },
+  ],
+  mcp: [
+    { name: "slack", st: ["● running", "grn"], tools: 9 }, { name: "github", st: ["● running", "grn"], tools: 31 },
+    { name: "notion", st: ["✗ auth expired (M6202)", "red"], tools: 12 }, { name: "postgres", st: ["○ stopped (starts on use)", "dim"], tools: 6 },
+  ],
+  agents: [
+    { name: "claude", st: ["✓ installed · signed in", "grn"], models: "opus · sonnet · haiku" }, { name: "codex", st: ["✓ installed · signed in", "grn"], models: "gpt-5" },
+    { name: "gemini", st: ["✓ installed", "grn"], models: "2.5-pro · 2.5-flash" }, { name: "aider", st: ["✗ not found on PATH (M6101)", "red"], models: "-" },
+    { name: "local-qwen", st: ["✓ ollama running", "grn"], models: "qwen2.5-coder" }, { name: "echo", st: ["✓ built in (tests)", "dim"], models: "short · long" },
+  ],
+};
+const PVIEWS = ["installed", "available", "updates", "mcp", "agents"];
+
+/* ------------------------------------------------------------------ create data */
+const CNODES = [
+  { id: "manual", x: 25, y: 8, w: 11, gl: "⌁", name: "manual", sub: "task text", uses: "manual", f: [["input", "task: string"]] },
+  { id: "fanout", x: 40, y: 8, w: 13, gl: "⧉", name: "fanout", sub: "×3 worktrees", uses: "agent.fanout", f: [["agents", "claude, codex, gemini"], ["workspace", "git (one each)"]] },
+  { id: "claude", x: 58, y: 3, w: 14, gl: "◆", name: "claude", sub: "opus · high", uses: "agent", f: [["agent", "claude"], ["model", "opus"], ["effort", "high"]] },
+  { id: "codex", x: 58, y: 8, w: 14, gl: "◆", name: "codex", sub: "gpt-5 · high", uses: "agent", f: [["agent", "codex"], ["model", "gpt-5"], ["effort", "high"]] },
+  { id: "gemini", x: 58, y: 13, w: 14, gl: "◆", name: "gemini", sub: "2.5-pro", uses: "agent", f: [["agent", "gemini"], ["model", "2.5-pro"]] },
+  { id: "judge", x: 78, y: 8, w: 13, gl: "◭", name: "judge", sub: "rubric.md", uses: "agent.judge", f: [["rubric", "@prompts/rubric.md"], ["agent", "claude/opus"], ["output", "winner, score"]] },
+  { id: "assert", x: 78, y: 18, w: 13, gl: "⊢", name: "assert", sub: "score ≥ 7", uses: "assert", f: [["that", "${{ item.score >= 7 }}"], ["else", "route"]] },
+  { id: "pr", x: 58, y: 18, w: 14, gl: "⇡", name: "pr", sub: "draft PR", uses: "gh.pr", f: [["title", "feat: ${{ inputs.task }}"], ["base", "main"], ["draft", "true"], ["body", "@prompts/pr.md"]], destructive: true },
+  { id: "handoff", x: 58, y: 23, w: 14, gl: "↪", name: "handoff", sub: "issue: no win", uses: "handoff", f: [["to", "gh.issue"], ["title", "best-of-3: no winner"]] },
+];
+const PARTS = [
+  ["#", "slack.post", "node · destructive", "mill/slack"], ["◩", "linear.comment", "node", "acme/linear"], ["◩", "linear.issue.create", "node · destructive", "acme/linear"],
+  ["⇡", "gh.comment", "node · destructive", "mill/github"], ["$", "sh", "node", "built-in"], ["⇄", "http", "node", "built-in"], ["⊢", "assert", "node", "built-in"],
+  ["↪", "handoff", "node", "built-in"], ["◆", "agent", "node", "built-in"], ["◇", "agent.review", "node", "built-in"], ["·", "mcp:notion/page.create", "mcp tool", "notion"],
+];
+
+/* ------------------------------------------------------------------ spatial movement (vim-style: strictly in the pressed direction) */
+function spatial(items, curId, dx, dy) {
+  const cur = items.find(i => i.id === curId); if (!cur) return null;
+  let best = null, bd = 1e9;
+  for (const it of items) {
+    if (it.id === curId) continue;
+    let d;
+    if (dy) {
+      if (dy > 0 ? it.y1 <= cur.y2 : it.y2 >= cur.y1) continue;
+      if (Math.min(it.x2, cur.x2) < Math.max(it.x1, cur.x1)) continue;   // must share the column
+      d = dy > 0 ? it.y1 - cur.y2 : cur.y1 - it.y2;
+    } else {
+      if (dx > 0 ? it.x1 <= cur.x2 : it.x2 >= cur.x1) continue;
+      if (Math.min(it.y2, cur.y2) < Math.max(it.y1, cur.y1)) continue;   // must share the row
+      d = dx > 0 ? it.x1 - cur.x2 : cur.x1 - it.x2;
+    }
+    if (d < bd) { bd = d; best = it; }
+  }
+  return best;
+}
+
+/* ------------------------------------------------------------------ mouse hit areas (filled during render) */
+let HITS = [];
+function hit(x1, y1, x2, y2, fn, dbl) { HITS.push({ x1, y1, x2, y2, fn, dbl }); }
+
+/* ------------------------------------------------------------------ chrome */
+function counts() {
+  const c = { failed: 0, retrying: 0, running: 0 };
+  for (const p of PIPES) if (c[p.state] !== undefined) c[p.state]++;
+  return c;
+}
+function strip(g, x, y, hist, n, live) {
+  let h = [...hist].slice(-(live ? n - 1 : n)); if (live) h.push(live);
+  while (h.length < n) h.unshift("·");
+  const col = { "✓": "grn", "✗": "red", "↻": "amb", "r": "blu" };
+  for (const c of h) x = g.put(x, y, c === "·" ? "·" : "■", col[c] || "dim3");
+  return x;
+}
+function okfrac(hist) { const d = [...hist].filter(c => c === "✓" || c === "✗"); return [d.filter(c => c === "✓").length, d.length]; }
+function spin() { return setting("reduce_motion") ? "⠿" : SPIN[S.tick % SPIN.length]; }
+
+function plugRows() {
+  const v = PVIEWS[S.plugins.view];
+  if (v === "installed") return PLUG.installed;
+  if (v === "updates") return PLUG.installed.filter(p => p.up);
+  return PLUG[v];
+}
+function updatePlugin(p, all) {
+  if (!p.up) return toast(`${p.name} is up to date`, "dim");
+  p.busy = "updating…"; S.dirty = true;
+  setTimeout(() => { p.ver = p.up; delete p.up; delete p.busy; p.st = "✓"; p.cls = "grn"; play("save", true); toast(`✓ ${p.name} ${p.ver} installed · locked in mill.lock`, "grn"); S.dirty = true; }, all ? 900 : 1300);
+}
+
+const SH = { lines: [], input: "", hist: [], hi: -1 };
+const PROMPT = () => { const c = counts(); return c.failed ? [["~/code/app", "blu"], [" ", ""], [`≋✗${c.failed}`, "red"], [" ", ""], ["❯ ", "grn"]] : [["~/code/app", "blu"], [" ", ""], ["❯ ", "grn"]]; };
+function shOut(segs) { SH.lines.push(typeof segs === "string" ? [[segs, ""]] : segs); }
+function shRun(cmd) {
+  SH.lines.push([...PROMPT(), [cmd, "b"]]);
+  const a = cmd.trim().split(/\s+/);
+  if (!cmd.trim()) return;
+  SH.hist.push(cmd); SH.hi = -1;
+  if (a[0] === "clear") { SH.lines = []; return; }
+  if (a[0] === "help" || (a[0] === "mill" && (a[1] === "--help" || a[1] === "help"))) {
+    ["mill                     open the TUI", "mill status              one-line summary", "mill ls                  list pipelines", "mill runs                recent runs",
+      "mill run <pipeline>      start a run", "mill rerun <run> --from <node>", "mill explain <code>      what an error means", "mill doctor              check the setup", "clear                    clear the screen"].forEach(l => shOut([[l, "dim"]]));
+    return;
+  }
+  if (a[0] !== "mill") { shOut([[`${a[0]}: not available in this demo · try `, "dim"], ["help", "b"]]); return; }
+  const c = counts();
+  switch (a[1]) {
+    case undefined: S.shell = false; syncBtns(); S.screen = "board"; play("open"); return;
+    case "status": shOut([["≋", "mark"], [" ", ""], [`${c.failed} failed`, c.failed ? "red" : "dim"], [" · ", "dim"], [`${c.retrying} retrying`, c.retrying ? "amb" : "dim"], [" · ", "dim"], [`${c.running} working`, "blu"], [" · 14 done today · $6.20", "dim"]]); return;
+    case "ls":
+      shOut([["NAME            TRIGGER             LAST RUN         NEXT       RUNS", "dim"]]);
+      for (const p of PIPES) { const [gl, gc] = STATE_GL[p.state]; shOut([[p.name.padEnd(16), ""], [p.trigger.padEnd(20), "dim"], [gl + " ", gc], [(p.state + " " + (p.ago || "")).padEnd(15), gc], [p.next.padEnd(11), "dim"], [String(p.hist.length), ""]]); }
+      return;
+    case "runs":
+      shOut([["RUN                 STATE         NODES   TOKENS   COST    STARTED", "dim"]]);
+      shOut([["nightly-sweep#118   ", ""], ["✗ failed      ", "red"], ["3/5     95K      $0.31   9h ago", "dim"]]);
+      shOut([[`issue-to-pr#${S.run.num}`.padEnd(20), ""], SIM.done ? ["✓ done        ", "grn"] : ["↻ retrying    ", "amb"], ["5/9     812K     $4.10   12m ago", "dim"]]);
+      shOut([["morning-brief#63    ", ""], ["✓ done        ", "grn"], ["5/5     40K      $0.08   4h ago", "dim"]]);
+      return;
+    case "run": {
+      const name = a[2] || "";
+      const p = PIPES.find(p => p.name === name);
+      if (!p) {
+        const near = PIPES.map(p => [p.name, lev(p.name, name)]).sort((x, y) => x[1] - y[1])[0];
+        shOut([["error", "red b"], ["[M1201]", "red"], [`: pipeline "${name}" not found`, "b"]]);
+        if (near && near[1] <= 3) shOut([["  did you mean  ", "dim"], [near[0], ""]]);
+        shOut([["  help: ", "dim"], ["mill ls  ·  mill explain M1201", ""]]); play("error"); return;
+      }
+      if (p.state === "draft") { shOut([["error", "red b"], ["[M4002]", "red"], [`: ${p.name} is a draft with no runs`, "b"]]); shOut([["  help: ", "dim"], [`mill edit ${p.name}`, ""]]); return; }
+      if (p.created && a.includes("--json")) {
+        const n = p.hist.length + 1, hasPr = p.nodes.some(x => x.id === "pr");
+        shOut([[`≋ ${p.name}#${n}  ${p.nodes.slice(1).map(x => "✓ " + x.name).join("  ")}`, "dim2"]]);
+        shOut(`{"run":"${p.name}#${n}","state":"done","duration":"4m10s","cost_usd":0.92,"outputs":{${hasPr ? '"pr_url":"https://github.com/acme/app/pull/1301",' : ""}"summary":"Fixed TestCache_Expiry: the clock was read twice; now injected."}}`);
+        p.hist += "✓"; p.state = "ok"; p.lastSec = 1; p.typ = "4m10s"; p.cost = 0.92; return;
+      }
+      shOut([[`≋ ${p.name}#${p.hist.length + 1}  started`, "dim2"]]); shOut(`${p.name}#${p.hist.length + 1}`); rerunQuiet(p); return;
+    }
+    case "rerun": shOut([["≋ nightly-sweep#119  reusing ws, scan · starting at build", "dim2"]]); shOut("nightly-sweep#119"); rerunQuiet(PIPES[0]); return;
+    case "explain": {
+      const E = { M6201: ["agent rate limited", "The agent's provider refused the request because too many were sent.", "mill retries automatically, honoring Retry-After.", "Fix: lower max_concurrent_agents, or add retry: { on: [class:rate_limited], max: 5 }"],
+        M1201: ["pipeline not found", "No pipeline with that name in .mill/pipelines/ or ~/.config/mill/pipelines/.", "Names are matched exactly; mill suggests close matches.", "Fix: mill ls to see what exists"],
+        M3204: ["destructive part not allowed", "The node uses a part flagged destructive that policy.allow_destructive doesn't list.", "Lint fails so nothing destructive runs by accident.", "Fix: add the part to policy.allow_destructive, or ga on the canvas"] };
+      const e = E[a[2]];
+      if (!e) { shOut([["error", "red b"], ["[M1102]", "red"], [`: unknown error code "${a[2] || ""}"`, "b"]]); shOut([["  help: ", "dim"], ["mill explain --list", ""]]); return; }
+      shOut([[a[2], "b"], ["  " + e[0], ""]]); shOut(""); e.slice(1).forEach(l => shOut([[l, l.startsWith("Fix") ? "" : "dim"]])); return;
+    }
+    case "setup":
+      [["≋ mill setup", "b"], ["", ""], ["✓ agents found      claude (signed in) · codex (signed in) · gemini · ollama", ""], ["✓ soundset          millrace (preview played)", ""], ["✓ shell             completion + ≋ prompt segment added to ~/.zshrc", ""],
+        ["✓ trusted folders   ~/code", ""], ["✓ starter plugins   mill/github · mill/slack", ""], ["✓ rex found         installed mill/rex (handoffs, runner, triggers)", ""], ["✓ example pipeline  .mill/pipelines/hello.mill.yaml", ""], ["✓ daemon            milld started", ""], ["", ""], ["next: run mill, then press n to make a pipeline", "dim"]].forEach(([t, c]) => shOut([[t, c]]));
+      return;
+    case "new": shOut([["mill new opens the same wizard in this terminal · in the TUI press ", "dim"], ["n", "b"]]); return;
+    case "mcp":
+      if (a[2] === "serve") { shOut([["≋ mill MCP server on stdio · tools: list_pipelines · describe_pipeline · run_pipeline · get_run · rerun · lint_pipeline · save_pipeline", "dim2"]]);
+        shOut([["add it to Claude Code with:  ", "dim"], ["claude mcp add mill -- mill mcp serve", "b"]]); return; }
+      shOut([["slack ● running · github ● running · notion ✗ auth expired · postgres ○ stopped", ""]]); return;
+    case "doctor":
+      [["✓", "grn", "daemon reachable · same version (0.5.0)"], ["✓", "grn", "config loads (init.lua, settings.lua)"], ["✓", "grn", "8 plugins present, pinned, unchanged"], ["✗", "red", "notion MCP: auth expired (M6202) · mill mcp login notion"], ["!", "amb", "aider not found on PATH (M6101) · not used by any pipeline"], ["✓", "grn", "secrets resolve · workspace root writable"]].forEach(([g1, c1, t]) => shOut([[g1, c1], [" " + t, ""]]));
+      return;
+    default:
+      shOut([["error", "red b"], ["[M1301]", "red"], [`: unknown command "${a[1]}"`, "b"]]); shOut([["  help: ", "dim"], ["mill --help", ""]]); play("error");
+  }
+}
+function rerunQuiet(p) { if (p.created) { p.state = "running"; setTimeout(() => { p.state = "ok"; p.lastSec = 1; p.hist += "✓"; S.dirty = true; }, 5000); return; } if (p.live) { simReset(true); return; } p.state = "running"; setTimeout(() => { p.state = "ok"; p.lastSec = 1; p.hist += "✓"; S.dirty = true; }, 6000); }
+function lev(a, b) { const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]); for (let j = 1; j <= b.length; j++) d[0][j] = j; for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); return d[a.length][b.length]; }
+function rShell(g) {
+  const all = [...SH.lines, [...PROMPT(), [SH.input, "b"], ["▌", "blu"]]];
+  const tail = all.slice(-(H - 1));
+  tail.forEach((segs, i) => g.segs(0, i, segs));
+  g.rput(W - 1, H - 1, "try: mill setup · mill status · mill run nightly-swep · mill mcp serve · mill run <yours> --json · mill", "dim3");
+}
+
+const WIZ_STEPS = ["name", "start", "trigger", "agent", "steps", "guardrails", "review"];
+const WIZ_START = [
+  { id: "blank", label: "blank", note: "pick the steps yourself" },
+  { id: "issue-to-pr", label: "template · issue-to-pr", note: "labeled issue → plan → build → review → draft PR" },
+  { id: "nightly-sweep", label: "template · nightly-sweep", note: "nightly vulnerability fixes as draft PRs" },
+  { id: "morning-brief", label: "template · morning-brief", note: "weekday digest posted to Slack" },
+  { id: "describe", label: "describe it in plain English", note: "an agent drafts the steps; you review every one" },
+  { id: "import", label: "import", note: "an n8n workflow or a .millpkg bundle" },
+];
+const WIZ_TRIG = [
+  { id: "manual", label: "manual", note: "run it yourself, from a script, or from an agent over MCP", yaml: "manual: {}", t: "manual", next: "on demand" },
+  { id: "weekdays", label: "schedule · weekdays 07:30", note: "cron 30 7 * * 1-5", yaml: 'cron: "30 7 * * 1-5"', t: "cron 07:30 weekdays", next: "07:30" },
+  { id: "nightly", label: "schedule · nightly 03:00", note: "cron 0 3 * * *", yaml: 'cron: "0 3 * * *"', t: "cron 03:00", next: "03:00" },
+  { id: "webhook", label: "webhook · /github", note: 'when an issue is labeled "agent"', yaml: 'webhook: { path: /github, filter: label == "agent" }', t: "webhook /github", next: "on webhook" },
+  { id: "git", label: "git · push to main", note: "local git hook (mill hooks install)", yaml: "git: { on: push, branch: main }", t: "git push main", next: "on push" },
+  { id: "after", label: "after another pipeline", note: "when issue-to-pr finishes", yaml: "run: { pipeline: issue-to-pr, on: done }", t: "run issue-to-pr", next: "after issue-to-pr" },
+  { id: "files", label: "file change · ~/notes/drafts", note: "watched, debounced 5s", yaml: "fswatch: { path: ~/notes/drafts, debounce: 5s }", t: "fswatch ~/notes", next: "on change" },
+];
+const WIZ_AGENTS = [
+  { a: "claude", m: "sonnet", e: "medium", st: ["✓ signed in", "grn"] }, { a: "claude", m: "opus", e: "high", st: ["✓ signed in", "grn"] },
+  { a: "claude", m: "haiku", e: "low", st: ["✓ signed in", "grn"] }, { a: "codex", m: "gpt-5", e: "high", st: ["✓ signed in", "grn"] },
+  { a: "gemini", m: "2.5-pro", e: "medium", st: ["✓ installed", "grn"] }, { a: "local-qwen", m: "qwen2.5-coder", e: "-", st: ["✓ ollama running", "grn"] },
+  { a: "aider", m: "-", e: "-", st: ["✗ not installed (M6101)", "red"], off: true }, { a: "none", m: "", e: "", st: ["no agent steps", "dim"] },
+];
+const WIZ_DEFS = [
+  { id: "fetch", gl: "⇄", sub: "rss + calendar", uses: "http", note: "fetch data from URLs or APIs", f: [["url", "@sources.txt"], ["each", "true"]] },
+  { id: "ws", gl: "⑂", sub: "git.worktree", uses: "git.worktree", note: "isolated branch + worktree for code changes", f: [["repo", "."], ["branch", "mill/${{ run.id }}"]] },
+  { id: "work", gl: "◆", sub: "", uses: "agent", note: "the agent does the task", agent: true },
+  { id: "scope", gl: "⊢", sub: "≤ 8 files", uses: "assert", note: "check the agent's plan before going on", f: [["that", "${{ size(item.files) <= 8 }}"], ["else", "route"]] },
+  { id: "check", gl: "$", sub: "make check", uses: "check", note: "run the tests; the agent loops until they pass", f: [["sh", "make check"], ["max_iters", "3"]] },
+  { id: "review", gl: "◇", sub: "codex·review", uses: "agent.review", note: "independent review by a second agent", f: [["agent", "codex"], ["diff", "${{ nodes.work.diff }}"]] },
+  { id: "pr", gl: "⇡", sub: "gh.pr draft", uses: "gh.pr", note: "open a draft pull request", destructive: true, f: [["draft", "true"], ["base", "main"]] },
+  { id: "notify", gl: "#", sub: "slack #dev", uses: "slack.post", note: "post the result to Slack", destructive: true, f: [["channel", "#dev"]] },
+];
+const WIZ_TPL = {
+  "issue-to-pr": { trig: 3, agent: 1, steps: ["ws", "work", "scope", "check", "review", "pr", "notify"], desc: "Turn labeled issues into reviewed draft PRs." },
+  "nightly-sweep": { trig: 2, agent: 0, steps: ["ws", "work", "check", "pr"], desc: "Fix new vulnerabilities and open a draft PR." },
+  "morning-brief": { trig: 1, agent: 2, steps: ["fetch", "work", "notify"], desc: "Weekday digest of feeds and calendar." },
+};
+const BUDGETS = [
+  { label: "small", t: "200K tk · $2 · 15m", y: "{ max_tokens: 200_000, max_cost_usd: 2, max_wall: 15m" },
+  { label: "medium", t: "2M tk · $15 · 1h", y: "{ max_tokens: 2_000_000, max_cost_usd: 15, max_wall: 1h" },
+  { label: "large", t: "8M tk · $50 · 3h", y: "{ max_tokens: 8_000_000, max_cost_usd: 50, max_wall: 3h" },
+];
+const HANDOFFS = [["none", "the run just fails"], ["GitHub issue", "opens an issue with the error and logs"], ["rex session", "starts a rex session with the context (mill/rex)"]];
+
+function wizNodes(w) {
+  const ag = WIZ_AGENTS[w.agent], t = WIZ_TRIG[w.trig], nodes = [{ id: "trigger", gl: "⌁", name: "trigger", sub: t.t, uses: t.id, f: [["on", t.yaml]] }];
+  for (const d of WIZ_DEFS) {
+    if (!w.steps[d.id]) continue;
+    if (d.agent && ag.a === "none") continue;
+    const n = { ...d, name: d.id, f: d.f ? d.f.slice() : [] };
+    if (d.agent) { n.sub = `${ag.a}·${ag.m}`; n.f = [["agent", ag.a], ["model", ag.m], ["effort", ag.e], ["prompt", `@prompts/${w.name || "fix-flaky-test"}.md`]]; }
+    nodes.push(n);
+  }
+  if (HANDOFFS[w.handoff][0] !== "none" && nodes.length > 1) nodes.push({ id: "hand-off", gl: "↪", name: "hand-off", sub: "if a step fails", uses: "handoff", f: [["to", HANDOFFS[w.handoff][0] === "rex session" ? "rex.session" : "gh.issue"], ["on", "failure"]] });
+  return nodes;
+}
+function wizGuardRows(w) {
+  const rows = [{ k: "budget" }, { k: "agents" }];
+  for (const n of wizNodes(w)) if (n.destructive) rows.push({ k: "allow", id: n.id, uses: n.uses });
+  rows.push({ k: "handoff" }, { k: "dry" });
+  return rows;
+}
+function wizYaml(w) {
+  const name = w.name || "fix-flaky-test", t = WIZ_TRIG[w.trig], nodes = wizNodes(w), b = BUDGETS[w.budget];
+  const allow = nodes.filter(n => n.destructive && w.allow[n.id] !== false).map(n => n.uses);
+  const y = ["mill: 1", `name: ${name}`, `description: ${w.desc || "Find the flaky test, fix it, open a draft PR."}`, "", "on:", `  ${t.yaml}`, "",
+    `budget: ${b.y}, max_agents: ${w.maxAgents} }`, "policy:", `  allow_destructive: [${allow.join(", ")}]`, "", "nodes:"];
+  for (const n of nodes.slice(1)) {
+    y.push(`  ${n.name}:`, `    uses: ${n.uses}`);
+    if (n.f.length) y.push("    with: { " + n.f.map(([k, v]) => `${k}: ${v}`).join(", ") + " }");
+  }
+  return y;
+}
+function wizLint(w) { return wizNodes(w).filter(n => n.destructive && w.allow[n.id] === false); }
+
+function wizCreate(dryFlag) {
+  const w = S.wiz, name = w.name || "fix-flaky-test", t = WIZ_TRIG[w.trig], nodes = wizNodes(w), lint = wizLint(w);
+  const p = { name, state: "draft", ago: "", desc: w.desc, hist: "", typ: "-", cost: null, trigger: t.t, detail: "", next: t.next, tags: ["new"], scope: "project", lastSec: 1e12, created: true, nodes, lintOk: !lint.length, budget: BUDGETS[w.budget].t };
+  PIPES.push(p);
+  const dry = dryFlag || w.dry;
+  S.wiz = null; S.create.target = p; S.create.sel = nodes[0].id; S.create.palette = null; S.create.connect = false; S.screen = "editor";
+  play("save");
+  toast(`created .mill/pipelines/${name}.mill.yaml · ${p.lintOk ? "✓ lint clean" : "! 1 lint problem · ga fixes it"}`, p.lintOk ? "grn" : "amb", 5000);
+  if (dry) setTimeout(() => dryRun(p), 900);
+}
+function dryRun(p) {
+  if (!p.lintOk) return errorToast("M3204", `${p.name}: a destructive step isn't in allow_destructive`, "ga on the canvas allows it");
+  if (p.state === "running") return toast(`${p.name} is already running`, "amb");
+  const n = p.hist.length + 1, first = !p.hist.length;
+  p.state = "running"; p.detail = first ? "dry run" : "running"; play("run_start");
+  toast(`≋ ${p.name}#${n} ${first ? "dry run started · destructive steps only report" : "started"}`, "blu");
+  setTimeout(() => {
+    p.state = "ok"; p.lastSec = 1; p.hist += "✓"; p.typ = "4m10s"; p.cost = 0.92;
+    const would = p.nodes.filter(x => x.destructive).map(x => x.id === "pr" ? "open 1 draft PR" : x.id === "notify" ? "post 1 Slack message" : "run " + x.uses);
+    play("run_done");
+    toast(first ? `✓ ${p.name}#${n} dry run passed${would.length ? " · would " + would.join(", ") : ""} · R runs it for real` : `✓ ${p.name}#${n} done${would.length ? " · " + would.join(", ").replace("open", "opened").replace("post", "posted") : ""}`, "grn", 7000);
+    S.dirty = true;
+  }, 5000);
+}
+
+/* ------------------------------------------------------------------ linear canvas for new pipelines */
+function linearItems(p) {
+  return p.nodes.map((n, i) => { const row = Math.floor(i / 4), c = i % 4, col = row % 2 ? 3 - c : c, x = 26 + col * 17, y = 5 + row * 6; return { id: n.id, x1: x, x2: x + 13, y1: y, y2: y + 2, n, row }; });
+}
+function drawPalette(g, title) {
+  const c = S.create, px = 24, py = 4, pw = 60, ph = 16, q = c.palette.q.toLowerCase();
+  const res = PARTS.filter(p => p[1].includes(q) || p[3].includes(q));
+  c.palette.cur = Math.max(0, Math.min(c.palette.cur, res.length - 1));
+  g.clear(px, py, pw, ph); for (let r = py; r < py + ph; r++) g.bg(px, px + pw - 1, r, "pop");
+  g.box(px, py, pw, ph, "b", [["a", "b"], [" " + title + " ", "dim"]]);
+  g.segs(px + 2, py + 1, [["> ", "mark"], [c.palette.q, "b"], ["▌", "blu"]]);
+  g.hl(px + 1, px + pw - 2, py + 2, "dim2");
+  res.slice(0, ph - 5).forEach((p, i) => {
+    const yy2 = py + 3 + i, sel = i === c.palette.cur;
+    g.put(px + 2, yy2, p[0], "blu"); g.put(px + 4, yy2, p[1], sel ? "b" : ""); g.put(px + 30, yy2, p[2], p[2].includes("destructive") ? "amb2" : "dim"); g.rput(px + pw - 3, yy2, p[3], "dim");
+    if (sel) g.bg(px + 1, px + pw - 2, yy2, "sel");
+  });
+  if (!res.length) g.put(px + 4, py + 4, "nothing matches", "dim");
+  g.segs(px + 2, py + ph - 1, [[" ↑↓", "b"], [" move · ", "dim"], ["enter", "b"], [" insert · ", "dim"], ["esc", "b"], [" close ", "dim"]]);
+}
+function shellKey(e) {
+  const k = e.key;
+  if (k === "Enter") { shRun(SH.input); SH.input = ""; }
+  else if (k === "Backspace") SH.input = SH.input.slice(0, -1);
+  else if (k === "ArrowUp") { if (SH.hist.length) { SH.hi = SH.hi < 0 ? SH.hist.length - 1 : Math.max(0, SH.hi - 1); SH.input = SH.hist[SH.hi]; } }
+  else if (k === "ArrowDown") { if (SH.hi >= 0) { SH.hi++; SH.input = SH.hi < SH.hist.length ? SH.hist[SH.hi] : ""; if (SH.hi >= SH.hist.length) SH.hi = -1; } }
+  else if (k === "Tab") { const opts = ["mill status", "mill ls", "mill runs", "mill run ", "mill rerun nightly-sweep#118 --from build", "mill explain ", "mill doctor"]; const m = opts.find(o => o.startsWith(SH.input) && o !== SH.input); if (m) SH.input = m; }
+  else if (k === "Escape") SH.input = "";
+  else if (k.length === 1) { if (e.ctrlKey && k === "l") SH.lines = []; else SH.input += k; }
+  S.dirty = true;
+}
+
+/* ================================================================== v2 surface: one board, everything else over it */
+const SORTS = ["attention", "name", "last run", "ok", "cost"];
+const VIEWS = [{ name: "all", tag: "all", search: "" }, { name: "code", tag: "code", search: "" }, { name: "broken", tag: "all", search: "state:failed" }];
+const S = {
+  screen: "boot", popup: null, overlay: null, wiz: null, confirm: null,
+  cmd: null, prompt: null, msg: null, pending: "", pendingAt: 0, view: 0,
+  lastInput: performance.now(), saver: false, saverDrift: [0, 0], saverDriftAt: 0, tick: 0, shell: false,
+  board: { cur: 0, detailed: false, tag: "all", search: "", searchEdit: false, sort: 0, rev: false, readyOpen: false, preview: false },
+  run: { num: 42, pipe: "issue-to-pr", sel: "build", agent: null },
+  log: { cur: 0, top: 0, folds: { plan: true, build1: false }, search: "", searchEdit: false, follow: true, only: null },
+  create: { target: null, sel: "pr", palette: null, connect: false, placed: null, allowed: false, dirtyFile: true, undo: [] },
+  plugins: { view: 0, cur: 0 }, settings: { sec: 5, row: 0 },
+};
+function toast(text, cls = "dim", ms = 3500) { S.msg = { text, cls, until: performance.now() + ms }; }
+function errorToast(code, text, help) { toast(`error[${code}]: ${text}${help ? "  ·  help: " + help : ""}`, "red", 5500); play("error"); }
+const activeMsg = () => (S.msg && performance.now() < S.msg.until ? S.msg : null);
+
+const EXTRA = {
+  "nightly-sweep": { result: "", costToday: 0.31 }, "issue-to-pr": { result: "draft PR #1293", costToday: 0 },
+  "inbox-triage": { result: "triaged 9 messages", costToday: 0.40 }, "morning-brief": { result: "posted digest to #daily", costToday: 0.08 },
+  "docs-drift": { result: "no drift", costToday: 0 }, "release-notes": { result: "draft release v1.4.0", costToday: 0 }, "best-of-3": { result: "", costToday: 0 },
+};
+for (const p of PIPES) Object.assign(p, EXTRA[p.name] || {});
+const runFrac = () => Math.min(1, Math.max(0, (SIM.now - 461) / 185));
+function costOf(p) { return p.live ? 2.69 + runFrac() * 1.71 : (p.costToday || 0); }
+const fmtDur = s => s < 60 ? `${Math.round(s)}s` : s < 3600 ? `${Math.floor(s / 60)}m${String(Math.round(s % 60)).padStart(2, "0")}s` : `${Math.floor(s / 3600)}h${String(Math.floor(s % 3600 / 60)).padStart(2, "0")}m`;
+
+/* ------------------------------------------------------------------ helpers */
+function helpBar(g, pairs, y = H - 1) {
+  let x = 1;
+  pairs.forEach(([k, v], i) => { if (i) x = g.put(x, y, " · ", "dim3"); x = g.put(x, y, k, "b"); x = g.put(x, y, " " + v, "dim"); });
+  const right = [];
+  if (S.pending) right.push([S.pending + "  ", "amb"]);
+  if (right.length) g.rsegs(W - 2, y, right);
+}
+function statusLine(g, mode, modeCls, left, right) {
+  const y = H - 2; g.bg(0, W - 1, y, "stl");
+  let x = g.put(0, y, ` ${mode} `, modeCls); x = g.put(x, y, " ", "stl");
+  const m = activeMsg();
+  if (m) g.put(x, y, trunc(m.text, W - 30), m.cls + " stl"); else for (const [t, c] of left) x = g.put(x, y, t, (c + " stl").trim());
+  g.rsegs(W - 1, y, right.map(([t, c]) => [t, (c + " stl").trim()]));
+}
+function overlayBox(g, x0, y0, w, h, title) {
+  HITS = [];
+  g.clear(x0, y0, w, h); for (let r = y0; r < y0 + h; r++) g.bg(x0, x0 + w - 1, r, "pop");
+  g.box(x0, y0, w, h, "b", title);
+}
+
+/* ------------------------------------------------------------------ board */
+function sectionOf(p) { if (p.disabled) return "READY"; return p.state === "failed" ? "FAILED" : (p.state === "running" || p.state === "retrying") ? "RUNNING" : "READY"; }
+function textFor(p) {
+  if (p.disabled) return "disabled · :enable to turn its triggers back on";
+  if (p.state === "failed") return p.detail;
+  if (p.state === "retrying") return `build · rate limited, retry in ${Math.max(0, Math.ceil(RETRY_TO - SIM.now))}s`;
+  if (p.state === "running") {
+    if (p.live) { const n = RUN_NODES.find(n => nodeState(n) === "working"); return n ? `${n.id} · ${n.id === "build" ? "loop 2/3" : "working"}` : "finishing"; }
+    return p.detail || "running";
+  }
+  if (p.state === "draft") return "never run · R for a dry run";
+  const nx = p.next.startsWith("on ") || p.next.startsWith("every") || p.next.startsWith("after") ? p.next : p.next === "on demand" ? "manual" : "next " + p.next;
+  return `${p.result || "ok"} · ${nx.startsWith("on ") ? "next " + nx : nx}`;
+}
+function textCls(p) { return p.disabled ? "dim3" : p.state === "retrying" ? "amb" : p.state === "ok" ? "dim" : p.state === "draft" ? "dim3" : ""; }
+function ageFor(p) { if (p.state === "draft") return "-"; if (p.live && p.state !== "ok") return "12m"; if (p.state === "running") return "12s"; return p.lastSec < 120 ? "now" : p.ago || "-"; }
+function longBadge(p) { return null; }
+function matchFilter(p, q) {
+  for (const tok of q.trim().split(/\s+/).filter(Boolean)) {
+    const m = tok.match(/^(\w+):(!?)(.*)$/);
+    if (m) {
+      const [, k, neg, v] = m; let ok = true;
+      if (k === "state") ok = p.state === v || (v === "running" && p.state === "retrying");
+      else if (k === "tag") ok = p.tags.includes(v);
+      else if (k === "trigger") ok = p.trigger.startsWith(v);
+      else if (k === "scope") ok = p.scope === v;
+      else if (k === "ok") { const [a, n] = okfrac(p.hist); const pct = n ? 100 * a / n : 100; const mm = v.match(/^([<>])(\d+)$/); ok = mm ? (mm[1] === "<" ? pct < +mm[2] : pct > +mm[2]) : true; }
+      if (neg ? ok : !ok) return false;
+    } else if (!(p.name + " " + p.desc + " " + p.tags.join(" ")).toLowerCase().includes(tok.toLowerCase())) return false;
+  }
+  return true;
+}
+function boardEntries() {
+  const b = S.board;
+  let rows = PIPES.filter(p => (b.tag === "all" || p.tags.includes(b.tag)) && matchFilter(p, b.search));
+  const key = { attention: p => [STATE_ORDER[p.state], p.name], name: p => [p.name], "last run": p => [p.lastSec, p.name], ok: p => { const [a, n] = okfrac(p.hist); return [n ? a / n : 2, p.name]; }, cost: p => [-costOf(p), p.name] }[SORTS[b.sort]];
+  rows.sort((x, y) => { const a = key(x), c = key(y); for (let i = 0; i < a.length; i++) { if (a[i] < c[i]) return -1; if (a[i] > c[i]) return 1; } return 0; });
+  if (b.rev) rows.reverse();
+  const ents = [];
+  for (const sec of ["FAILED", "RUNNING", "READY"]) {
+    const rs = rows.filter(p => sectionOf(p) === sec);
+    const folded = sec === "READY" && rs.length > 5 && !b.readyOpen;
+    ents.push({ kind: "sec", sec, n: rs.length, folded });
+    if (!folded) for (const p of rs) ents.push({ kind: "row", p });
+  }
+  return ents;
+}
+function boardRows() { return boardEntries().filter(e => e.kind === "row").map(e => e.p); }
+function selected() { const r = boardRows(); return r[Math.max(0, Math.min(S.board.cur, r.length - 1))]; }
+function summaryParts() {
+  const c = counts(), okToday = 12 + PIPES.filter(p => p.state === "ok" && p.lastSec < 86400).length, cost = PIPES.reduce((a, p) => a + costOf(p), 0);
+  const parts = [[`${c.failed} failed`, c.failed ? "red" : "dim"], [" · ", "dim3"], [`${c.running + c.retrying} running`, c.running + c.retrying ? "blu" : "dim"], [" · ", "dim3"], [`${okToday} ok today`, "dim"], [" · ", "dim3"], [`$${cost.toFixed(2)} today`, "dim"]];
+  if (S.board.detailed) parts.push([" · ", "dim3"], ["23 runs today · p50 4m", "dim"]);
+  return parts;
+}
+function drawBoardRow(g, y, p, sel, anyCost) {
+  const [gl, gc] = p.disabled ? ["⊘", "dim"] : STATE_GL[p.state];
+  if (sel) g.put(1, y, "▸", "b");
+  g.put(3, y, p.state === "running" && !p.disabled ? spin() : gl, gc);
+  g.put(6, y, trunc(p.name, 16), sel ? "b" : "");
+  const live = p.state === "running" ? "r" : p.state === "retrying" ? "↻" : null;
+  if (!S.board.detailed) {
+    g.rput(W - 2, y, ageFor(p), "dim");
+    strip(g, W - 17, y, p.hist, 10, live);
+    let right = W - 19;
+    if (anyCost) { const c = costOf(p); if (c > 0) g.rput(right, y, "$" + c.toFixed(2), "dim"); right -= 9; }
+    g.put(23, y, trunc(textFor(p), right - 23), textCls(p));
+  } else {
+    g.put(23, y, trunc(textFor(p), 26), textCls(p));
+    strip(g, 51, y, p.hist, 20, live);
+    const [a, n] = okfrac(p.hist);
+    g.rput(76, y, n ? `${Math.round(100 * a / n)}%` : "-", n && a / n < 0.9 ? "red" : "dim");
+    g.rput(90, y, p.cost == null ? "-" : `${p.typ} · $${p.cost.toFixed(2)}`, "dim");
+    g.put(92, y, trunc(p.trigger, 14), "dim");
+    g.put(107, y, trunc(p.next, 10), "dim");
+    g.rput(W - 2, y, ageFor(p), "dim");
+  }
+  if (sel) g.bg(0, W - 1, y, "sel");
+}
+function rBoard(g) {
+  const b = S.board;
+  g.segs(1, 0, [["≋", "mark"], [" mill", "b"]]);
+  g.rsegs(W - 2, 0, summaryParts());
+  const tags = [...new Set(PIPES.flatMap(p => p.tags))];
+  if (b.tag !== "all" || b.search || b.searchEdit) {
+    let x = 6;
+    for (const t of ["all", ...tags]) { const x0 = x; x = g.put(x, 1, t, t === b.tag ? "b" : "dim3"); hit(x0, 1, x - 1, 1, () => { b.tag = t; b.cur = 0; play("toggle"); }); x += 3; }
+    if (b.searchEdit || b.search) g.rsegs(W - 2, 1, [["/", "mark"], [" " + b.search, "b"], [b.searchEdit ? "▌" : "", "blu"]]);
+  }
+  if (b.detailed) [[6, "name"], [23, "text"], [51, "runs (20)"], [75, "ok"], [84, "typical"], [92, "trigger"], [107, "next"], [W - 4, "age"]].forEach(([x, t]) => g.put(x, 2, t, "dim3"));
+  const ents = boardEntries(), rows = ents.filter(e => e.kind === "row");
+  if (b.selName) { const si = rows.findIndex(e => e.p.name === b.selName); if (si >= 0) b.cur = si; }
+  b.cur = Math.max(0, Math.min(b.cur, rows.length - 1));
+  if (rows[b.cur]) b.selName = rows[b.cur].p.name;
+  const anyCost = !b.detailed && rows.some(e => costOf(e.p) > 0);
+  let y = 3, ri = 0;
+  for (const e of ents) {
+    if (y > H - 5) break;
+    if (e.kind === "sec") {
+      g.segs(1, y, e.folded ? [[e.sec, "hd"], [`  ${e.n} hidden · `, "dim"], ["3", "b"], [" show", "dim"]] : [[e.sec, "hd"], [`  ${e.n}`, "dim"]]);
+      if (e.sec === "READY" && e.n > 5) hit(1, y, 40, y, () => { b.readyOpen = !b.readyOpen; play("toggle"); });
+      y++; continue;
+    }
+    const p = e.p, idx = ri++, sel = idx === b.cur;
+    drawBoardRow(g, y, p, sel, anyCost);
+    hit(0, y, W - 1, y, () => { b.cur = idx; b.selName = p.name; play("tick"); }, () => { b.cur = idx; b.selName = p.name; openRun(p); });
+    y++;
+    if (sel && b.preview) { g.put(6, y, trunc(`${p.desc} · ${p.trigger} · budget ${p.budget || "2M tk · $15 · 1h"} · ${p.result ? "last: " + p.result : "no runs yet"}`, W - 8), "dim"); y++; }
+  }
+  if (!rows.length) g.put(6, 5, "no pipelines match · esc clears the search, t cycles tags", "dim");
+  const m = activeMsg(); if (m) g.put(1, H - 3, trunc(m.text, W - 3), m.cls);
+  if (S.cmd !== null) g.segs(1, H - 2, [[":", "b"], [S.cmd, "b"], ["▌", "blu"]]);
+  else if (S.prompt !== null) g.segs(1, H - 2, [["λ ", "mark"], [S.prompt, "b"], ["▌", "blu"]]);
+  else g.segs(1, H - 2, [["λ", "mark"]]);
+  if (S.prompt !== null) helpBar(g, [["enter", "run"], ["tab", "complete"], ["esc", "cancel"]]);
+  else if (S.cmd !== null) helpBar(g, [["enter", "run command"], ["esc", "cancel"]]);
+  else if (b.searchEdit) helpBar(g, [["type", "to search"], ["enter", "keep"], ["esc", "clear"]]);
+  else helpBar(g, [["enter", "open"], ["n", "new"], ["e", "edit"], ["R", "run"], ["?", "more"]]);
+  const mode = S.prompt !== null ? "PROMPT" : S.cmd !== null ? "COMMAND" : b.searchEdit ? "SEARCH" : "";
+  if (mode) g.rput(W - 2, H - 1, mode, "amb");
+}
+function runPipe(p, fromFailed) {
+  if (p.disabled) return errorToast("M4005", `${p.name} is disabled`, ":enable " + p.name);
+  if (p.created) return dryRun(p);
+  if (p.live) { if (!SIM.done) return toast(`issue-to-pr#${S.run.num} is still running`, "amb"); simReset(true); p.state = "running"; play("run_start"); return toast(`≋ issue-to-pr#${S.run.num} started`, "blu"); }
+  if (p.state === "running" || p.state === "retrying") return toast(`${p.name} is already running`, "amb");
+  const draft = p.state === "draft", was = p.state;
+  p.state = "running"; p.detail = draft ? "dry run · fanout ×3" : fromFailed ? "build · rerun from the failed node" : "running"; play("run_start");
+  toast(`≋ ${p.name}#${p.hist.length + 1} ${draft ? "dry run" : fromFailed ? "rerun from build" : "started"}`, "blu");
+  setTimeout(() => {
+    p.state = "ok"; p.lastSec = 1; p.hist += "✓";
+    if (draft) { p.result = "dry run ok · would open 1 draft PR"; p.typ = "9m"; p.cost = 2.10; }
+    if (was === "failed") p.result = "draft PR #1297";
+    play("run_done"); toast(`✓ ${p.name} ${draft ? "dry run passed" : "done"} · ${p.result}`, "grn"); S.dirty = true;
+  }, 6000);
+}
+function openRun(p) {
+  S.popup = "run"; S.run.pipe = p.name; S.run.agent = null;
+  const rows = runRows(p.name).rows; S.run.sel = (rows.find(r => r.st === "failed" || r.st === "working" || r.st === "retrying") || rows[0] || { id: "" }).id;
+  play("open");
+}
+
+/* ------------------------------------------------------------------ run popup */
+const STATIC_RUNS = {
+  "nightly-sweep": { num: 118, st: ["✗ failed", "red"], el: 372, tk: "95K", cost: "$0.31", budget: "$2", result: ["✗ failed at build · F reruns from build, reusing ws and scan", "red"],
+    rows: [["done", "ws", "mill/sweep-0311", 0, 1], ["done", "scan", "govulncheck · 2 advisories (x/net, x/text)", 1, 40], ["failed", "build", "make check failed on all 3 tries · TestParseAdvisory", 41, 372, 1], ["skipped", "pr", "skipped · build failed"]] },
+  "inbox-triage": { num: 913, st: ["running", "blu"], el: 12, tk: "3K", cost: "$0.01", budget: "$1",
+    rows: [["done", "poll", "9 new messages", 0, 2], ["working", "classify", "claude/haiku · 4 of 9", 2, 12, 1], ["pending", "label", ""], ["pending", "drafts", ""]] },
+  "morning-brief": { num: 63, st: ["✓ done", "grn"], el: 44, tk: "40K", cost: "$0.08", budget: "$1", result: ["✓ posted digest to #daily", "grn"],
+    rows: [["done", "fetch", "12 items from 4 feeds + calendar", 0, 3], ["done", "summarize", "claude/haiku · 1,840 words → 260", 3, 43, 1], ["done", "post", "posted digest to #daily", 43, 44]] },
+  "docs-drift": { num: 31, st: ["✓ done", "grn"], el: 118, tk: "61K", cost: "$0.11", budget: "$2", result: ["✓ no drift", "grn"],
+    rows: [["done", "scan", "42 files in docs/", 0, 5], ["done", "compare", "claude/sonnet · no drift found", 5, 118, 1], ["skipped", "pr", "skipped · nothing to change"]] },
+  "release-notes": { num: 14, st: ["✓ done", "grn"], el: 77, tk: "88K", cost: "$0.06", budget: "$2", result: ["✓ draft release v1.4.0", "grn"],
+    rows: [["done", "collect", "17 merged PRs since v1.3.2", 0, 4], ["done", "draft", "claude/sonnet · notes in changelog style", 4, 60, 1], ["done", "judge", "checked against the PR list", 60, 75, 1], ["done", "publish", "draft release v1.4.0", 75, 77]] },
+};
+function runRows(name) {
+  const p = PIPES.find(x => x.name === name);
+  if (p && p.live) {
+    const el = SIM.now, rows = RUN_NODES.map(n => {
+      const st = nodeState(n); let what = "", segs = [];
+      const W1 = { webhook: 'event #1287 "Webhook sender drops events on 429"', ws: "mill/issue-1287", scope: "pass", pr: "draft PR #1293", ping: "posted to #dev" };
+      if (st !== "pending") {
+        if (n.id === "plan") what = st === "done" ? "claude/opus · risk medium, 3 files · 210K tk" : "claude/opus · planning";
+        else if (n.id === "build") what = st === "retrying" ? `rate limited · retry in ${Math.max(0, Math.ceil(RETRY_TO - el))}s · loop 2/3` : st === "working" ? `loop 2/3 · ${el < 535 ? "editing sender.go" : "running make check"}` : "make check passed · 402K tk · $1.71";
+        else if (n.id === "review") what = st === "done" ? "approve · 2 nits" : "codex · reviewing the diff";
+        else what = W1[n.id] || "";
+      }
+      if (n.id === "build" && st !== "pending") { segs.push([341, Math.min(el, 421), "grn"]); if (el > 421) segs.push([421, Math.min(el, 461), "amb"]); if (el > 461) segs.push([461, Math.min(el, 560), "grn"]); }
+      else if (st !== "pending") segs.push([n.s, Math.min(el, n.e), "grn"]);
+      const dur = st === "done" ? (n.e - n.s) : st === "pending" ? null : el - n.s;
+      return { id: n.id, st, what, segs, dur, agent: !!n.agent };
+    });
+    rows.push({ id: "hand-back", st: "skipped", what: "skipped · scope passed", segs: [], dur: null });
+    const state = SIM.done ? ["✓ done", "grn"] : (el >= RETRY_FROM && el < RETRY_TO) ? ["↻ retrying", "amb"] : [spin() + " running", "blu"];
+    return { title: `issue-to-pr#${S.run.num}`, state, el: Math.min(el, RUN_END), tk: `${Math.round(410 + runFrac() * 402)}K`, cost: `$${costOf(p).toFixed(2)}`, budget: "$15", span: 720, rows, result: SIM.done ? ["✓ draft PR #1293 · posted to #dev", "grn"] : null };
+  }
+  if (p && p.created) {
+    const ran = p.hist.length > 0, nodes = p.nodes.slice(1);
+    let t = 0; const rows = nodes.map((n, i) => { const d = n.agent ? 140 : n.id === "check" ? 40 : 2; const r = { id: n.name, st: ran ? (n.id === "hand-off" ? "skipped" : "done") : "pending", what: ran ? (n.id === "hand-off" ? "skipped · nothing failed" : n.destructive && p.hist.length === 1 ? `dry run · would run ${n.uses}` : n.sub) : "", segs: ran && n.id !== "hand-off" ? [[t, t + d, "grn"]] : [], dur: ran && n.id !== "hand-off" ? d : null, agent: !!n.agent }; t += d; return r; });
+    return { title: `${p.name}#${Math.max(1, p.hist.length)}`, state: ran ? ["✓ done", "grn"] : ["never run", "dim"], el: ran ? t : 0, tk: ran ? "210K" : "0", cost: ran ? "$0.92" : "$0.00", budget: "$15", span: Math.max(t, 60), rows, result: ran ? ["✓ " + p.result, "grn"] : ["never run · R for a dry run", "dim"] };
+  }
+  const R = STATIC_RUNS[name];
+  if (!R) return { title: name, state: ["never run", "dim"], el: 0, tk: "0", cost: "$0.00", budget: "$15", span: 60, rows: [], result: ["never run · R for a dry run (fanout ×3 → judge → assert → draft PR)", "dim"] };
+  const rows = R.rows.map(([st, id, what, a, b, agent]) => ({ id, st, what, segs: a != null ? [[a, b, st === "failed" ? "red" : st === "working" ? "blu" : "grn"]] : [], dur: a != null ? b - a : null, agent: !!agent }));
+  return { title: `${name}#${R.num}`, state: R.st[0] === "running" ? [spin() + " running", "blu"] : R.st, el: R.el, tk: R.tk, cost: R.cost, budget: R.budget, span: Math.max(R.el, 60), rows, result: R.result || null };
+}
+const ST_GL = { done: ["✓", "grn"], failed: ["✗", "red"], retrying: ["↻", "amb"], pending: ["○", "dim2"], skipped: ["–", "dim2"] };
+function rRunPopup(g) {
+  const info = runRows(S.run.pipe), rows = info.rows, x0 = 8, w = 108, y0 = 3, h = Math.max(10, rows.length + 7);
+  overlayBox(g, x0, y0, w, h, [[info.title, "b"], [" · ", "dim"], [info.state[0], info.state[1]], [` · ${fmtDur(info.el)} · ${info.tk} tk · ${info.cost} of ${info.budget}`, "dim"]]);
+  if (!rows.find(r => r.id === S.run.sel) && rows[0]) S.run.sel = rows[0].id;
+  const tl0 = x0 + 66, tlw = 28;
+  rows.forEach((r, i) => {
+    const y = y0 + 2 + i, sel = r.id === S.run.sel;
+    const [gl, gc] = r.st === "working" ? [spin(), "blu"] : ST_GL[r.st];
+    g.put(x0 + 3, y, gl, gc); g.put(x0 + 5, y, trunc(r.id, 10), r.st === "pending" || r.st === "skipped" ? "dim2" : sel ? "b" : "");
+    g.put(x0 + 17, y, trunc(r.what, 47), r.st === "retrying" ? "amb" : r.st === "failed" ? "red" : r.st === "skipped" ? "dim2" : "dim");
+    for (const [a, b, c] of r.segs) {
+      const x1 = tl0 + Math.round(a / info.span * tlw), x2 = Math.max(x1, tl0 + Math.round(b / info.span * tlw) - 1);
+      g.put(x1, y, (b - a < info.span / tlw / 2) ? "▏" : (c === "amb" ? "░" : "█").repeat(x2 - x1 + 1), c);
+    }
+    if (r.dur != null) g.rput(x0 + w - 4, y, fmtDur(r.dur), "dim");
+    if (sel) g.bg(x0 + 1, x0 + w - 2, y, "sel");
+    hit(x0 + 1, y, x0 + w - 2, y, () => { S.run.sel = r.id; play("tick"); }, () => { S.run.sel = r.id; openAgent(r); });
+  });
+  if (!rows.length) g.put(x0 + 3, y0 + 2, "no runs yet", "dim");
+  if (info.result) g.put(x0 + 3, y0 + h - 4, info.result[0], info.result[1]);
+  const m = activeMsg(); if (m) g.put(x0 + 3, y0 + h - 3, trunc(m.text, w - 6), m.cls);
+  g.segs(x0 + 3, y0 + h - 2, [["enter", "b"], [" agent · ", "dim"], ["L", "b"], [" log · ", "dim"], ["F", "b"], [" rerun from here · ", "dim"], ["i", "b"], [" items · ", "dim"], ["esc", "b"], [" back", "dim"]]);
+}
+function openAgent(r) {
+  if (!r) return;
+  if (!r.agent) return toast(`${r.id} isn't an agent · i shows its items`, "dim");
+  if (r.st === "pending") return toast(`${r.id} hasn't started yet`, "dim");
+  S.run.agent = r.id; S.popup = "agent"; play("open");
+}
+function rAgentPopup(g) {
+  const info = runRows(S.run.pipe), r = info.rows.find(x => x.id === S.run.agent) || {}, el = SIM.now;
+  const p = PIPES.find(x => x.name === S.run.pipe);
+  let T;
+  if (p && p.live) T = {
+    plan: ["$ claude -p --model opus --output-format json", "", "Reading issue #1287 …", "Reading internal/webhook/sender.go …", "The sender posts once and treats any non-2xx as fatal.", "", "Plan", "1. Add RetryWithBackoff(attempts, base, factor) in retry.go", "2. Wrap Post in the helper; honor Retry-After when present", "3. Send an Idempotency-Key so receivers can dedupe", "4. Tests: 429, 503, timeout, success after 2 retries", "", "Wrote $MILL_OUTPUT (1.9 KB)"],
+    build: ["$ claude -p --model sonnet (loop 2/3)", "", "Previous attempt: TestSender_429 expected 5 attempts, got 1.", "Looking at NewSender …", "The retry helper exists but NewSender never sets it.", ...(el > 470 ? ["Editing internal/webhook/sender.go (+6 −1)"] : []), ...(el > 520 ? ["$ make check", "ok   internal/webhook   14.2s"] : []), ...(el > 560 ? ["", "Done. Diff: 3 files +88 −12"] : [el < 461 ? `waiting: rate limited, retrying in ${Math.max(0, Math.ceil(RETRY_TO - el))}s` : spin() + " working"])],
+    review: ["$ codex exec --json (fresh session: task + diff only)", "", ...(el > 600 ? ["Reviewing 3 files …", "sender.go: retry wiring correct; respects Retry-After", "nit: rename `n` to `attempt`", "nit: doc comment on RetryWithBackoff"] : []), ...(el >= 640 ? ["", "verdict: approve"] : [spin() + " reviewing"])],
+  }[r.id];
+  if (!T) T = [`$ ${r.what && r.what.startsWith("claude") ? "claude -p" : r.what && r.what.startsWith("codex") ? "codex exec" : "agent"} (unattended)`, "", r.what || "", ...(r.st === "failed" ? ["$ make check", "--- FAIL: TestParseAdvisory (0.01s) unexpected severity \"moderate\"", "exit 2"] : r.st === "working" ? [spin() + " working"] : ["", "done"])];
+  const x0 = 8, w = 108, y0 = 3, h = Math.max(12, Math.min(28, T.length + 5));
+  overlayBox(g, x0, y0, w, h, [[`${info.title} · ${r.id}`, "b"], ["  view-only · nothing you type is sent", "dim"]]);
+  T.forEach((t, i) => g.put(x0 + 3, y0 + 2 + i, trunc(t, w - 6), t.startsWith("$") ? "b" : /^(ok|verdict|done|Done)/.test(t) ? "grn" : t.startsWith("---") || t.startsWith("exit") ? "red" : t.startsWith("nit") ? "amb2" : t.startsWith("waiting") ? "amb" : "out"));
+  g.segs(x0 + 3, y0 + h - 2, [["esc", "b"], [" back to the run · ", "dim"], ["L", "b"], [" log", "dim"]]);
+}
+function staticLog(name) {
+  const info = runRows(name);
+  return info.rows.map((r, i) => ({ kind: "line", e: { t: clock(r.segs[0] ? r.segs[0][0] : 0), node: r.id, lvl: r.st === "failed" ? "ERR" : r.st === "skipped" ? "INF" : "INF", msg: r.what || r.st } }));
+}
+function rLogPopup(g) {
+  const L = S.log, x0 = 4, w = 116, y0 = 1, h = 30, live = S.run.pipe === "issue-to-pr";
+  const info = runRows(S.run.pipe);
+  overlayBox(g, x0, y0, w, h, [[info.title + " · log", "b"], [L.only ? " · only " + L.only : " · all nodes", "dim"], [L.follow ? " · following" : "", "grn"]]);
+  const lines = live ? logLines() : staticLog(S.run.pipe), view = h - 5;
+  if (L.follow) L.cur = lines.length - 1;
+  L.cur = Math.max(0, Math.min(L.cur, lines.length - 1));
+  if (L.cur < L.top) L.top = L.cur; if (L.cur >= L.top + view) L.top = L.cur - view + 1;
+  L.top = Math.max(0, Math.min(L.top, Math.max(0, lines.length - view)));
+  for (let i = L.top; i < Math.min(lines.length, L.top + view); i++) {
+    const y = y0 + 2 + (i - L.top), l = lines[i], X = x0 + 2;
+    g.put(X, y, i === L.cur ? String(1031 + i).padStart(5) : String(Math.abs(i - L.cur)).padStart(5), i === L.cur ? "b" : "dim3");
+    const node = l.kind === "line" ? l.e.node : l.node;
+    g.put(X + 6, y, "▌", NODE_COLOR[node] || "dim");
+    if (l.kind === "fold") {
+      g.segs(X + 8, y, [[l.open ? "▾ " : "▸ ", "dim"], [l.e.t, "dim"], ["  ", ""], [node.padEnd(8), NODE_COLOR[node]], ["OUT  ", "dim"], [l.open ? l.e.title : `┄┄ ${l.e.title} ┄┄`, "dim"]]);
+      g.rput(x0 + w - 3, y, l.open ? "zc" : "zo", "dim3"); if (!l.open) g.bg(X + 7, x0 + w - 2, y, "fold");
+    } else if (l.kind === "out") { g.put(X + 10, y, "│", "dim2"); g.put(X + 37, y, trunc(l.text, w - 42), l.err ? "red" : "out"); }
+    else { const e = l.e; g.put(X + 8, y, e.t, "dim"); g.put(X + 22, y, trunc(e.node, 8), NODE_COLOR[e.node] || "dim"); g.put(X + 31, y, e.lvl, { INF: "dim", WRN: "amb", ERR: "red" }[e.lvl] || "dim"); g.put(X + 37, y, trunc(e.msg, w - 42), ""); }
+    if (i === L.cur) g.bg(X + 7, x0 + w - 2, y, "sel");
+    if (L.search) { const row = g.c[y].map(c => c[0]).join("").toLowerCase(), q = L.search.toLowerCase(); let k = row.indexOf(q, X + 7); while (k >= 0) { g.setcls(k, k + q.length - 1, y, "hit"); k = row.indexOf(q, k + q.length); } }
+    hit(x0 + 1, y, x0 + w - 2, y, () => { L.follow = false; L.cur = i; if (l.kind === "fold") { L.folds[l.e.fold] = l.open; play("toggle"); } else play("tick"); });
+  }
+  const yb = y0 + h - 2;
+  if (L.searchEdit) g.segs(x0 + 2, yb, [["/", "b"], [L.search, "b"], ["▌", "blu"]]);
+  else g.segs(x0 + 2, yb, [["j/k", "b"], [" move · ", "dim"], ["za", "b"], [" fold · ", "dim"], ["/", "b"], [" search · ", "dim"], ["n/N", "b"], [" hits · ", "dim"], ["f", "b"], [" follow · ", "dim"], ["o", "b"], [" only this node · ", "dim"], ["L", "b"], [" back to the run", "dim"]]);
+  g.rput(x0 + w - 3, yb, `${lines.length} lines · ${lines.length ? Math.round(100 * (L.cur + 1) / lines.length) : 0}%`, "dim3");
+}
+
+/* ------------------------------------------------------------------ editor */
+function rEditor(g) {
+  const c = S.create, p = c.target;
+  if (p) return rEditorLinear(g, p);
+  g.segs(1, 0, [["≋", "mark"], [" best-of-3.mill.yaml", "b"], [c.dirtyFile ? " [+]" : "", "amb"]]);
+  g.rsegs(W - 2, 0, c.allowed ? [["✓ lint", "grn"]] : [["! 1 lint", "amb"]]);
+  g.box(0, 1, 97, 30, "dim2");
+  for (let yy = 3; yy <= 29; yy += 2) for (let xx = 4; xx <= 93; xx += 4) g.put(xx, yy, "·", "dim3");
+  const ports = (n, cls) => { g.put(n.x, n.y + 1, "◦", cls); g.put(n.x + n.w - 1, n.y + 1, "◦", cls); };
+  for (const n of CNODES) {
+    g.clear(n.x, n.y, n.w, 3);
+    const sel = c.sel === n.id, border = sel ? "b" : (n.id === "pr" && !c.allowed ? "amb2" : "dim");
+    g.box(n.x, n.y, n.w, 3, border, [[n.gl, sel ? "amb" : "blu"], [" " + n.name, "b"]]);
+    g.put(n.x + 2, n.y + 1, trunc(n.sub, n.w - 3), sel ? "" : "dim"); ports(n, border);
+    hit(n.x, n.y, n.x + n.w - 1, n.y + 2, () => { c.sel = n.id; play("tick"); });
+  }
+  g.put(36, 9, "───▶", "dim"); g.put(53, 9, "──", "dim"); g.vl(55, 4, 14); g.put(55, 4, "┌", "dim"); g.put(55, 9, "┼", "dim"); g.put(55, 14, "└", "dim");
+  for (const yy of [4, 9, 14]) { g.put(56, yy, "─▶", "dim"); g.put(72, yy, "──", "dim"); }
+  g.vl(74, 4, 14); g.put(74, 4, "┐", "dim"); g.put(74, 9, "┼", "dim"); g.put(74, 14, "┘", "dim"); g.put(75, 9, "───▶", "dim");
+  g.vl(84, 11, 16); g.put(84, 17, "▼", "dim");
+  g.segs(72, 19, [["◀─", "grn"], ["pass", "grn"]]);
+  g.vl(84, 21, 23); g.put(84, 24, "┘", "dim"); g.hl(73, 83, 24); g.put(76, 24, "else", "red"); g.put(72, 24, "◀", "dim");
+  if (c.placed) { g.clear(31, 18, 15, 3); g.box(31, 18, 15, 3, c.sel === "placed" ? "b" : "dim", [[c.placed[0], "blu"], [" " + trunc(c.placed[1], 10), "b"]]); g.put(33, 19, trunc(c.placed[1], 12), "dim"); g.put(46, 19, "◀", "dim"); g.hl(47, 57, 19, "dim"); }
+  else if (c.connect || c.palette) { g.clear(31, 18, 15, 3); g.dbox(31, 18, 15, 3, "blu"); g.segs(33, 19, [["◌", "blu"], [" place node", "blu"]]); g.put(46, 19, "◁", "blu"); g.put(47, 19, "┄".repeat(10), "blu"); g.put(57, 19, "●", "amb"); }
+  const ix = 98, iy = 1, iw = 26, ih = 30;
+  const node = c.sel === "placed" ? { gl: c.placed[0], name: c.placed[1], uses: c.placed[1], f: [["in", "pr.out"]] } : CNODES.find(n => n.id === c.sel);
+  g.box(ix, iy, iw, ih, "dim2", [[node.gl, "amb"], [" " + trunc(node.name, 9), "b"], [" · " + trunc(node.uses, 9), "dim"]]);
+  node.f.forEach(([k, v], i) => { g.put(ix + 2, iy + 1 + i, k, "dim"); g.put(ix + 11, iy + 1 + i, trunc(v, iw - 13), v.includes("${{") || v.startsWith("@") ? "blu" : ""); });
+  let yy = iy + 2 + node.f.length;
+  g.put(ix + 2, yy, "lint", "dim");
+  if (node.destructive && !c.allowed) { g.segs(ix + 2, yy + 1, [["!", "amb"], [" M3204 destructive part", "amb"]]); g.put(ix + 4, yy + 2, "not in allow_destructive", "dim"); g.segs(ix + 4, yy + 3, [["ga", "b"], [" allows it", "dim"]]); }
+  else g.segs(ix + 2, yy + 1, [["✓", "grn"], [node.destructive ? " allowed by policy" : " clean", "grn"]]);
+  if (c.palette) drawPalette(g, "add after pr");
+  const mode = c.palette ? ["INSERT", "invg"] : c.connect ? ["CONNECT", "inva"] : ["NORMAL", "inv"];
+  statusLine(g, mode[0], mode[1], [["best-of-3 · " + (CNODES.length + (c.placed ? 1 : 0)) + " nodes", ""], [c.connect ? "   pr.out ┄▷ ?" : "", "blu"]], [[` ${node.name} `, "inv"]]);
+  helpBar(g, c.palette ? [["type", "search parts"], ["enter", "insert"], ["esc", "close"]] : c.connect ? [["enter", "place node"], ["esc", "cancel"]] : [["hjkl", "move"], ["a", "add"], ["c", "connect"], ["ga", "fix"], ["?", "more"]]);
+}
+function rEditorLinear(g, p) {
+  const c = S.create;
+  g.segs(1, 0, [["≋", "mark"], [" " + p.name + ".mill.yaml", "b"], [c.dirtyFile ? " [+]" : "", "amb"]]);
+  g.rsegs(W - 2, 0, p.lintOk ? [["✓ lint", "grn"]] : [["! 1 lint", "amb"]]);
+  g.box(0, 1, 97, 30, "dim2");
+  for (let yy = 3; yy <= 29; yy += 2) for (let xx = 4; xx <= 93; xx += 4) g.put(xx, yy, "·", "dim3");
+  const items = linearItems(p).map(o => ({ ...o, x1: o.x1 - 18, x2: o.x2 - 18 }));
+  if (!items.find(o => o.id === c.sel)) c.sel = items[0].id;
+  items.forEach((o, i) => {
+    const n = o.n, sel = c.sel === n.id, bad = n.destructive && !p.lintOk;
+    g.clear(o.x1, o.y1, 14, 3);
+    g.box(o.x1, o.y1, 14, 3, sel ? "b" : bad ? "amb2" : "dim", [[n.gl, sel ? "amb" : "blu"], [" " + trunc(n.name, 9), "b"]]);
+    g.put(o.x1 + 2, o.y1 + 1, trunc(n.sub, 11), sel ? "" : "dim");
+    hit(o.x1, o.y1, o.x2, o.y2, () => { c.sel = n.id; play("tick"); });
+    const nx = items[i + 1]; if (!nx) return;
+    if (nx.row === o.row) { if (nx.x1 > o.x2) g.put(o.x2 + 1, o.y1 + 1, "──▶", "dim"); else g.put(nx.x2 + 1, o.y1 + 1, "◀──", "dim"); }
+    else { const vx = o.x1 + 6; g.vl(vx, o.y2 + 1, nx.y1 - 2, "dim"); g.put(vx, nx.y1 - 1, "▼", "dim"); }
+  });
+  const node = items.find(o => o.id === c.sel).n, ix = 98, iy = 1, iw = 26, ih = 30;
+  g.box(ix, iy, iw, ih, "dim2", [[node.gl, "amb"], [" " + trunc(node.name, 9), "b"], [" · " + trunc(node.uses, 10), "dim"]]);
+  node.f.forEach(([k, v], i) => { g.put(ix + 2, iy + 1 + i, k, "dim"); g.put(ix + 11, iy + 1 + i, trunc(v, iw - 13), v.includes("${{") || v.startsWith("@") ? "blu" : ""); });
+  let yy = iy + 2 + node.f.length;
+  g.put(ix + 2, yy, "lint", "dim");
+  if (node.destructive && !p.lintOk) { g.segs(ix + 2, yy + 1, [["!", "amb"], [" M3204 destructive part", "amb"]]); g.put(ix + 4, yy + 2, "not in allow_destructive", "dim"); g.segs(ix + 4, yy + 3, [["ga", "b"], [" allows it", "dim"]]); }
+  else g.segs(ix + 2, yy + 1, [["✓", "grn"], [node.destructive ? " allowed by policy" : " clean", "grn"]]);
+  if (c.palette) drawPalette(g, "add at the end");
+  const mode = c.palette ? ["INSERT", "invg"] : ["NORMAL", "inv"];
+  statusLine(g, mode[0], mode[1], [[`${p.name} · ${p.nodes.length} nodes · ${p.hist.length ? "ran " + p.hist.length + "×" : "never run"}`, ""]], [[` ${node.name} `, "inv"]]);
+  helpBar(g, c.palette ? [["type", "search parts"], ["enter", "append"], ["esc", "close"]] : [["hjkl", "move"], ["a", "add"], ["R", p.hist.length ? "run" : "dry run"], ["ga", "fix"], ["?", "more"]]);
+}
+function editorItems() {
+  const c = S.create;
+  if (c.target) return linearItems(c.target).map(o => ({ id: o.id, x1: o.x1 - 18, x2: o.x2 - 18, y1: o.y1, y2: o.y2 }));
+  const items = CNODES.map(n => ({ id: n.id, x1: n.x, x2: n.x + n.w - 1, y1: n.y, y2: n.y + 2 }));
+  if (c.placed) items.push({ id: "placed", x1: 31, x2: 45, y1: 18, y2: 20 });
+  return items;
+}
+function leaveEditor() {
+  const c = S.create;
+  if (c.dirtyFile) { S.confirm = { text: `save changes to ${c.target ? c.target.name : "best-of-3"}.mill.yaml?`, keys: [["y", "save"], ["n", "discard"], ["esc", "stay"]], y: () => { c.dirtyFile = false; play("save"); toast("saved", "grn"); S.screen = "board"; }, n: () => { S.screen = "board"; play("back"); } }; return; }
+  S.screen = "board"; play("back");
+}
+function keyEditor(k) {
+  const c = S.create, p = c.target;
+  const dirs = { h: [-1, 0], ArrowLeft: [-1, 0], l: [1, 0], ArrowRight: [1, 0], j: [0, 1], ArrowDown: [0, 1], k: [0, -1], ArrowUp: [0, -1] };
+  if (dirs[k]) { if (c.connect && !p) return; const b = spatial(editorItems(), c.sel, ...dirs[k]); if (b) { c.sel = b.id; play("tick"); } return; }
+  if (k === "Escape") { if (c.connect) { c.connect = false; play("back"); return; } return leaveEditor(); }
+  if (p) {
+    switch (k) {
+      case "a": case "/": c.palette = { q: "", cur: 0 }; play("open"); break;
+      case "ga": if (!p.lintOk) { p.lintOk = true; c.dirtyFile = true; play("lint_ok"); toast("added the destructive parts to policy.allow_destructive · lint clean", "grn"); } else toast("lint is already clean", "dim"); break;
+      case "dd": if (c.sel === "trigger") errorToast("M2302", "a pipeline needs its trigger", "change it in the YAML (E)"); else { p.nodes = p.nodes.filter(n => n.id !== c.sel); c.sel = "trigger"; c.dirtyFile = true; play("disconnect"); } break;
+      case "R": dryRun(p); break;
+      case "E": toast(`E opens ${p.name}.mill.yaml in $EDITOR at this node`, "dim"); break;
+    }
+    return;
+  }
+  switch (k) {
+    case "a": case "/": if (c.placed) { errorToast("M2210", "the demo canvas has one free slot", "dd deletes the node you added"); break; } c.palette = { q: "", cur: 0 }; play("open"); break;
+    case "c": if (c.placed) { toast("pr already connects to " + c.placed[1], "dim"); break; } c.connect = !c.connect; play(c.connect ? "connect" : "disconnect"); break;
+    case "Enter": if (c.connect) { c.palette = { q: "", cur: 0 }; play("open"); } break;
+    case "ga": if (!c.allowed) { c.undo.push(["allowed", false]); c.allowed = true; c.dirtyFile = true; play("lint_ok"); toast("added gh.pr to policy.allow_destructive · lint clean", "grn"); } else toast("lint is already clean", "dim"); break;
+    case "dd": if (c.sel === "placed") { c.undo.push(["placed", c.placed]); c.placed = null; c.sel = "pr"; c.dirtyFile = true; play("disconnect"); } else errorToast("M2301", "demo: only the node you added can be deleted", ""); break;
+    case "u": { const u = c.undo.pop(); if (!u) { toast("already at oldest change", "dim"); break; } c[u[0]] = u[1]; if (u[0] === "placed") c.sel = u[1] ? "placed" : "pr"; play("back"); break; }
+    case "R": toast("dry run: best-of-3 would run 3 agents in 3 worktrees · see it on the board with R", "dim"); break;
+    case "E": toast("E opens best-of-3.mill.yaml in $EDITOR at this node", "dim"); break;
+    case "gx": toast("M3204: destructive parts must be listed in policy.allow_destructive", "amb", 5000); break;
+  }
+}
+
+/* ------------------------------------------------------------------ wizard (five steps) */
+const WIZ2 = ["describe", "trigger", "agent", "limits", "review"];
+const HOW = [["describe it in plain English", "describe"], ["template · issue-to-pr", "issue-to-pr"], ["template · nightly-sweep", "nightly-sweep"], ["template · morning-brief", "morning-brief"], ["blank", "blank"], ["import a .millpkg or n8n workflow", "import"]];
+function wizNew() {
+  S.wiz = { step: 0, field: 0, name: "", desc: "", how: 0, sentence: "", drafting: 0, trig: 0, agent: 0, steps: { ws: true, work: true, check: true, pr: true }, stepCur: 0, gCur: 0, budget: 1, maxAgents: 2, allow: {}, dry: true, handoff: 1, err: null };
+  play("open");
+}
+function rWizard(g) {
+  const w = S.wiz, x0 = 7, y0 = 2, bw = 110, bh = 28, X = x0 + 3, Y = y0 + 4, step = WIZ2[w.step];
+  overlayBox(g, x0, y0, bw, bh, [["≋", "mark"], [" new pipeline", "b"]]);
+  let x = x0 + 3;
+  WIZ2.forEach((s, i) => { if (i) x = g.put(x, y0 + 1, "  ›  ", "dim3"); x = g.put(x, y0 + 1, i < w.step ? "✓ " : `${i + 1} `, i < w.step ? "grn" : i === w.step ? "b" : "dim3"); x = g.put(x, y0 + 1, s, i === w.step ? "b" : i < w.step ? "dim" : "dim3"); });
+  g.hl(x0 + 1, x0 + bw - 2, y0 + 2, "dim2");
+  const row = (i, y, on) => { if (on) g.bg(X - 1, x0 + bw - 3, y, "sel"); };
+  let keys;
+  if (step === "describe") {
+    g.put(X, Y, "What should it do?", "hd");
+    const showSentence = HOW[w.how][1] === "describe";
+    const fields = [["name", w.name, "fix-flaky-test", "text"], ["start from", null, null, "how"], ...(showSentence ? [["in a sentence", w.sentence, "every night find flaky tests, fix them, run the tests and open a draft PR", "text"]] : [])];
+    fields.forEach(([k, v, ph, kind], i) => {
+      const y = Y + 2 + i * 2, on = w.field === i;
+      g.put(X, y, k, "dim");
+      if (kind === "how") g.segs(X + 16, y, [["◂ ", "dim"], [HOW[w.how][0], on ? "b" : ""], [" ▸", "dim"]]);
+      else g.segs(X + 16, y, v ? [[trunc(v, 86), "b"], [on ? "▌" : "", "blu"]] : [[on ? "▌" : "", "blu"], [trunc(ph, 86), "dim3"]]);
+      row(i, y, on);
+      hit(X - 1, y, x0 + bw - 3, y, () => { w.field = i; play("tick"); });
+    });
+    if (w.drafting) g.segs(X + 16, Y + 8, [[spin(), "blu"], [" an agent (claude/haiku, headless) is proposing the trigger, agent and steps…", "blu"]]);
+    else g.put(X + 16, Y + 8, "empty fields use the grey example · nothing is written until the review step", "dim3");
+    keys = [["tab", "next field"], ["h/l", "change"], ["enter", "next"], ["esc", "cancel"]];
+  } else if (step === "trigger") {
+    g.put(X, Y, "What starts a run?", "hd");
+    WIZ_TRIG.forEach((t, i) => { const y = Y + 2 + i, on = i === w.trig; g.put(X, y, t.label, on ? "b" : ""); g.put(X + 34, y, t.note, "dim"); row(i, y, on); hit(X - 1, y, x0 + bw - 3, y, () => { w.trig = i; play("tick"); }); });
+    keys = [["j/k", "move"], ["enter", "next"], ["backspace", "back"], ["esc", "cancel"]];
+  } else if (step === "agent") {
+    g.put(X, Y, "Which agent does the work?", "hd"); g.put(X + 60, Y, "it runs unattended", "dim3");
+    WIZ_AGENTS.forEach((a, i) => { const y = Y + 2 + i, on = i === w.agent; g.put(X, y, a.a === "none" ? "none" : `${a.a} · ${a.m}`, a.off ? "dim2" : on ? "b" : ""); g.put(X + 28, y, a.e && a.e !== "-" ? "effort " + a.e : "", "dim"); g.put(X + 46, y, a.st[0], a.st[1]); row(i, y, on); hit(X - 1, y, x0 + bw - 3, y, () => { w.agent = i; play("tick"); }); });
+    keys = [["j/k", "move"], ["enter", "next"], ["backspace", "back"], ["esc", "cancel"]];
+  } else if (step === "limits") {
+    g.put(X, Y, "Limits · the run never waits on you, so set them now", "hd");
+    const rows = wizGuardRows(w); w.gCur = Math.min(w.gCur, rows.length - 1);
+    rows.forEach((r, i) => {
+      const y = Y + 2 + i, on = i === w.gCur; let label, val, note;
+      if (r.k === "budget") { label = "budget"; val = [["◂ ", "dim"], [BUDGETS[w.budget].label, on ? "b" : ""], [" ▸", "dim"]]; note = BUDGETS[w.budget].t; }
+      else if (r.k === "agents") { label = "max agents"; val = [["◂ ", "dim"], [String(w.maxAgents), on ? "b" : ""], [" ▸", "dim"]]; note = "agents at once in one run"; }
+      else if (r.k === "allow") { const ok = w.allow[r.id] !== false; label = `allow ${r.id}`; val = ok ? [["●", "grn"], [" on", ""]] : [["○", "dim"], [" off", "dim"]]; note = ok ? `${r.uses} is destructive · listed in allow_destructive` : `lint will fail: ${r.uses} isn't allowed`; }
+      else if (r.k === "handoff") { label = "on failure"; val = [["◂ ", "dim"], [HANDOFFS[w.handoff][0], on ? "b" : ""], [" ▸", "dim"]]; note = HANDOFFS[w.handoff][1]; }
+      else { label = "dry run first"; val = w.dry ? [["●", "grn"], [" on", ""]] : [["○", "dim"], [" off", "dim"]]; note = "destructive steps only report"; }
+      g.put(X, y, label, "dim"); g.segs(X + 18, y, val); g.put(X + 40, y, note, r.k === "allow" && w.allow[r.id] === false ? "amb" : "dim3"); row(i, y, on);
+      hit(X - 1, y, x0 + bw - 3, y, () => { w.gCur = i; play("tick"); });
+    });
+    keys = [["j/k", "move"], ["h/l", "change"], ["space", "toggle"], ["enter", "review"], ["backspace", "back"]];
+  } else {
+    g.put(X, Y, "Review", "hd");
+    g.put(X, Y + 1, "steps", "dim");
+    WIZ_DEFS.forEach((d, i) => {
+      const y = Y + 2 + i, on = i === w.stepCur, noAgent = d.agent && WIZ_AGENTS[w.agent].a === "none", chk = !!w.steps[d.id] && !noAgent;
+      g.segs(X, y, [[chk ? "[✓]" : "[ ]", chk ? "grn" : "dim"], [" " + d.gl + " ", "blu"], [d.id, on ? "b" : chk ? "" : "dim"]]);
+      g.put(X + 18, y, trunc(d.agent ? `${WIZ_AGENTS[w.agent].a}·${WIZ_AGENTS[w.agent].m}` : d.sub, 16), "dim");
+      if (on) g.bg(X - 1, X + 36, y, "sel");
+      hit(X - 1, y, X + 36, y, () => { if (w.stepCur === i) { w.steps[d.id] = !w.steps[d.id]; play("toggle"); } else { w.stepCur = i; play("tick"); } });
+    });
+    const yl = wizYaml(w), YX = X + 40;
+    g.box(YX, Y + 1, 64, 19, "dim2", [[`${w.name || "fix-flaky-test"}.mill.yaml`, "b"]]);
+    yl.slice(0, 17).forEach((t, i) => g.put(YX + 2, Y + 2 + i, trunc(t, 60), t.startsWith("  ") || t === "" ? "dim" : ""));
+    const lint = wizLint(w);
+    g.segs(X, Y + 12, lint.length ? [["!", "amb"], [` M3204 ${lint[0].id} isn't allowed`, "amb"]] : [["✓", "grn"], [" lint clean", "grn"]]);
+    g.put(X, Y + 14, `${WIZ_TRIG[w.trig].label}`, "dim"); g.put(X, Y + 15, `${BUDGETS[w.budget].t}`, "dim"); g.put(X, Y + 16, `on failure: ${HANDOFFS[w.handoff][0]}`, "dim");
+    keys = [["space", "toggle step"], ["enter", "create"], ["r", "create + dry run"], ["backspace", "back"]];
+  }
+  if (w.err) g.segs(X, y0 + bh - 3, [["error", "red b"], [`[${w.err[0]}]`, "red"], [": " + w.err[1], ""]]);
+  let kx = X; keys.forEach(([k, v], i) => { if (i) kx = g.put(kx, y0 + bh - 2, " · ", "dim3"); kx = g.put(kx, y0 + bh - 2, k, "b"); kx = g.put(kx, y0 + bh - 2, " " + v, "dim"); });
+}
+function wizKey2(k) {
+  const w = S.wiz, step = WIZ2[w.step];
+  const next = () => { w.err = null; w.step++; play("open"); }, back = () => { w.err = null; if (w.step) { w.step--; play("back"); } };
+  if (k === "Escape") { S.wiz = null; play("back"); toast("new pipeline cancelled · nothing was saved", "dim"); return; }
+  if (step === "describe") {
+    if (w.drafting) return;
+    const showSentence = HOW[w.how][1] === "describe", nf = showSentence ? 3 : 2;
+    if (k === "Tab" || k === "ArrowDown") { w.field = (w.field + 1) % nf; play("tick"); return; }
+    if (k === "ArrowUp") { w.field = (w.field + nf - 1) % nf; play("tick"); return; }
+    if (w.field === 1) {
+      if (k === "h" || k === "ArrowLeft") { w.how = (w.how + HOW.length - 1) % HOW.length; play("toggle"); return; }
+      if (k === "l" || k === "ArrowRight" || k === " ") { w.how = (w.how + 1) % HOW.length; play("toggle"); return; }
+    }
+    if (k === "Enter") {
+      if (!w.name) w.name = "fix-flaky-test";
+      if (!/^[a-z][a-z0-9-]*$/.test(w.name)) { w.err = ["M1210", `"${w.name}" isn't a valid name · lowercase letters, digits and dashes`]; play("error"); return; }
+      if (PIPES.some(p => p.name === w.name)) { w.err = ["M2205", `a pipeline named ${w.name} already exists`]; play("error"); return; }
+      const how = HOW[w.how][1];
+      if (how === "import") { w.err = ["M5110", "import isn't in this demo · it's mill import <file|url>"]; play("error"); return; }
+      if (WIZ_TPL[how]) { const tp = WIZ_TPL[how]; w.trig = tp.trig; w.agent = tp.agent; w.steps = Object.fromEntries(tp.steps.map(s => [s, true])); w.desc = tp.desc; return next(); }
+      if (how === "blank") { w.desc = "A new pipeline."; return next(); }
+      const text = w.sentence || "every night find flaky tests, fix them, run the tests and open a draft PR";
+      w.drafting = performance.now(); play("run_start");
+      setTimeout(() => {
+        if (!S.wiz) return;
+        const t = text.toLowerCase(), st = { work: true };
+        if (/test|fix|bug|code|pr\b|pull/.test(t)) { st.ws = true; st.check = /test|check/.test(t); }
+        if (/\bpr\b|pull request/.test(t)) st.pr = true;
+        if (/review/.test(t)) st.review = true;
+        if (/slack|post|tell|notify/.test(t)) st.notify = true;
+        if (/rss|news|fetch|feed|calendar|digest/.test(t)) st.fetch = true;
+        if (/plan|risk|scope/.test(t)) st.scope = true;
+        w.steps = st; w.trig = /night/.test(t) ? 2 : /morning|weekday/.test(t) ? 1 : /issue|label/.test(t) ? 3 : 0;
+        w.desc = text.charAt(0).toUpperCase() + text.slice(1) + ".";
+        w.drafting = 0; w.step = 1; play("node_done"); toast(`proposed ${Object.values(st).filter(Boolean).length} steps · you'll check them on review`, "grn", 4500); S.dirty = true;
+      }, 1600);
+      return;
+    }
+    if (w.field === 0) { if (k === "Backspace") w.name = w.name.slice(0, -1); else if (k.length === 1) { w.name += k; w.err = null; } return; }
+    if (w.field === 2) { if (k === "Backspace") w.sentence = w.sentence.slice(0, -1); else if (k.length === 1) w.sentence += k; return; }
+    return;
+  }
+  if (k === "Backspace") return back();
+  const lists = { trigger: ["trig", WIZ_TRIG.length], agent: ["agent", WIZ_AGENTS.length], limits: ["gCur", wizGuardRows(w).length], review: ["stepCur", WIZ_DEFS.length] }[step];
+  if (k === "j" || k === "ArrowDown") { const v = Math.min(lists[1] - 1, w[lists[0]] + 1); if (v !== w[lists[0]]) { w[lists[0]] = v; play("tick"); } return; }
+  if (k === "k" || k === "ArrowUp") { const v = Math.max(0, w[lists[0]] - 1); if (v !== w[lists[0]]) { w[lists[0]] = v; play("tick"); } return; }
+  if (step === "trigger" && k === "Enter") return next();
+  if (step === "agent" && k === "Enter") { const a = WIZ_AGENTS[w.agent]; if (a.off) { w.err = ["M6101", `${a.a} isn't installed · install it, or pick another agent`]; play("error"); return; } return next(); }
+  if (step === "limits") {
+    const r = wizGuardRows(w)[w.gCur], d = (k === "h" || k === "ArrowLeft") ? -1 : (k === "l" || k === "ArrowRight") ? 1 : 0;
+    if (d || k === " ") {
+      if (r.k === "budget" && d) w.budget = (w.budget + d + BUDGETS.length) % BUDGETS.length;
+      else if (r.k === "agents" && d) w.maxAgents = Math.max(1, Math.min(4, w.maxAgents + d));
+      else if (r.k === "handoff" && d) w.handoff = (w.handoff + d + HANDOFFS.length) % HANDOFFS.length;
+      else if (r.k === "allow") w.allow[r.id] = w.allow[r.id] === false;
+      else if (r.k === "dry") w.dry = !w.dry;
+      else return;
+      play("toggle"); return;
+    }
+    if (k === "Enter") return next();
+    return;
+  }
+  if (step === "review") {
+    if (k === " " || k === "x") { const d = WIZ_DEFS[w.stepCur]; w.steps[d.id] = !w.steps[d.id]; play("toggle"); return; }
+    if (k === "Enter" || k === "r") { if (wizNodes(w).length < 2) { w.err = ["M2211", "pick at least one step"]; play("error"); return; } return wizCreate(k === "r"); }
+  }
+}
+
+/* ------------------------------------------------------------------ overlays: plugins, settings, stats, help, confirm */
+function rPluginsOverlay(g) {
+  const P = S.plugins, v = PVIEWS[P.view], x0 = 4, y0 = 2, w = 116, h = 28;
+  overlayBox(g, x0, y0, w, h, [["plugins", "b"]]);
+  let x = x0 + 3;
+  PVIEWS.forEach((n, i) => { const cnt = n === "installed" ? PLUG.installed.length : n === "updates" ? PLUG.installed.filter(p => p.up).length : PLUG[n].length; const xa = x; x = g.put(x, y0 + 1, `${n} ${cnt}`, i === P.view ? "b" : "dim3"); hit(xa, y0 + 1, x - 1, y0 + 1, () => { P.view = i; P.cur = 0; play("toggle"); }); x += 4; });
+  g.rput(x0 + w - 3, y0 + 1, "tab next view", "dim3");
+  const rows = plugRows(); P.cur = Math.max(0, Math.min(P.cur, rows.length - 1));
+  const X = x0 + 3, Y = y0 + 3;
+  rows.forEach((p, i) => {
+    const y = Y + i, sel = i === P.cur;
+    if (v === "installed" || v === "updates") {
+      g.put(X, y, p.busy ? spin() : p.st, p.busy ? "blu" : p.cls); g.put(X + 2, y, p.name, sel ? "b" : "");
+      g.put(X + 22, y, p.busy ? p.busy : p.up ? `${p.ver} → ${p.up}` : p.ver, p.busy ? "blu" : p.up ? "amb" : "dim");
+      g.put(X + 40, y, p.prov, "dim"); g.put(X + 70, y, p.health[0], p.health[1]); g.rput(x0 + w - 4, y, p.used.length ? `${p.used.length} pipeline${p.used.length > 1 ? "s" : ""}` : "unused", "dim3");
+    } else if (v === "available") { g.put(X, y, p.busy ? spin() : "·", "blu"); g.put(X + 2, y, p.name, sel ? "b" : ""); g.put(X + 22, y, p.busy || p.ver, "dim"); g.put(X + 40, y, p.prov, "dim"); g.put(X + 64, y, p.desc, "dim3"); }
+    else if (v === "mcp") { g.put(X + 2, y, p.name, sel ? "b" : ""); g.put(X + 22, y, p.st[0], p.st[1]); g.rput(x0 + w - 4, y, `${p.tools} tools`, "dim3"); }
+    else { g.put(X + 2, y, p.name, sel ? "b" : ""); g.put(X + 22, y, p.st[0], p.st[1]); g.put(X + 60, y, p.models, "dim3"); }
+    if (sel) g.bg(x0 + 1, x0 + w - 2, y, "sel");
+    hit(x0 + 1, y, x0 + w - 2, y, () => { P.cur = i; play("tick"); });
+  });
+  if (!rows.length) g.put(X + 2, Y, "everything is up to date", "grn");
+  const p = rows[P.cur];
+  if (p && (v === "installed" || v === "updates")) {
+    const yd = y0 + h - 9; g.hl(x0 + 1, x0 + w - 2, yd - 1, "dim3");
+    g.segs(X, yd, [[p.name, "hd"], ["  " + p.desc, "dim"]]);
+    g.segs(X, yd + 1, [["provides  ", "dim"], [trunc(p.parts, 96), ""]]);
+    g.segs(X, yd + 2, [["perms     ", "dim"], ...(p.perms.length ? p.perms : [["none", "dim"]])]);
+    g.segs(X, yd + 3, [["secrets   ", "dim"], ...(p.secret ? (p.name === "notion" ? [[p.secret + " ", ""], ["✗ expired · M6202", "red"]] : [[p.secret + " ", ""], ["✓ resolves", "grn"]]) : [["none", "dim"]])]);
+    g.segs(X, yd + 4, [["used by   ", "dim"], [p.used.length ? p.used.join(" · ") : "no pipelines", p.used.length ? "" : "dim"]]);
+    if (p.up) g.segs(X, yd + 5, [[p.up + "     ", "amb"], [p.change || "", "dim"], ["  · no new permissions", "grn"]]);
+  }
+  const m = activeMsg(); if (m) g.put(X, y0 + h - 3, trunc(m.text, w - 6), m.cls);
+  g.segs(X, y0 + h - 2, v === "available" ? [["i", "b"], [" install · ", "dim"], ["tab", "b"], [" view · ", "dim"], ["esc", "b"], [" back", "dim"]] : v === "agents" ? [["t", "b"], [" test · ", "dim"], ["tab", "b"], [" view · ", "dim"], ["esc", "b"], [" back", "dim"]]
+    : [["u", "b"], [" update · ", "dim"], ["U", "b"], [" all · ", "dim"], ["x", "b"], [" remove · ", "dim"], ["c", "b"], [" check · ", "dim"], ["tab", "b"], [" view · ", "dim"], ["esc", "b"], [" back", "dim"]]);
+}
+function rSettingsOverlay(g) {
+  const st = S.settings, x0 = 6, y0 = 2, w = 112, h = 28;
+  overlayBox(g, x0, y0, w, h, [["settings", "b"]]);
+  g.rput(x0 + w - 3, y0, " saves to settings.lua ", "dim3");
+  SECTIONS.forEach(([n], i) => { const y = y0 + 2 + i; g.put(x0 + 3, y, n, i === st.sec ? "b" : "dim"); if (i === st.sec) g.bg(x0 + 1, x0 + 17, y, "sel"); hit(x0 + 1, y, x0 + 17, y, () => { st.sec = i; st.row = 0; play("toggle"); }); });
+  g.vl(x0 + 19, y0 + 1, y0 + h - 4, "dim3");
+  const [secName, rows] = SECTIONS[st.sec], X = x0 + 22;
+  st.row = Math.max(0, Math.min(st.row, rows.length - 1));
+  let y = y0 + 2, ph = false;
+  rows.forEach((r, i) => {
+    const sel = i === st.row;
+    if (r.kind === "preview") {
+      if (!ph) { y++; g.put(X, y++, "PREVIEW · " + setting("sound.set"), "hd"); ph = true; }
+      g.put(X + 2, y, "▶", sel ? "blu" : "dim2"); g.put(X + 4, y, r.label, sel ? "b" : ""); g.put(X + 17, y, r.note, "dim");
+      if (sel) g.bg(X, x0 + w - 2, y, "sel"); hit(X, y, x0 + w - 2, y, () => { st.row = i; play(r.ev, true); }); y++; return;
+    }
+    g.put(X + 2, y, r.label, r.src ? "dim2" : "dim");
+    let val;
+    if (r.type === "enum") val = [["◂ ", "dim"], [r.val, sel ? "b" : ""], [" ▸", "dim"]];
+    else if (r.type === "bool") val = r.val ? [["●", "grn"], [" on", ""]] : [["○", "dim"], [" off", "dim"]];
+    else if (r.id === "sound.volume") { const n = Math.round(r.val / 10); val = [["▮".repeat(n), "blu"], ["▯".repeat(10 - n), "dim2"], [`  ${r.val}%`, ""]]; }
+    else if (r.type === "num") val = [["◂ ", "dim"], [String(r.val), sel ? "b" : ""], [" ▸", "dim"]];
+    else val = [[r.val || "(empty)", r.val ? "" : "dim3"]];
+    if (r.src) val = val.map(([t]) => [t, "dim2"]);
+    g.segs(X + 18, y, val);
+    g.put(X + 42, y, trunc(r.src ? `set in ${r.src} · gd to edit there` : r.note, x0 + w - X - 45), r.src ? "amb2" : "dim3");
+    if (sel) g.bg(X, x0 + w - 2, y, "sel");
+    hit(X, y, x0 + w - 2, y, () => { if (st.row === i && r.type !== "text") changeSetting(r, 1); else { st.row = i; play("tick"); } });
+    y++;
+  });
+  const m = activeMsg(); if (m) g.put(X, y0 + h - 3, trunc(m.text, w - 26), m.cls);
+  g.segs(x0 + 3, y0 + h - 2, [["j/k", "b"], [" move · ", "dim"], ["h/l", "b"], [" change · ", "dim"], ["p", "b"], [" preview · ", "dim"], ["u", "b"], [" reset · ", "dim"], ["[ ]", "b"], [" section · ", "dim"], ["esc", "b"], [" back", "dim"]]);
+}
+function rStatsOverlay(g) {
+  const x0 = 10, y0 = 4, w = 104, h = PIPES.length + 9;
+  overlayBox(g, x0, y0, w, h, [["stats", "b"], [" · today · 7 days · 30 days", "dim"]]);
+  const X = x0 + 3;
+  [[0, "pipeline"], [22, "runs 1d/7d/30d"], [42, "ok"], [50, "p50"], [58, "p90"], [68, "cost 1d"], [80, "cost 30d"]].forEach(([dx, t]) => g.put(X + dx, y0 + 2, t, "dim3"));
+  let tot1 = 0, tot30 = 0;
+  PIPES.forEach((p, i) => {
+    const y = y0 + 3 + i, [a, n] = okfrac(p.hist), r30 = p.hist.length, c1 = costOf(p), c30 = (p.cost || 0) * r30;
+    tot1 += c1; tot30 += c30;
+    g.put(X, y, p.name, ""); g.put(X + 22, y, `${p.state === "draft" ? 0 : 1} / ${Math.min(7, r30)} / ${r30}`, "dim");
+    g.put(X + 42, y, n ? `${Math.round(100 * a / n)}%` : "-", n && a / n < 0.9 ? "red" : "dim"); g.put(X + 50, y, p.typ, "dim"); g.put(X + 58, y, p.typ === "-" ? "-" : "×2.1", "dim3");
+    g.put(X + 68, y, `$${c1.toFixed(2)}`, "dim"); g.put(X + 80, y, `$${c30.toFixed(2)}`, "dim");
+  });
+  const yt = y0 + 4 + PIPES.length; g.hl(X, x0 + w - 4, yt - 1, "dim3");
+  g.put(X, yt, "total", "b"); g.put(X + 68, yt, `$${tot1.toFixed(2)}`, "b"); g.put(X + 80, yt, `$${tot30.toFixed(2)}`, "b");
+  g.segs(X, y0 + h - 2, [["esc", "b"], [" back · same as ", "dim"], ["mill stats", "b"]]);
+}
+function rHelp(g) {
+  const w = 110, x0 = Math.floor((W - w) / 2), y0 = 2;
+  const L = [["NAVIGATION", ""], ["j k", "move"], ["g G", "first / last"], ["1 2 3", "failed / running / ready"], ["tab", "next failed"], ["v", "simple / detailed rows"], ["t", "cycle tag filter"], ["/", "search (state: tag: trigger: ok:<90)"], ["s -", "sort / reverse"], ["V", "saved views"],
+    ["", ""], ["ACTIONS", ""], ["enter", "open the latest run"], ["R", "run now (dry run if never run)"], ["F", "rerun from the failed node"], ["e", "edit"], ["n", "new pipeline"], ["i", "λ prompt: name + inputs, or a pipe"], ["x", "disable / enable triggers"], ["dd", "delete"]];
+  const Rr = [["COMMANDS", ""], [":plugins", "app manager"], [":stats", "runs, success, time, cost"], [":settings S", "settings and sound"], [":new", "new pipeline"], [":sort :set", "sort, change a setting"], [":bg", "detach, keep everything running"], [":sh", "shell (demo)"], [":screensaver", "show it now"],
+    ["", ""], ["RUN", ""], ["enter", "agent screen (view-only)"], ["L", "log · za fold · / search · f follow"], ["F", "rerun from the selected node"], ["", ""], ["EDITOR", ""], ["hjkl", "move between nodes"], ["a c ga", "add · connect · fix lint"], ["E :w", "YAML in $EDITOR · save"]];
+  const h = Math.max(L.length, Rr.length) + 5;
+  overlayBox(g, x0, y0, w, h, [["?", "mark"], [" help", "b"]]);
+  const col = (items, X) => items.forEach(([k, v], i) => { const y = y0 + 2 + i; if (!v && k) g.put(X, y, k, "hd"); else { g.put(X, y, k, "amb"); g.put(X + 15, y, v, ""); } });
+  col(L, x0 + 3); col(Rr, x0 + 58);
+  g.segs(x0 + 3, y0 + h - 2, [["esc", "b"], [" or ", "dim"], ["?", "b"], [" closes", "dim"]]);
+}
+function rConfirm(g) {
+  const c = S.confirm, w = Math.max(50, len(c.text) + 8), x0 = Math.floor((W - w) / 2), y0 = 12;
+  overlayBox(g, x0, y0, w, 6, [["confirm", "b"]]);
+  g.put(x0 + 3, y0 + 2, c.text, "b");
+  let x = x0 + 3; c.keys.forEach(([k, v], i) => { if (i) x = g.put(x, y0 + 4, " · ", "dim3"); x = g.put(x, y0 + 4, k, "b"); x = g.put(x, y0 + 4, " " + v, "dim"); });
+}
+function rSaver(g) {
+  const c = counts(), ok = 12 + PIPES.filter(p => p.state === "ok" && p.lastSec < 86400).length;
+  const parts = [[`${c.failed} failed`, c.failed ? "red" : "dim"], [" · ", "dim3"], [`${c.running + c.retrying} running`, "dim"], [" · ", "dim3"], [`${ok} ok today`, "dim"]];
+  const tw = parts.reduce((a, [t]) => a + len(t), 0), [dx, dy] = S.saverDrift, cy = 15 + dy;
+  g.segs(Math.floor((W - 6) / 2) + dx, cy, [["≋", "mark"], [" mill", "b"]]);
+  g.segs(Math.floor((W - tw) / 2) + dx, cy + 2, parts);
+}
+function rBoot(g) {
+  const cy = 14;
+  g.segs(Math.floor((W - 6) / 2), cy, [["≋", "mark"], [" mill", "b"]]);
+  const t = "press any key"; g.put(Math.floor((W - t.length) / 2), cy + 2, t, "dim");
+}
+
+/* ------------------------------------------------------------------ render */
+const scr = document.getElementById("scr");
+function render() {
+  let g = new G(W, H);
+  HITS = [];
+  try {
+    if (S.shell) rShell(g);
+    else if (S.screen === "boot") rBoot(g);
+    else if (S.saver) rSaver(g);
+    else {
+      if (S.screen === "editor") rEditor(g); else rBoard(g);
+      if (S.popup || S.overlay || S.wiz || S.confirm) { HITS = []; for (let y = 0; y < H; y++) g.setcls(0, W - 1, y, "dim3"); }
+      if (S.popup === "run") rRunPopup(g); else if (S.popup === "agent") rAgentPopup(g); else if (S.popup === "log") rLogPopup(g);
+      if (S.overlay === "plugins") rPluginsOverlay(g); else if (S.overlay === "settings") rSettingsOverlay(g); else if (S.overlay === "stats") rStatsOverlay(g);
+      if (S.wiz) rWizard(g);
+      if (S.overlay === "help") rHelp(g);
+      if (S.confirm) rConfirm(g);
+    }
+  } catch (err) {
+    g = new G(W, H); HITS = [];
+    g.segs(2, 2, [["error", "red b"], ["[M0001]", "red"], [": this screen failed to draw · a bug in the prototype", "b"]]);
+    g.put(4, 4, String(err && err.message || err), "red"); g.put(4, 6, "press esc", "dim");
+    if (!S.reported) { S.reported = true; console.error(err); }
+  }
+  scr.innerHTML = g.render();
+  document.getElementById("bar-l").textContent = S.shell ? "mill · shell" : "mill" + (S.saver ? " · screensaver" : S.screen === "editor" ? " · editor" : "");
+}
+function fit() { const avail = Math.min(window.innerWidth - 56, 1240); scr.style.fontSize = Math.max(7, Math.min(13.5, avail / (W * 0.6))).toFixed(2) + "px"; }
+
+/* ------------------------------------------------------------------ input */
+function command(text) {
+  const [c, ...rest] = text.trim().split(/\s+/), arg = rest.join(" ");
+  if (!c) return;
+  if (c === "q" || c === "quit") { S.confirm = { text: "quit mill? runs keep going in milld", keys: [["y", "quit"], ["n", "stay"]], y: () => toast("demo: close the tab to leave · milld would keep running", "dim"), n: () => {} }; return; }
+  if (c === "w") { if (S.screen === "editor") { S.create.dirtyFile = false; play("save"); toast("saved", "grn"); } else toast("nothing to save here", "dim"); return; }
+  if (c === "new") { wizNew(); return; }
+  if (c === "settings") { S.overlay = "settings"; play("open"); return; }
+  if (c === "plugins") { S.overlay = "plugins"; play("open"); return; }
+  if (c === "stats") { S.overlay = "stats"; play("open"); return; }
+  if (c === "help") { S.overlay = "help"; return; }
+  if (c === "screensaver") { S.saver = true; return; }
+  if (c === "sh") { S.shell = true; syncBtns(); return; }
+  if (c === "bg" || c === "detach") return toast("detached · milld and every run keep going · the next mill restores this view", "dim", 5000);
+  if (c === "enable" || c === "disable") { const p = PIPES.find(x => x.name === arg) || selected(); if (p) { p.disabled = c === "disable"; play("toggle"); toast(`${p.name} ${c}d`, "dim"); } return; }
+  if (c === "sort") { const i = SORTS.indexOf(arg); if (i < 0) return errorToast("M1305", `unknown sort "${arg}"`, SORTS.join(", ")); S.board.sort = i; return; }
+  if (c === "set") { const m = arg.match(/^([\w.]+)\s*=\s*(.+)$/); if (!m || !SETTING[m[1]]) return errorToast("M8004", `unknown setting "${m ? m[1] : arg}"`, ":settings to browse"); const r = SETTING[m[1]]; let v = m[2]; if (r.type === "bool") v = /^(true|on|1)$/i.test(v); else if (r.type === "num") v = +v; if (r.type === "enum" && !r.vals.includes(v)) return errorToast("M8005", `${r.id} can't be "${v}"`, r.vals.join(", ")); r.val = v; if (r.id === "sound.volume") setVolume(); play("toggle"); toast(`${r.id} = ${v}`, "grn"); return; }
+  errorToast("M1301", `unknown command ":${c}"`, ":help lists them");
+}
+function runPrompt(text) {
+  const t = text.trim(); if (!t) return;
+  if (t.includes("|")) {
+    const n = t.split("|").length; play("run_start"); toast(`≋ pipe · ${n} stages started`, "blu");
+    setTimeout(() => { play("run_done"); toast(`✓ pipe done · ${n} stages · 4.8s · $0.01 · mill logs pipe#1 has the output`, "grn", 6000); S.dirty = true; }, 2500);
+    return;
+  }
+  const [name, ...kv] = t.split(/\s+/), p = PIPES.find(x => x.name === name);
+  if (!p) { const near = PIPES.map(x => [x.name, lev(x.name, name)]).sort((a, b) => a[1] - b[1])[0]; return errorToast("M1201", `pipeline "${name}" not found`, near && near[1] <= 3 ? `did you mean ${near[0]}?` : "mill ls"); }
+  const rows = boardRows(); runPipe(p); S.board.cur = Math.max(0, boardRows().indexOf(p));
+  if (kv.length) setTimeout(() => toast(`≋ ${p.name} started with ${kv.join(" ")}`, "blu"), 10);
+}
+function keyBoard(k) {
+  const b = S.board, rows = boardRows(), p = rows[b.cur];
+  const jump = sec => { const i = rows.findIndex(x => sectionOf(x) === sec); if (i >= 0) { b.cur = i; play("tick"); } };
+  switch (k) {
+    case "j": case "ArrowDown": if (b.cur < rows.length - 1) { b.cur++; play("tick"); } break;
+    case "k": case "ArrowUp": if (b.cur > 0) { b.cur--; play("tick"); } break;
+    case "g": b.cur = 0; play("tick"); break;
+    case "G": b.cur = rows.length - 1; play("tick"); break;
+    case "1": jump("FAILED"); break;
+    case "2": jump("RUNNING"); break;
+    case "3": { const n = PIPES.filter(x => sectionOf(x) === "READY").length; if (n > 5) { b.readyOpen = !b.readyOpen; play("toggle"); } jump("READY"); break; }
+    case "Tab": { const f = rows.map((x, i) => [x, i]).filter(([x]) => x.state === "failed"); if (!f.length) { toast("nothing has failed", "grn"); break; } const nx = f.find(([, i]) => i > b.cur) || f[0]; b.cur = nx[1]; play("tick"); break; }
+    case "Enter": if (p) openRun(p); break;
+    case "R": if (p) runPipe(p); break;
+    case "F": if (p) { if (p.state === "failed") runPipe(p, true); else toast("F reruns a failed run from the node that failed", "dim"); } break;
+    case "e": if (p) { S.create.target = p.created ? p : null; S.create.palette = null; S.create.connect = false; if (!p.created) S.create.sel = "pr"; S.screen = "editor"; play("open"); if (!p.created && p.name !== "best-of-3") toast("demo: the editor shows best-of-3 · press n to make your own", "dim"); } break;
+    case "n": wizNew(); break;
+    case "i": S.prompt = ""; play("toggle"); break;
+    case "v": b.detailed = !b.detailed; play("toggle"); break;
+    case "t": { const tags = ["all", ...new Set(PIPES.flatMap(x => x.tags))]; b.tag = tags[(tags.indexOf(b.tag) + 1) % tags.length]; b.cur = 0; play("toggle"); break; }
+    case "/": b.searchEdit = true; play("toggle"); break;
+    case "Escape": if (b.search || b.tag !== "all") { b.search = ""; b.tag = "all"; play("back"); } break;
+    case "s": b.sort = (b.sort + 1) % SORTS.length; play("toggle"); toast("sort " + SORTS[b.sort] + " (inside each section)", "dim", 1800); break;
+    case "-": b.rev = !b.rev; play("toggle"); break;
+    case "V": S.view = (S.view + 1) % VIEWS.length; b.tag = VIEWS[S.view].tag; b.search = VIEWS[S.view].search; b.cur = 0; play("toggle"); toast("view: " + VIEWS[S.view].name, "dim", 1800); break;
+    case "p": b.preview = !b.preview; play("toggle"); break;
+    case "x": if (p) S.confirm = { text: `${p.disabled ? "enable" : "disable"} ${p.name}'s triggers?`, keys: [["y", p.disabled ? "enable" : "disable"], ["n", "keep"]], y: () => { p.disabled = !p.disabled; play("toggle"); }, n: () => {} }; break;
+    case "dd": if (p) S.confirm = { text: `delete ${p.name}? the file moves to .mill/trash/`, keys: [["y", "delete"], ["n", "keep"]], y: () => { PIPES.splice(PIPES.indexOf(p), 1); play("disconnect"); toast(`deleted ${p.name} · it's in .mill/trash/`, "dim"); }, n: () => {} }; break;
+    case "q": command("q"); break;
+  }
+}
+function keyRun(k) {
+  const info = runRows(S.run.pipe), rows = info.rows, i = rows.findIndex(r => r.id === S.run.sel);
+  switch (k) {
+    case "j": case "ArrowDown": if (i < rows.length - 1) { S.run.sel = rows[i + 1].id; play("tick"); } break;
+    case "k": case "ArrowUp": if (i > 0) { S.run.sel = rows[i - 1].id; play("tick"); } break;
+    case "Enter": openAgent(rows[i]); break;
+    case "L": S.popup = "log"; S.log.follow = true; play("open"); break;
+    case "F": { const p = PIPES.find(x => x.name === S.run.pipe); if (p && p.live) { simReset(true); p.state = "running"; play("run_start"); toast(`≋ issue-to-pr#${S.run.num} started from ${S.run.sel}`, "blu"); } else if (p) runPipe(p, p.state === "failed"); break; }
+    case "i": toast(`${S.run.sel}: 1 item out · mill items ${info.title}/${S.run.sel} --json`, "dim"); break;
+    case "c": toast("c cancels the run (asks first) · off in this demo", "dim"); break;
+    case "Escape": case "q": S.popup = null; play("back"); break;
+  }
+}
+function jumpHit(dir) {
+  const L = S.log, lines = S.run.pipe === "issue-to-pr" ? logLines() : staticLog(S.run.pipe), q = L.search.toLowerCase(); if (!q) return;
+  const hits = lines.map((l, i) => [l, i]).filter(([l]) => lineText(l).toLowerCase().includes(q)).map(([, i]) => i);
+  if (!hits.length) return errorToast("E486", `pattern not found: ${L.search}`, "");
+  L.follow = false; L.cur = dir > 0 ? (hits.find(h => h > L.cur) ?? hits[0]) : ([...hits].reverse().find(h => h < L.cur) ?? hits[hits.length - 1]); play("tick");
+}
+function keyLog(k) {
+  const L = S.log, lines = S.run.pipe === "issue-to-pr" ? logLines() : staticLog(S.run.pipe), l = lines[L.cur];
+  switch (k) {
+    case "j": case "ArrowDown": L.follow = false; L.cur++; play("tick"); break;
+    case "k": case "ArrowUp": L.follow = false; L.cur = Math.max(0, L.cur - 1); play("tick"); break;
+    case "gg": L.follow = false; L.cur = 0; break;
+    case "G": L.cur = lines.length - 1; break;
+    case "f": L.follow = !L.follow; play("toggle"); break;
+    case "/": L.searchEdit = true; L.search = ""; break;
+    case "n": jumpHit(1); break;
+    case "N": jumpHit(-1); break;
+    case "o": { const node = l ? (l.kind === "line" ? l.e.node : l.node) : null; L.only = L.only ? null : node; L.cur = 0; L.follow = false; play("toggle"); break; }
+    case "za": case "zo": case "zc": { let f = null; for (let j = L.cur; j >= 0; j--) if (lines[j].kind === "fold") { f = lines[j].e.fold; break; } else if (lines[j].kind !== "out") break; if (!f) { toast("no fold here", "dim", 1500); break; } L.folds[f] = k === "zo" ? false : k === "zc" ? true : !L.folds[f]; L.follow = false; play("toggle"); break; }
+    case "gx": toast("M6201: the provider rate limited the agent · mill retries with Retry-After · mill explain M6201", "amb", 5000); break;
+    case "L": case "Escape": if (L.search && k === "Escape") L.search = ""; else { S.popup = "run"; play("back"); } break;
+  }
+}
+function keyPlugins(k) {
+  const P = S.plugins, rows = plugRows(), p = rows[P.cur], v = PVIEWS[P.view];
+  switch (k) {
+    case "j": case "ArrowDown": if (P.cur < rows.length - 1) { P.cur++; play("tick"); } break;
+    case "k": case "ArrowUp": if (P.cur > 0) { P.cur--; play("tick"); } break;
+    case "Tab": case "]": P.view = (P.view + 1) % PVIEWS.length; P.cur = 0; play("toggle"); break;
+    case "[": P.view = (P.view + PVIEWS.length - 1) % PVIEWS.length; P.cur = 0; play("toggle"); break;
+    case "u": if (p && (v === "installed" || v === "updates")) updatePlugin(p); break;
+    case "U": { const ups = PLUG.installed.filter(x => x.up); if (!ups.length) toast("everything is up to date", "grn"); ups.forEach(x => updatePlugin(x, true)); break; }
+    case "x": if (!p || v !== "installed") break;
+      if (p.used.length) errorToast("M5105", `${p.name} is used by ${p.used.length} pipeline${p.used.length > 1 ? "s" : ""}: ${p.used.slice(0, 3).join(", ")}`, "remove it from those first");
+      else { PLUG.installed.splice(P.cur, 1); play("disconnect"); toast(`removed ${p.name} · mill.lock updated`, "dim"); } break;
+    case "i": if (v !== "available" || !p) break; p.busy = "installing…"; setTimeout(() => { PLUG.available.splice(PLUG.available.indexOf(p), 1); PLUG.installed.push({ st: "✓", cls: "grn", name: p.name, ver: p.ver, prov: p.prov, src: "registry", health: ["✓ ok", "grn"], used: [], desc: p.desc, parts: p.prov, perms: [["network ", "dim"], ["declared at install", ""]], secret: null }); play("save", true); toast(`✓ ${p.name} ${p.ver} installed · locked`, "grn"); S.dirty = true; }, 1200); break;
+    case "c": if (!p) break; if ((p.health && p.health[1] === "red") || (Array.isArray(p.st) && p.st[1] === "red")) errorToast("M6202", `${p.name}: auth expired`, "mill mcp login " + p.name); else { toast(`✓ ${p.name} healthy`, "grn"); play("lint_ok", true); } break;
+    case "t": if (v !== "agents" || !p) break; if (p.st[1] === "red") errorToast("M6101", `${p.name} not found on PATH`, "install it, or map pipelines to another agent"); else { toast(`✓ ${p.name}: answered a 1-token prompt in 1.2s`, "grn"); play("node_done", true); } break;
+    case "Escape": case "q": S.overlay = null; play("back"); break;
+  }
+}
+const SETTING_DEFAULTS = {}; for (const id in SETTING) SETTING_DEFAULTS[id] = SETTING[id].val;
+function changeSetting(r, dir) {
+  if (r.src) return errorToast("M8203", `${r.id} is set in ${r.src}`, "gd to edit it there");
+  if (r.type === "enum") { const i = r.vals.indexOf(r.val); r.val = r.vals[(i + dir + r.vals.length) % r.vals.length]; }
+  else if (r.type === "num") r.val = Math.max(r.min, Math.min(r.max, r.val + dir * (r.step || 1)));
+  else if (r.type === "bool") r.val = !r.val;
+  else return toast(`${r.id}: text values are edited with i (not in this demo)`, "dim");
+  if (r.id === "sound.volume") setVolume();
+  if (r.id === "sound.set") setTimeout(() => play("open", true), 30); else play("toggle");
+}
+function keySettings(k) {
+  const st = S.settings, rows = SECTIONS[st.sec][1], r = rows[st.row];
+  switch (k) {
+    case "j": case "ArrowDown": if (st.row < rows.length - 1) { st.row++; play("tick"); } break;
+    case "k": case "ArrowUp": if (st.row > 0) { st.row--; play("tick"); } break;
+    case "]": case "J": case "Tab": st.sec = (st.sec + 1) % SECTIONS.length; st.row = 0; play("toggle"); break;
+    case "[": case "K": st.sec = (st.sec + SECTIONS.length - 1) % SECTIONS.length; st.row = 0; play("toggle"); break;
+    case "h": case "ArrowLeft": if (r.kind !== "preview") changeSetting(r, -1); break;
+    case "l": case "ArrowRight": if (r.kind !== "preview") changeSetting(r, 1); break;
+    case "Enter": case "p": if (r.kind === "preview") play(r.ev, true); else if (k === "p") play("open", true); else if (r.type === "bool" || r.type === "enum") changeSetting(r, 1); break;
+    case "u": if (r.id && !r.src) { r.val = SETTING_DEFAULTS[r.id]; if (r.id === "sound.volume") setVolume(); play("toggle"); toast(`${r.id} reset`, "dim"); } break;
+    case "gd": toast(r.src ? `opens ~/.config/mill/${r.src.replace(":", " at line ")}` : "this one lives in settings.lua", "dim"); break;
+    case "Escape": case "q": S.overlay = null; play("back"); break;
+  }
+}
+function seq(k, known) {
+  const s = S.pending + k;
+  if (known.includes(s)) { S.pending = ""; return s; }
+  if (!S.pending && known.some(x => x[0] === k)) { S.pending = k; S.pendingAt = performance.now(); return ""; }
+  S.pending = ""; return null;
+}
+function onKey(e) {
+  if (e.metaKey || e.altKey) return;
+  const k = e.key;
+  if (k.length > 1 && !["Enter", "Escape", "Backspace", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Tab"].includes(k)) return;
+  e.preventDefault();
+  S.lastInput = performance.now(); S.dirty = true; audioInit();
+  if (S.screen === "boot") { S.screen = "board"; sayMill(); SIM.lastReal = performance.now(); return; }
+  if (S.saver) { S.saver = false; S.pending = ""; return; }
+  if (S.shell) return shellKey(e);
+  if (S.confirm) { const c = S.confirm; if (k === "y" && c.y) { S.confirm = null; c.y(); } else if (k === "n" && c.n) { S.confirm = null; c.n(); } else if (k === "Escape") { S.confirm = null; play("back"); } return; }
+  if (S.overlay === "help") { S.overlay = null; play("back"); return; }
+  if (S.wiz) return wizKey2(k);
+  if (S.cmd !== null) { if (k === "Escape") S.cmd = null; else if (k === "Enter") { const t = S.cmd; S.cmd = null; command(t); } else if (k === "Backspace") S.cmd = S.cmd.slice(0, -1); else if (k.length === 1) S.cmd += k; return; }
+  if (S.prompt !== null) {
+    if (k === "Escape") { S.prompt = null; play("back"); } else if (k === "Enter") { const t = S.prompt; S.prompt = null; runPrompt(t); }
+    else if (k === "Backspace") S.prompt = S.prompt.slice(0, -1);
+    else if (k === "Tab") { const m = PIPES.map(p => p.name).find(n => n.startsWith(S.prompt) && n !== S.prompt); if (m) S.prompt = m + " "; }
+    else if (k.length === 1) S.prompt += k;
+    return;
+  }
+  if (S.board.searchEdit && S.screen === "board" && !S.popup && !S.overlay) { const b = S.board; if (k === "Escape") { b.search = ""; b.searchEdit = false; play("back"); } else if (k === "Enter") { b.searchEdit = false; play("toggle"); } else if (k === "Backspace") b.search = b.search.slice(0, -1); else if (k.length === 1) { b.search += k; b.cur = 0; } return; }
+  if (S.popup === "log" && S.log.searchEdit) { const L = S.log; if (k === "Escape") { L.search = ""; L.searchEdit = false; } else if (k === "Enter") { L.searchEdit = false; jumpHit(1); } else if (k === "Backspace") L.search = L.search.slice(0, -1); else if (k.length === 1) L.search += k; return; }
+  if (S.screen === "editor" && S.create.palette) {
+    const P = S.create.palette, res = PARTS.filter(p => p[1].includes(P.q.toLowerCase()) || p[3].includes(P.q.toLowerCase()));
+    if (k === "Escape") { S.create.palette = null; play("back"); }
+    else if (k === "ArrowDown") { P.cur++; play("tick"); } else if (k === "ArrowUp") { P.cur = Math.max(0, P.cur - 1); play("tick"); }
+    else if (k === "Enter") { const pick = res[P.cur]; if (!pick) return; const c = S.create;
+      if (c.target) { const t = c.target, id = pick[1].split(/[.:/]/).pop(), nid = t.nodes.some(n => n.id === id) ? id + "-2" : id, destr = pick[2].includes("destructive"); t.nodes.push({ id: nid, gl: pick[0], name: nid, sub: pick[1], uses: pick[1], f: [], destructive: destr }); if (destr) t.lintOk = false; c.sel = nid; }
+      else { c.undo.push(["placed", c.placed]); c.placed = [pick[0], pick[1]]; c.sel = "placed"; c.connect = false; }
+      c.palette = null; c.dirtyFile = true; play("place"); setTimeout(() => play("connect"), 120); toast(`added ${pick[1]}`, "grn"); }
+    else if (k === "Backspace") P.q = P.q.slice(0, -1); else if (k.length === 1) { P.q += k; P.cur = 0; }
+    return;
+  }
+  if (k === ":") { S.cmd = ""; S.pending = ""; return; }
+  if (k === "?") { S.overlay = "help"; play("open"); return; }
+  if (S.popup === "run") return keyRun(k);
+  if (S.popup === "agent") { if (k === "Escape" || k === "q") { S.popup = "run"; S.run.agent = null; play("back"); } else if (k === "L") { S.popup = "log"; play("open"); } return; }
+  if (S.popup === "log") { const s = seq(k, ["gg", "za", "zo", "zc", "gx"]); if (s === "") return; return keyLog(s || k); }
+  if (S.overlay === "plugins") { const s = seq(k, ["gd"]); if (s === "") return; return keyPlugins(s || k); }
+  if (S.overlay === "settings") { const s = seq(k, ["gd"]); if (s === "") return; return keySettings(s || k); }
+  if (S.overlay === "stats") { if (k === "Escape" || k === "q") { S.overlay = null; play("back"); } return; }
+  if (k === "S") { S.overlay = "settings"; play("open"); return; }
+  if (S.screen === "editor") { const s = seq(k, ["dd", "ga", "gx"]); if (s === "") return; return keyEditor(s || k); }
+  const s = seq(k, ["dd"]); if (s === "") return;
+  keyBoard(s || k);
+  const br = boardRows(); if (br[S.board.cur]) S.board.selName = br[S.board.cur].name;
+}
+
+/* ------------------------------------------------------------------ wiring */
+document.addEventListener("keydown", e => { if (document.activeElement && document.activeElement.tagName === "BUTTON" && (e.key === "Enter" || e.key === " ")) return; onKey(e); });
+function cellAt(ev) {
+  const r = scr.getBoundingClientRect(), cs = getComputedStyle(scr);
+  const probe = document.createElement("span"); probe.textContent = "0".repeat(100); probe.style.visibility = "hidden"; probe.style.position = "absolute"; scr.appendChild(probe);
+  const cw = probe.getBoundingClientRect().width / 100; probe.remove();
+  return [Math.floor((ev.clientX - r.left - parseFloat(cs.paddingLeft) + scr.scrollLeft) / cw), Math.floor((ev.clientY - r.top - parseFloat(cs.paddingTop)) / (parseFloat(cs.fontSize) * 1.22))];
+}
+function findHit(x, y) { for (let i = HITS.length - 1; i >= 0; i--) { const h = HITS[i]; if (x >= h.x1 && x <= h.x2 && y >= h.y1 && y <= h.y2) return h; } return null; }
+scr.addEventListener("mousedown", ev => {
+  scr.focus(); S.lastInput = performance.now(); audioInit();
+  if (S.screen === "boot") { S.screen = "board"; sayMill(); SIM.lastReal = performance.now(); return; }
+  if (S.saver) { S.saver = false; return; }
+  if (S.shell || !setting("mouse_enabled")) return;
+  if (S.overlay === "help") { S.overlay = null; return; }
+  const [x, y] = cellAt(ev), h = findHit(x, y), now = performance.now();
+  const dbl = S.lastClick && now - S.lastClick.t < 400 && S.lastClick.x === x && S.lastClick.y === y;
+  S.lastClick = { t: now, x, y };
+  if (!h) return;
+  if (dbl && h.dbl) { S.lastClick = null; h.dbl(); } else h.fn();
+  render();
+});
+scr.addEventListener("wheel", ev => {
+  if (S.shell || S.saver || S.screen === "boot" || !setting("mouse_enabled")) return;
+  ev.preventDefault(); onKey({ key: ev.deltaY > 0 ? "j" : "k", code: "", preventDefault() {}, metaKey: false, altKey: false });
+}, { passive: false });
+function syncBtns() {
+  document.getElementById("b-tui").setAttribute("aria-pressed", String(!S.shell));
+  document.getElementById("b-sh").setAttribute("aria-pressed", String(S.shell));
+  const b = document.getElementById("b-snd"); b.setAttribute("aria-pressed", String(!AU.muted)); b.textContent = AU.muted ? "Sound off" : "Sound on";
+}
+const startIfBoot = () => { if (S.screen === "boot") { S.screen = "board"; SIM.lastReal = performance.now(); } };
+document.getElementById("b-tui").onclick = e => { S.shell = false; startIfBoot(); syncBtns(); e.currentTarget.blur(); scr.focus(); };
+document.getElementById("b-sh").onclick = e => { audioInit(); S.shell = true; startIfBoot(); syncBtns(); e.currentTarget.blur(); scr.focus(); };
+document.getElementById("b-snd").onclick = e => { audioInit(); AU.muted = !AU.muted; setVolume(); syncBtns(); e.currentTarget.blur(); scr.focus(); };
+document.getElementById("b-saver").onclick = e => { startIfBoot(); S.shell = false; S.saver = true; syncBtns(); e.currentTarget.blur(); scr.focus(); };
+window.addEventListener("resize", fit);
+if ("speechSynthesis" in window) speechSynthesis.getVoices();
+let last = 0;
+function loop(ts) {
+  if (ts - last >= 100) {
+    last = ts; S.tick++;
+    if (S.screen !== "boot") simStep();
+    if (S.pending && performance.now() - S.pendingAt > 900) S.pending = "";
+    const ip = PIPES.find(p => p.name === "inbox-triage");
+    if (ip) { ip.cycle = (ip.cycle + 1) % 300; ip.state = ip.cycle < 90 ? "running" : "ok"; if (ip.state === "ok") { ip.lastSec = (ip.cycle - 90) / 10; } }
+    const idle = (performance.now() - S.lastInput) / 1000;
+    if (S.screen === "board" && !S.shell && !S.saver && !S.popup && !S.overlay && !S.wiz && !S.confirm && S.cmd === null && S.prompt === null && !S.board.searchEdit && setting("screensaver.enabled") && idle > setting("screensaver.after_minutes") * 60) S.saver = true;
+    if (S.saver && !setting("reduce_motion") && performance.now() - S.saverDriftAt > 10000) { S.saverDriftAt = performance.now(); S.saverDrift = [Math.round(Math.random() * 12 - 6), Math.round(Math.random() * 4 - 2)]; }
+    render();
+  }
+  requestAnimationFrame(loop);
+}
+fit(); render(); scr.focus(); requestAnimationFrame(loop);
+</script>
+</body>
+</html>
