@@ -302,6 +302,13 @@ const SECTIONS = [
   ["Agents", [
     S_("trusted_dirs", "trusted dirs", "text", "~/code", "Folders where agents' folder-trust prompts may be answered. Refuses /, your home folder, relative paths and ..", { note: "comma-separated", check: v => v.split(/\s*,\s*/).find(d => d === "/" || d === "~" || d === "~/" || !/^[~/]/.test(d) || /(^|\/)\.\.(\/|$)/.test(d)) }),
   ]],
+  ["Drafter", [
+    S_("drafter.backend", "backend", "enum", "ollama", "Who drafts a pipeline from a sentence (describe it, mill new --describe): ollama (local model, free, offline), agent (headless registry agent, costs tokens, opt-in) or off (keyword rules only). Unavailable falls back to keyword rules with M2212; it never blocks.", { vals: ["ollama", "agent", "off"] }),
+    S_("drafter.base_url", "base url", "text", "http://127.0.0.1:11434", "Ollama's base URL: $OLLAMA_HOST, else http://127.0.0.1:11434. A URL off this machine receives your sentence.", { re: /^https?:\/\/[\w.-]+(:\d{2,5})?\/?$/, note: "$OLLAMA_HOST, else 127.0.0.1:11434", defLabel: "$OLLAMA_HOST, else http://127.0.0.1:11434" }),
+    S_("drafter.model", "model", "enum", "llama3.2:3b", "Resolved against the pulled models (/api/tags): if it isn't pulled, the first pulled small model is used and logged, never an arbitrary one. enter picks a pulled model.", { vals: ["llama3.2:3b", "qwen2.5:3b", "qwen2.5-coder:7b"], sizes: { "llama3.2:3b": "2.0 GB", "qwen2.5:3b": "1.9 GB", "qwen2.5-coder:7b": "4.7 GB" }, picker: true }),
+    S_("drafter.agent", "agent", "enum", "claude/haiku", "Agent and model for drafter.backend = agent; the cheapest signed-in model by default. Costs tokens, counted in today's spend.", { vals: ["claude/haiku", "claude/sonnet", "codex/gpt-5", "gemini/2.5-pro"], note: "cheapest signed-in model" }),
+    S_("drafter.timeout", "timeout", "text", "20s", "Per request, 1s to 2m. Only an unreachable server or a 5xx is retried, once; a timeout falls back to keyword rules.", { re: /^\d+(s|m)$/, check: v => { const s = /^(\d+)(s|m)$/.exec(v); if (!s) return null; const n = +s[1] * (s[2] === "m" ? 60 : 1); return n < 1 || n > 120 ? "must be 1s–2m" : null; }, note: "1s–2m" }),
+  ]],
   ["Plugins", [
     S_("plugins.auto_update", "auto update", "enum", "off", "Update plugins on their own: off, patch or minor. Never adds permissions; those wait on :plugins.", { vals: ["off", "patch", "minor"] }),
     S_("plugins.sandbox", "sandbox", "enum", "none", "container runs executable parts in the container runner with their declared permissions enforced.", { vals: ["none", "container"] }),
@@ -345,6 +352,16 @@ const SECTIONS = [
 const SETTING = {}; for (const [, rows] of SECTIONS) for (const r of rows) if (r.id) SETTING[r.id] = r;
 const setting = id => SETTING[id] ? SETTING[id].val : undefined;
 if (SCN === "config-error") Object.assign(SETTING.max_concurrent_agents, { val: 4, src: null });
+/* drafter (§18.8, §19.6): a simulated Ollama. Prototype only: `:set drafter.simulate_down=true` makes it unreachable */
+const OLLAMA = { down: false };
+function drafterStatus() {
+  const b = setting("drafter.backend"), host = setting("drafter.base_url").replace(/^https?:\/\//, "").replace(/\/$/, "");
+  if (b === "off") return { ok: false, off: true, segs: [["off", "dim"], [" · describe uses keyword rules", "dim3"]] };
+  if (b === "agent") return { ok: true, segs: [["agent ", "b"], ["✓ ", "grn"], [setting("drafter.agent"), ""], [" · headless, costs tokens", "dim3"]] };
+  if (OLLAMA.down) return { ok: false, segs: [["ollama ", "b"], ["✗ ", "red"], ["unreachable", "red"], [` · ${host} · describe uses keywords · `, "dim"], ["M2212", "amb"]] };
+  return { ok: true, segs: [["ollama ", "b"], ["✓ ", "grn"], [host, ""], [` · ${setting("drafter.model")} · ${SETTING["drafter.model"].vals.length} models pulled`, "dim"]] };
+}
+function drafterLabel() { const b = setting("drafter.backend"); return b === "off" || (b === "ollama" && OLLAMA.down) ? "with keyword rules" : b === "agent" ? `with ${setting("drafter.agent")}` : `with ollama · ${setting("drafter.model")}`; }
 
 /* ------------------------------------------------------------------ data */
 const PIPES = [
@@ -727,7 +744,7 @@ const S = {
   board: { cur: 0, detailed: false, tag: "all", search: "", searchEdit: false, sort: 0, rev: false, readyOpen: SCN === "fresh-clone", preview: false },
   run: { num: 42, pipe: "issue-to-pr", sel: "build", agent: null, open: {}, top: 0, old: null },
   log: { cur: 0, top: 0, folds: { plan: true, build1: false }, search: "", searchEdit: false, follow: true, only: null },
-  plugins: { view: 0, cur: 0, q: "", qEdit: false, detail: false }, settings: { sec: 5, row: 0, edit: null, q: null }, runs: { cur: 0 }, msgs: { cur: 0 },
+  plugins: { view: 0, cur: 0, q: "", qEdit: false, detail: false }, settings: { sec: SECTIONS.findIndex(x => x[0] === "Sound"), row: 0, edit: null, q: null }, runs: { cur: 0 }, msgs: { cur: 0 },
 };
 function toast(text, cls = "dim", ms = 3500) { S.msg = { text, cls, until: performance.now() + ms }; }
 function errorToast(code, text, help) { toast(`error[${code}]: ${text}${help ? "  ·  help: " + help : ""}`, "red", 5500); MSGS.unshift({ t: new Date().toTimeString().slice(0, 8), lvl: "error", code, text: text + (help ? " · help: " + help : "") }); play("error"); }
@@ -3167,7 +3184,7 @@ function slugName(s) {
 function uniqName(n) { n = String(n || "new-pipeline").toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^[^a-z]+|-+$/g, "") || "new-pipeline"; let x = n, i = 2; while (PIPES.some(p => p.name === x) || DOCS[x]) x = `${n}-${i++}`; return x; }
 function nameProblem(n) { if (!/^[a-z][a-z0-9-]*$/.test(n)) return ["M1210", `"${n}" isn't a valid name · lowercase letters, digits and dashes`]; if (PIPES.some(p => p.name === n) || DOCS[n]) return ["M2205", `a pipeline named ${n} already exists`]; return null; }
 
-/* describe: the headless agent's proposal (simulated: keywords → steps, each with a reason) */
+/* describe: the drafter's proposal (simulated for every backend by keyword rules → steps, each with a reason) */
 function wizPropose(text) {
   const t = text.toLowerCase(), steps = { work: true }, why = { work: "does the task you described" };
   const hit = (re, id, msg) => { const m = t.match(re); if (m) { steps[id] = true; why[id] = `“${m[0]}” → ${msg}`; } return !!m; };
@@ -3187,17 +3204,23 @@ function wizPropose(text) {
   return { steps, why, trig, agent, removed, desc: text.charAt(0).toUpperCase() + text.slice(1).replace(/\.?$/, ".") };
 }
 function wizTick(w) {
-  if (!w.drafting || performance.now() - w.drafting.t0 < 1400) return;
+  if (!w.drafting || performance.now() - w.drafting.t0 < (w.drafting.mode === "ollama" || w.drafting.mode === "agent" ? 1400 : 500)) return;
   const d = w.drafting; w.drafting = null;
   const p = wizPropose(d.text), before = w.base && w.base.kind === "gen" && w.base.src === "describe" ? Object.keys(w.base.gen.steps).filter(k => w.base.gen.steps[k]) : null;
   if (before) { for (const k of before) if (!p.removed.includes(k)) p.steps[k] = true; Object.assign(p.why, Object.fromEntries(Object.entries(w.base.gen.why || {}).filter(([k]) => !p.why[k]))); }   // a refinement keeps what you turned on
   wizSetBase(w, { kind: "gen", src: "describe", label: "drafted from your sentence", name: slugName(d.text), gen: { steps: p.steps, agent: p.agent, desc: p.desc, why: p.why }, trig: { k: p.trig.k, cfg: p.trig.cfg }, trigWhy: p.trig.why, sentence: d.text });
   w.step = 1; w.max = Math.max(w.max, 1); w.row = 0; play("node_done");
   const now = Object.keys(p.steps);
-  w.say = before ? `refined: ${now.filter(k => !before.includes(k)).map(k => "+ " + k).concat(before.filter(k => !now.includes(k)).map(k => "− " + k)).join(" · ") || "no change"}` : `claude/haiku proposed ${now.length} steps and ${p.trig.k === "manual" ? "no trigger" : "a trigger"} · ≈ $0.01 · nothing written`;
+  w.say = before ? `refined: ${now.filter(k => !before.includes(k)).map(k => "+ " + k).concat(before.filter(k => !now.includes(k)).map(k => "− " + k)).join(" · ") || "no change"}` : `${d.who} proposed ${now.length} steps and ${p.trig.k === "manual" ? "no trigger" : "a trigger"} · ${d.mode === "agent" ? "≈ $0.01 · " : d.mode === "ollama" ? "free, offline · " : d.mode === "down" ? "M2212 ollama unreachable, fell back · " : ""}nothing written`;
   S.dirty = true;
 }
-function wizDraft(text) { const w = S.wiz; w.drafting = { t0: performance.now(), text: text || "every night find flaky tests, fix them, run the tests and open a draft PR" }; w.say = ""; play("run_start"); }
+/* the drafter (§18.8): drafter.backend picks ollama (default), a headless agent, or keyword rules; an unavailable backend falls back to keyword rules with M2212 and never blocks */
+function wizDraft(text) {
+  const w = S.wiz, b = setting("drafter.backend"), mode = b === "off" ? "off" : b === "agent" ? "agent" : OLLAMA.down ? "down" : "ollama";
+  const who = mode === "agent" ? setting("drafter.agent") : mode === "ollama" ? `ollama · ${setting("drafter.model")}` : "keyword rules";
+  w.drafting = { t0: performance.now(), mode, who, label: drafterLabel(), text: text || "every night find flaky tests, fix them, run the tests and open a draft PR" }; w.say = ""; play("run_start");
+  if (mode === "down") { const host = setting("drafter.base_url").replace(/^https?:\/\//, "").replace(/\/$/, ""); CL.echo = { text: `M2212 drafter unavailable: ollama unreachable at ${host} · drafting with keyword rules  ·  help: ollama serve, or :set drafter.backend=agent`, cls: "amb", at: performance.now() }; MSGS.unshift({ t: new Date().toTimeString().slice(0, 8), lvl: "warn", code: "M2212", text: `drafter unavailable: ollama unreachable at ${host} · fell back to keyword rules` }); }
+}
 
 /* the base a pipeline starts from, and the final document (built from it on every render; written only on create) */
 function wizSetBase(w, B) {
@@ -3550,7 +3573,7 @@ function rWizard(g) {
   if (w.base && bw >= 80) g.rput(R, y0 + 1, trunc(w.base.label, Math.max(0, R - x - 4)), "dim3");
   g.hl(x0 + 1, x0 + bw - 2, y0 + 2, "dim2");
   [rWizStart, rWizShape, rWizRun, rWizReview][w.step](g, w, C);
-  if (w.drafting) g.segs(X, y0 + bh - 2, [[spin(), "blu"], [trunc(" claude/haiku (headless) is drafting the steps from your sentence · esc stops it", bw - 8), "blu"]]);
+  if (w.drafting) g.segs(X, y0 + bh - 2, [[spin(), "blu"], [trunc(` drafting ${w.drafting.label}… · esc stops it`, bw - 8), w.drafting.mode === "down" ? "amb" : "blu"]]);
   else if (w.err) g.segs(X, y0 + bh - 2, [["error", "red b"], [`[${w.err[0]}]`, "red"], [": " + trunc(w.err[1], bw - 30), ""], ["  gx", "b"]]);
   else if (w.say) g.put(X, y0 + bh - 2, trunc(w.say, bw - 6), "dim");
   if (w.picker) rWizPicker(g, w, C);
@@ -3592,11 +3615,11 @@ function rWizStart(g, w, C) {
   g.vl(X + LW + 1, Y + 2, B, "dim3");
   let y = Y + 2;
   if (src === "describe") {
-    wrapText("Say what it should do. An agent drafts the trigger and steps; you check them on the next screen. Nothing is written until you create it.", PW).forEach(l => g.put(PX, y++, l, "dim")); y++;
+    wrapText("Say what it should do. The drafter proposes the trigger and steps; you check them on the next screen. Nothing is written until you create it.", PW).forEach(l => g.put(PX, y++, l, "dim")); y++;
     g.put(PX, y++, "in a sentence", "dim");
     const on = w.ins && w.ins.key === "sentence", txt = on ? w.ins.text : w.sentence, lines = txt ? wrapText(txt, PW - 2) : [""];
     lines.slice(-5).forEach((l, i, a) => { g.segs(PX, y, txt ? [[l, "b"], [on && i === a.length - 1 ? "▌" : "", "blu"]] : [[on ? "▌" : "", "blu"], [trunc("every night find flaky tests, fix them, run the tests and open a draft PR", PW - 2), "dim3"]]); selRow(g, PX - 1, R, y, pane && !on); y++; });
-    y++; g.put(PX, y++, trunc("drafted by claude/haiku · headless · ≈ $0.01 · counts toward today's spend", PW), "dim3");
+    y++; { const db = setting("drafter.backend"); g.put(PX, y++, trunc(db === "agent" ? `drafted with ${setting("drafter.agent")} · headless · ≈ $0.01 · counts toward today's spend` : db === "off" ? "drafted with keyword rules · drafter.backend is off · free" : OLLAMA.down ? "drafted with keyword rules · ollama unreachable (M2212) · c in :settings checks again" : `drafted with ollama · ${setting("drafter.model")} · local, free, offline`, PW), db === "ollama" && OLLAMA.down ? "amb" : "dim3"); }
   } else if (src === "template") {
     const items = galItems(w), cols = galCols(), cw = Math.floor((PW - (cols - 1) * 2) / cols), vis = 4; w.tpl = Math.min(w.tpl, Math.max(0, items.length - 1));
     const top = Math.max(0, Math.floor(w.tpl / cols) - vis + 1);
@@ -4256,9 +4279,12 @@ function rSettingsOverlay(g) {
   st.row = Math.max(0, Math.min(st.row, rows.length - 1));
   if (st.q != null) g.segs(X, y0 + 1, [["/", "mark"], [" " + st.q, "b"], [`  ${rows.length} match${rows.length === 1 ? "" : "es"}`, "dim3"]]);
   let y = y0 + 2, ph = false;
+  const isDraft = st.q == null && SECTIONS[st.sec][0] === "Drafter", dOff = setting("drafter.backend") === "off";
+  if (isDraft) { const ds = drafterStatus().segs, dl = ds.reduce((a, [t]) => a + len(t), 0); g.segs(X, y, ds.map(([t, c]) => [trunc(t, x0 + w - X - 4), c])); if (X + dl + 16 < x0 + w - 3) g.rput(x0 + w - 3, y, "c checks again", "dim3"); y += 2; }
   rows.forEach((r, i) => {
     if (y > y0 + h - 5) return;
     const sel = i === st.row;
+    if (isDraft && dOff && r.id !== "drafter.backend" && !sel) { g.put(X, y, trunc(r.label, 16), "dim3"); g.put(VX, y, trunc(String(r.val), 22), "dim3"); if (room > 8) g.put(NX, y, "unused while backend is off", "dim3"); const yy = y; hit(X - 1, yy, x0 + w - 2, yy, () => { st.row = i; play("tick"); }); y++; return; }
     if (r.kind === "preview") {
       if (!ph) { y++; g.put(X, y++, "PREVIEW · " + setting("sound.set"), "hd"); ph = true; }
       g.put(X + 2, y, "▶", sel ? "blu" : "dim2"); g.put(X + 4, y, r.label, sel ? "b" : ""); g.put(VX, y, trunc(r.note, x0 + w - VX - 3), "dim");
@@ -4269,14 +4295,27 @@ function rSettingsOverlay(g) {
       if (room > 8) g.put(NX, y, trunc(r.src ? `set in ${r.src} · gd goes there` : r.note || (r.type === "enum" ? r.vals.join(" · ") : r.type === "num" ? `${r.min}–${r.max}` : ""), room), r.src ? "amb2" : "dim3");
     }
     if (sel) g.bg(X - 1, x0 + w - 2, y, "sel");
-    const yy = y; hit(X - 1, yy, x0 + w - 2, yy, () => { if (st.row === i && r.kind !== "preview" && r.type !== "text") changeSetting(r, 1); else if (r.kind === "preview" && st.row === i) previewSound(r.ev); else { st.row = i; play("tick"); } });
+    const yy = y; hit(X - 1, yy, x0 + w - 2, yy, () => { if (st.row === i && r.picker) openModelPicker(r); else if (st.row === i && r.kind !== "preview" && r.type !== "text") changeSetting(r, 1); else if (r.kind === "preview" && st.row === i) previewSound(r.ev); else { st.row = i; play("tick"); } });
+    if (st.pick && sel) st.pick.y = y;
     y++;
   });
+  if (st.pick) {
+    const pr = SETTING["drafter.model"], bx = VX - 2, by = (st.pick.y || y0 + 6) + 1, bw = 40, bh = pr.vals.length + 2;
+    g.clear(bx, by, bw, bh); g.box(bx, by, bw, bh, "b", [["pulled models", "b"]]);
+    pr.vals.forEach((v, j) => { const on = j === st.pick.i; g.put(bx + 2, by + 1 + j, (v === pr.val ? "● " : "  ") + v, on ? "b" : ""); g.rput(bx + bw - 3, by + 1 + j, pr.sizes[v], "dim"); if (on) g.bg(bx + 1, bx + bw - 2, by + 1 + j, "sel"); hit(bx + 1, by + 1 + j, bx + bw - 2, by + 1 + j, () => { st.pick.i = j; keySettings("Enter"); }); });
+  }
   const r = rows[st.row], m = activeMsg();
   g.hl(x0 + 1, x0 + w - 2, y0 + h - 3, "dim3");
   if (m) g.put(x0 + 3, y0 + h - 2, trunc(m.text, w - 6), m.cls);
-  else if (r && r.id) g.segs(x0 + 3, y0 + h - 2, [[trunc(r.h, w - 40), ""], ["  ·  default ", "dim3"], [String(r.def === "" ? "(empty)" : r.def), "dim"], ["  ·  ", "dim3"], [r.src ? r.src : r.val !== r.def ? "settings.lua" : "default", r.src ? "amb2" : "dim"]].map(([t, c]) => [t, c]));
+  else if (st.pick) g.segs(x0 + 3, y0 + h - 2, [["j/k", "b"], [" move · ", "dim"], ["enter", "b"], [" uses it · ", "dim"], ["esc", "b"], [" closes · models Ollama reports as pulled (/api/tags)", "dim"]]);
+  else if (r && r.id) g.segs(x0 + 3, y0 + h - 2, [[trunc(r.h, w - 40), ""], ["  ·  default ", "dim3"], [String(r.defLabel || (r.def === "" ? "(empty)" : r.def)), "dim"], ["  ·  ", "dim3"], [r.src ? r.src : r.val !== r.def ? "settings.lua" : "default", r.src ? "amb2" : "dim"]].map(([t, c]) => [t, c]));
   else g.segs(x0 + 3, y0 + h - 2, [["enter", "b"], [" plays it · previews ignore the group switches", "dim"]]);
+}
+function openModelPicker(r) {
+  const st = S.settings;
+  if (r.src) return errorToast("M8203", `${r.id} is set in ${r.src}`, "gd");
+  if (setting("drafter.backend") === "ollama" && OLLAMA.down) return errorToast("M2212", "drafter unavailable: ollama unreachable, so no pulled models to list", "ollama serve, then c checks again");
+  st.pick = { i: Math.max(0, r.vals.indexOf(r.val)) }; play("open");
 }
 function previewSound(ev) { if (ev === "voice") sayMill(true); else play(ev, true); }
 function changeSetting(r, dir) {
@@ -4550,7 +4589,7 @@ function command(text) {
   if (c === "q" || c === "quit") { S.confirm = { text: "quit mill? runs keep going in milld", keys: [["y", "quit"], ["n", "stay"]], y: () => { S.shell = true; syncBtns(); SH.lines.push([...PROMPT(), ["mill", "b"]]); shOut([["≋ detached from milld · runs keep going · mill reopens the board", "dim2"]]); }, n: () => {} }; return; }
   if (c === "w") { toast("nothing to save here", "dim"); return; }
   if (c === "new") { wizNew(); return; }
-  if (c === "settings") { S.overlay = "settings"; play("open"); return; }
+  if (c === "settings") { S.overlay = "settings"; S.settings.pick = null; play("open"); return; }
   if (c === "plugins") { S.overlay = "plugins"; S.plugins.detail = false; play("open"); return; }
   if (c === "stats") { S.overlay = "stats"; play("open"); return; }
   if (c === "runs") { S.overlay = "runs"; S.runs.cur = 0; play("open"); return; }
@@ -4561,7 +4600,7 @@ function command(text) {
   if (c === "bg" || c === "detach") { S.shell = true; syncBtns(); SH.lines.push([...PROMPT(), ["mill", "b"]]); shOut([["≋ detached · milld and every run keep going · the next mill restores this view once", "dim2"]]); return; }
   if (c === "enable" || c === "disable") { const p = PIPES.find(x => x.name === arg) || selected(); if (p) { if (p.untrusted) return errorToast("M9101", `${p.name} isn't trusted, so its triggers can't be armed`, "mill trust ."); p.disabled = c === "disable"; play("toggle"); toast(`${p.name} ${c}d`, "dim"); } return; }
   if (c === "sort") { const i = SORTS.indexOf(arg); if (i < 0) return errorToast("M1305", `unknown sort "${arg}"`, SORTS.join(", ")); S.board.sort = i; return; }
-  if (c === "set") { const m = arg.match(/^([\w.]+)\s*=\s*(.*)$/); if (!m || !SETTING[m[1]]) { const near = m && closest(m[1], Object.keys(SETTING)); return errorToast("M8004", `unknown setting "${m ? m[1] : arg}"`, near ? `did you mean ${near}?` : ":settings to browse"); } const r = SETTING[m[1]]; let v = m[2]; if (r.src) return errorToast("M8203", `${r.id} is set in ${r.src}`, "change it there"); if (r.type === "bool") v = /^(true|on|1)$/i.test(v); else if (r.type === "num") { v = +v; if (isNaN(v) || v < r.min || v > r.max) return errorToast("M8005", `${r.id} must be ${r.min}–${r.max}`, ""); } if (r.type === "enum" && !r.vals.includes(v)) return errorToast("M8005", `${r.id} can't be "${v}"`, r.vals.join(", ")); if (r.type === "text") return commitSettingText(r, v); r.val = v; if (r.id === "sound.volume") setVolume(); play("toggle"); toast(`${r.id} = ${v}`, "grn"); return; }
+  if (c === "set") { if (/^drafter\.simulate_down\b/.test(arg)) { OLLAMA.down = !/=\s*(false|off|0)$/i.test(arg); play("toggle"); return toast(`prototype: ollama ${OLLAMA.down ? "unreachable" : "reachable"} · describe ${OLLAMA.down ? "falls back to keyword rules (M2212)" : "drafts with " + setting("drafter.model")}`, OLLAMA.down ? "amb" : "grn", 4000); } const m = arg.match(/^([\w.]+)\s*=\s*(.*)$/); if (!m || !SETTING[m[1]]) { const near = m && closest(m[1], Object.keys(SETTING)); return errorToast("M8004", `unknown setting "${m ? m[1] : arg}"`, near ? `did you mean ${near}?` : ":settings to browse"); } const r = SETTING[m[1]]; let v = m[2]; if (r.src) return errorToast("M8203", `${r.id} is set in ${r.src}`, "change it there"); if (r.type === "bool") v = /^(true|on|1)$/i.test(v); else if (r.type === "num") { v = +v; if (isNaN(v) || v < r.min || v > r.max) return errorToast("M8005", `${r.id} must be ${r.min}–${r.max}`, ""); } if (r.type === "enum" && !r.vals.includes(v)) return errorToast("M8005", `${r.id} can't be "${v}"`, r.vals.join(", ")); if (r.type === "text") return commitSettingText(r, v); r.val = v; if (r.id === "sound.volume") setVolume(); play("toggle"); toast(`${r.id} = ${v}`, "grn"); return; }
   const near = closest(c, ["plugins", "stats", "settings", "new", "runs", "messages", "sort", "set", "enable", "disable", "bg", "detach", "screensaver", "sh", "help", "q"]);
   errorToast("M1306", `unknown command ":${c}"`, near ? `did you mean :${near}?` : ":help commands lists them");
 }
@@ -4632,7 +4671,15 @@ function keySettings(k) {
   const st = S.settings;
   if (st.edit) { const r = settingsRows()[st.row]; if (k === "Escape") { st.edit = null; play("back"); } else if (k === "Enter") { const t = st.edit.text; st.edit = null; commitSettingText(r, t); } else if (k === "Backspace") st.edit.text = st.edit.text.slice(0, -1); else if (k.length === 1) st.edit.text += k; return; }
   if (st.qEdit) { if (k === "Escape") { st.q = null; st.qEdit = false; } else if (k === "Enter") st.qEdit = false; else if (k === "Backspace") st.q = st.q.slice(0, -1); else if (k.length === 1) { st.q += k; st.row = 0; } return; }
+  if (st.pick) { const pr = SETTING["drafter.model"], n = pr.vals.length;
+    if (k === "j" || k === "ArrowDown") { st.pick.i = Math.min(n - 1, st.pick.i + 1); play("tick"); }
+    else if (k === "k" || k === "ArrowUp") { st.pick.i = Math.max(0, st.pick.i - 1); play("tick"); }
+    else if (k === "Enter" || k === " ") { const v = pr.vals[st.pick.i]; st.pick = null; if (pr.src) return errorToast("M8203", `${pr.id} is set in ${pr.src}`, "gd"); pr.val = v; play("toggle"); toast(`drafter.model = ${v} · saved to settings.lua`, "grn"); }
+    else if (k === "Escape" || k === "q") { st.pick = null; play("back"); }
+    return; }
   const rows = settingsRows(), r = rows[st.row];
+  if (r && r.picker && (k === "Enter" || k === " ")) return openModelPicker(r);
+  if (k === "c" && r && r.id && r.id.startsWith("drafter.")) { const d = drafterStatus(); if (d.off) toast("drafter.backend is off · describe uses keyword rules", "dim"); else if (d.ok) { play("lint_ok", true); toast("✓ " + d.segs.map(([t]) => t).join(""), "grn", 4000); } else errorToast("M2212", `drafter unavailable: ollama unreachable at ${setting("drafter.base_url")} · describe uses keyword rules`, "ollama serve, or set drafter.backend"); return; }
   switch (k) {
     case "j": case "ArrowDown": if (st.row < rows.length - 1) { st.row++; play("tick"); } else if (st.q == null && st.sec < SECTIONS.length - 1) { st.sec++; st.row = 0; play("toggle"); } break;
     case "k": case "ArrowUp": if (st.row > 0) { st.row--; play("tick"); } else if (st.q == null && st.sec > 0) { st.sec--; st.row = SECTIONS[st.sec][1].length - 1; play("toggle"); } break;
@@ -4692,10 +4739,11 @@ function onKey(e) {
   if (S.screen === "preboot") { bootStart(); return; }
   if (S.saver) { S.saver = false; S.pending = ""; return; }
   if (S.cmd !== null) return clKey(k);
+  if (S.confirm && k === ":") return;   // like nvim's confirm(): a pending y/n swallows ":"; only y, n and esc answer it
   if (k === ":" && !clTextEntry()) return clOpen();   // INSERT and text fields type ":" instead
   if (S.screen === "boot") { if (k === "q" || k === "Escape" || k === "C-c") bootQuit(); return; }
   if (S.screen === "setup") return setupKey(k);
-  if (S.confirm) { const c = S.confirm; if (k === "y" && c.y) { S.confirm = null; c.y(); } else if ((k === "n" || k === "Escape") && c.n) { S.confirm = null; c.n(); play("back"); } return; }
+  if (S.confirm) { const c = S.confirm; if (k === "y" && c.y) { S.confirm = null; c.y(); } else if (k === "Escape" && c.keys.some(([x]) => x === "esc")) { S.confirm = null; if (c.esc) c.esc(); play("back"); } else if ((k === "n" || k === "Escape") && c.n) { S.confirm = null; c.n(); play("back"); } return; }
   if (S.overlay === "help") { S.overlay = null; play("back"); return; }
   if (S.wiz) return wizKey(k);
   if (S.board.searchEdit && S.screen === "board" && !S.popup && !S.overlay) { const b = S.board; if (k === "Escape") { b.search = ""; b.searchEdit = false; play("back"); } else if (k === "Enter") { b.searchEdit = false; play("toggle"); } else if (k === "Backspace") b.search = b.search.slice(0, -1); else if (k.length === 1) { b.search += k; b.cur = 0; } return; }
@@ -4733,6 +4781,7 @@ function findHit(x, y) { for (let i = HITS.length - 1; i >= 0; i--) { const h = 
 scr.addEventListener("mousedown", ev => {
   scr.focus(); S.lastInput = performance.now(); audioInit();
   if (S.screen === "preboot") { bootStart(); return; }
+  if (S.confirm) return;   // a pending y/n answers to y, n and esc only: clicks (the last row included) do nothing
   if (!S.saver && !S.shell && setting("mouse_enabled") && S.cmd === null && !clTextEntry() && cellAt(ev)[1] === H - 1) { clOpen(); render(); return; }
   if (S.screen === "boot" || S.screen === "setup") return;
   if (S.saver) { S.saver = false; S.pending = ""; return; }     // waking never does anything else

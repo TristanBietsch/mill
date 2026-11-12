@@ -100,7 +100,7 @@ Codes are `M` plus four digits, grouped by area. A code is never reused or renum
 |---|---|---|
 | `M0xxx` | Internal: a bug in mill | `M0001` unexpected internal error |
 | `M1xxx` | CLI, selectors, arguments | `M1201` pipeline not found · `M1203` ambiguous run selector · `M1301` unknown flag · `M1304` ambiguous command · `M1306` unknown command · `M1307` command belongs to another screen |
-| `M2xxx` | Files and pipelines | `M2101` YAML parse error · `M2201` conflicting edit (file changed since you loaded it) · `M2203` lint errors, not saved · `M2212` drafter unavailable · `M2301` not an importable file |
+| `M2xxx` | Files and pipelines | `M2101` YAML parse error · `M2201` conflicting edit (file changed since you loaded it) · `M2203` lint errors, not saved · `M2212` drafter unavailable (`M2212 drafter unavailable: ollama unreachable at 127.0.0.1:11434 · drafting with keyword rules`) · `M2301` not an importable file |
 | `M3xxx` | Lint and expressions | `M3012` unknown node in expression · `M3020` cycle outside a loop · `M3021` ambiguous input · `M3024` unreachable node · `M3030` branch port not connected · `M3101` CEL type mismatch · `M3204` destructive part not allowed · `M3206` waits for a person. The full list is in §18.7.9. |
 | `M4xxx` | Runs and scheduling | `M4101` budget exceeded · `M4201` node timed out · `M4301` crashed during daemon restart |
 | `M5xxx` | Parts and plugins | `M5101` plugin not found · `M5102` version conflict · `M5201` part failed · `M5301` checksum mismatch |
