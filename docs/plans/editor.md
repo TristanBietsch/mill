@@ -159,13 +159,52 @@ The browser prototype already covers E3–E6 behavior (see section 4), so E3+ ca
 
 `mockups/v2/index.html` implements, against made-up data: the document-as-buffer model with derived graph, layout, lint and inspector; the palette with categories, fuzzy search and patterns; insert after/before/branch/on edge; triggers; connect with port picker and live check; edge focus, disconnect, reroute; rename with reference rewrite; delete with heal; yank/paste; visual mode; wrap/unwrap loop; extract; pins (`H J K L`, drag); three zoom levels, fit, minimap, outline; lint with badges, panel, `]e`, `ga`/`gA`/`gx` and the safe/policy split; inspector forms with completion and preview (a small CEL subset evaluator), prompt editor, output schema editor, pipeline panel; what-if; dry run painted on the graph; single-node runs; items panel; samples; estimates; YAML pane with two-way editing and parse errors; diff; undo/redo; save rules; wizard output opening in the editor.
 
-Specified but only stubbed or absent in the prototype: `PartCall` choices, narrow-terminal behavior, the swap file and recovery, external-change conflicts, `$EDITOR` (`E`, `ctrl+e`), folding (`zo`/`zc` only report), fanout candidate expansion, saving patterns, `:prompt file`, align, daemon-side lint checks (secrets set, agents installed).
+Specified but only stubbed or absent in the prototype: `PartCall` choices, the swap file and recovery, external-change conflicts, `$EDITOR` (`E`, `ctrl+e`), folding (`zo`/`zc` only report), fanout candidate expansion, saving patterns, `:prompt file`, align, daemon-side lint checks (secrets set, agents installed).
+
+### Mockup ↔ spec coverage
+
+The whole prototype, screen by screen, against `docs/spec/18-tui.md` (and the CLI parts it shows from `17-cli.md`, `29-errors.md`). **Covered** means the screen and every key and rule in its section behave as specified, against made-up data. **Partial** lists what's missing. Use the top bar to switch the terminal width (124, 100, 80) and the scenario (normal, fresh clone, config error, first run, boot fails).
+
+| Screen | Spec | Status | Notes |
+|---|---|---|---|
+| Boot splash: cascade, statuses, slow step, ready line, hand-off, voice | §18.13 | covered | 22 steps, 70 ms cascade, 1.2 s minimum, `[  ..  ]` after 250 ms (scenario "fresh clone"), wide CJK cells, boot sounds from Appendix A. The browser needs one key press first for audio (prototype-only screen). |
+| Boot failure: freeze, cause, fix, quit to stderr with exit code | §18.13 | covered | Scenario "boot fails": `q` drops to the shell with the §29.2 error and `echo $?` = 4. |
+| First launch hand-off to setup | §18.13, §18.8 | covered | Scenario "first run". |
+| First-run setup: 7 steps, ask once, refusals | §18.8 | covered | Sound step previews each set; trusted folders refuses `/`, home, relative and `..` (`M9301`). `--yes`/`--preview` are CLI-only and not mocked. |
+| Board: header, sections, counts, fold, selection follows a pipeline | §18.2 | covered | `1 2 3`, `tab`, fold over 5 READY rows. |
+| Board rows: five things, text per state, runs strip, age | §18.3 | covered | Strip uses `■ ✗ ↻ ■`; adds `↯` and `⊗` (provisional). |
+| Detailed view `v` | §18.3 | covered | runs (20), ok, typical, trigger, next, header `· N runs today · p50`. |
+| Conditional columns: cost today, long-run badge, budget, scope | §18.3, §18.12 | covered | Budget `NN% $` appears once issue-to-pr passes 80% of $4.50; `▴2×` on the live run. The inverse `▴8×` past `max_wall` isn't reached by the demo data. |
+| Narrow terminals: give-way order, name down to 12 | §18.3 | covered | Width button. |
+| Filter row, `/` search tokens, `t`, `s` `-`, `V`, `p` | §18.2 | covered | Tokens `state: tag: trigger: scope: uses: ok: cost: ran:`. |
+| `λ` prompt | §18.2 | covered | Pipeline + `key=value` inputs with a hint of missing ones, `tab` completes names and input keys, pipe expressions. |
+| Focus modes and the mode name | §18.4 | partial | Every mode works. The board has no status line in the spec drawing, so the mode shows at the left of the bottom line (board) or in a status line (overlays); the spec doesn't say where on the board. |
+| Board keys and mouse | §18.5 | covered | `ctrl+c` asks to quit like `q`. |
+| Help overlay `?` | §18.5 | covered | Two columns at 96+, one column below with BADGES then MOUSE dropped and the truncation note. |
+| Run popup: rows, timeline, title, budget amber, result line | §18.6 | covered | |
+| Run popup: branches indented, `each` expands with `za` | §18.6 | covered | `└─ else` under `scope`; inbox-triage and multi-repo-refactor expand per item. |
+| Run popup keys: `enter` agent or cause, `L`, `F`, `i`, `c` | §18.6, §29.8 | covered | `enter` on a failed, crashed or cancelled node shows the cause chain and the log around it. |
+| Agent screen, view-only, `esc` `qq` `ctrl+]` | §18.6, §11.4 | covered | |
+| Log in the popup: relative numbers, folds, search, follow, only-node, `gx` | §18.6 | covered | |
+| `:runs` (older runs) | §18.6 | partial | Older runs open with generic "done" rows; their own data isn't modeled. |
+| Editor | §18.7 | covered | See the section above for what's stubbed. Narrow rules from §18.7.2 included. |
+| New pipeline wizard | §18.8 | covered | Review shows the YAML and lint of the document that will actually be created. |
+| Plugins: views, columns, line under the list, detail page, keys | §18.9 | covered | Update with new permissions asks first; updates of a plugin a running pipeline uses queue until it finishes. |
+| Settings: sections with relative numbers, rows, bottom help line, status line, `h l enter i p u gd /` | §18.10 | covered | Registry from §19.6. `theme` and `density` change the value but the prototype only draws dark/normal. |
+| Sound: soundsets, events, groups, throttles, `when`, quiet hours, voice | §18.11, App. A | covered | `unfocused` uses the page's focus. |
+| Screensaver: one-line logo, live counts, safe wake, drift once a minute | §18.12 | covered | `keep_awake` (caffeinate) can't be mocked. |
+| `:stats` | §18.12 | covered | 1d / 7d / 30d runs and cost, p50, p90, totals. |
+| `:bg` / `:detach` | §18.12 | partial | Drops to the shell; "the next `mill` restores them once" isn't modeled. |
+| `:messages` | §29.8 | covered | Boot warnings and every error this session. |
+| Config error line under the header | §29.8, §18.13 | covered | Scenario "config error". |
+| Shell: `mill status`, `ls`, `runs`, `run`, `doctor`, `trust .`, `explain`, prompt segment | §17, §29.10, §22 | partial | Synthetic output for the commands the TUI points to; not the full CLI. |
+| Backend-plan states on screen | backend plan | covered (provisional) | `↯ crashed` (S18), untrusted projects with `mill trust .` (D18), retries as new attempts `try 1`/`try 2` (S8), `⊗ cancelled · budget` with the reason (S9), `M3021` ambiguous primary upstream (D9), `•••` redaction in logs and items (S1). Listed in the page footer as provisional. |
 
 ## 5. Open decisions
 
 Each has the default this spec and prototype use, and the alternatives. Answering these settles §18.7.
 
-1. **Inferred edges when a node has no `in:` and references several nodes.** Default: items come only from the referenced nodes that aren't upstream of another referenced node (the "latest" ones). Alternatives: items from *every* referenced node; or require an explicit `in:` whenever a node references more than one node.
+1. **Inferred edges when a node has no `in:` and references several nodes.** The backend plan settles this (D9) and the prototype now follows it: the input is the **primary upstream**, the referenced node downstream of all the others; when the references run in parallel there is none, and lint reports `M3021` with `in:` fixes. Still to do: §18.7.3 (Edges, "Inferred") and §18.7.9 (where `M3021` is "Unreachable") describe the old default and need updating to match; unreachable moves to a free code such as `M3024`. Alternatives: items from *every* referenced node; or require an explicit `in:` whenever a node references more than one node.
 2. **References when `in:` is explicit.** Default: references to nodes not already upstream add a dotted ordering edge, no items. Alternatives: they add a data edge too (§7.4 read literally); or they're a lint error until `needs:` is written.
 3. **Connecting into a node whose input is inferred.** Default: write `in: [<inferred sources>, <new>]` so nothing is lost. Alternatives: write only the new source (simpler YAML, may change behavior); ask each time.
 4. **Loop YAML shape.** Default: `loop` with `with.body: [ids]`, `until`, `max_iters`; body entry reads `<loop>.body`; ports `out` and `exhausted`. Alternatives: nested `nodes:` inside the loop node (self-contained, harder to edit with `mill node`); a `loop:` key on each body node.
