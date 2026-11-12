@@ -8,6 +8,7 @@ A plan says how to build part of the spec: scope, order, decisions, tasks. The s
 |------|-------|--------|-------|
 | [backend/00-overview.md](backend/00-overview.md) | `milld`, engine, storage, protocols, execution, security, testing; milestones M0–M11 | Accepted 2026-11-11; all 30 decisions decided, spec issues applied (spec v2.1) | another agent |
 | [editor.md](editor.md) | TUI pipeline editor | Accepted 2026-11-11; all 30 decisions decided, applied in spec §18.7 | another agent |
+| [backend/M0-weekend-prototype.md](backend/M0-weekend-prototype.md) | M0: `mill run` prototype, no daemon (sh, headless agent, stdout; JSONL items; run dir); first dogfood nightly-vuln-sweep-lite | Draft 2026-11-12, awaiting review | — |
 | [wizard.md](wizard.md) | New-pipeline wizard: 4 steps, modal keys, import/upload, local-LLM drafter | Accepted 2026-11-12; all 13 decisions decided, applied in spec v2.2 (§18.8, §19.6) | done |
 | [command-line.md](command-line.md) | Global nvim-style `:` command line; `/` search only; `λ` prompt removed | Accepted 2026-11-12; all 9 decisions decided, applied in spec v2.2 (§18.2–18.7, §17.5) | done |
 
