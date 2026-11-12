@@ -15,7 +15,7 @@ These rules come from rex and apply to every mill screen. A change that breaks o
 | 5 | **Five keys in the help bar.** | `enter open · n new · e edit · R run · ? more`. Everything else lives under `?`. |
 | 6 | **Rows fill the width exactly and never wrap.** | On narrow terminals, columns give way in a fixed order (§18.3); the text column shrinks last. |
 | 7 | **Long sections fold.** | READY with more than 5 rows folds into its title line: `READY  12 hidden · 3 show`. |
-| 8 | **Color is state, and only state.** | Red failed · amber retrying or running long · blue running · green ok · grey everything else. At most one colored word per row. |
+| 8 | **Color is state, and only state.** | Red failed · amber retrying, running long, or a health warning (`disk low`, `restart needed`, `stalled`) · blue running · green ok · grey everything else. At most one colored word per row. |
 | 9 | **Numbers are compact and aligned.** | `12m`, `812K`, `$4.10`, right-aligned in their column. Relative times on screen, absolute times in JSON. |
 | 10 | **Overlays are square, sized to fit, and swallow the mouse.** | Width `clamp(w-8, 60, 110)`. A click never changes the selection behind an overlay. |
 | 11 | **Nothing moves unless it's running.** | Spinners only on running work. `reduce_motion` stops them, and the screensaver's drift. |

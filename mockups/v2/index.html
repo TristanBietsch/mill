@@ -84,7 +84,7 @@ body { background: var(--desk); color: var(--ink); font-family: var(--sans); dis
     <button id="b-saver">Screensaver</button>
     <button id="b-imp" title="Opens the new pipeline wizard on import and picks a file (or drop one on the terminal)">Import file…</button>
     <button id="b-w">Width 124</button>
-    <select id="b-scn" aria-label="Scenario"><option value="normal">Scenario: normal</option><option value="fresh-clone">Scenario: fresh clone (untrusted)</option><option value="config-error">Scenario: config error</option><option value="first-run">Scenario: first run</option><option value="boot-fail">Scenario: boot fails</option></select>
+    <select id="b-scn" aria-label="Scenario"><option value="normal">Scenario: normal</option><option value="fresh-clone">Scenario: fresh clone (untrusted)</option><option value="config-error">Scenario: config error</option><option value="first-run">Scenario: first run</option><option value="boot-fail">Scenario: boot fails</option><option value="degraded">Scenario: degraded (disk low, breaker, restart)</option></select>
   </div>
 </div>
 <div class="term">
@@ -102,10 +102,13 @@ const esc = s => s.replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&g
 const cwid = ch => { const o = ch.codePointAt(0); return (o >= 0x1100 && o <= 0x115F) || (o >= 0x2E80 && o <= 0xA4CF && o !== 0x303F) || (o >= 0xAC00 && o <= 0xD7A3) || (o >= 0xF900 && o <= 0xFAFF) || (o >= 0xFE30 && o <= 0xFE4F) || (o >= 0xFF00 && o <= 0xFF60) || (o >= 0xFFE0 && o <= 0xFFE6) ? 2 : 1; };
 const len = s => { let n = 0; for (const ch of s) n += cwid(ch); return n; };
 const trunc = (s, n) => { if (len(s) <= n) return s; if (n <= 0) return ""; let out = "", w = 0; for (const ch of s) { const c = cwid(ch); if (w + c > n - 1) break; out += ch; w += c; } return out + "…"; };
-const SCN = ((typeof location !== "undefined" && location.hash) || "").replace(/^#/, "") || "normal";   // demo scenarios: normal, fresh-clone, config-error, first-run, boot-fail
+const SCN = ((typeof location !== "undefined" && location.hash) || "").replace(/^#/, "") || "normal";   // demo scenarios: normal, fresh-clone, config-error, first-run, boot-fail, degraded (backend plan: disk low, open breaker, stalled run, recovery after restart)
 const ow = (pref = 110) => Math.max(Math.min(60, W - 2), Math.min(W - 8, pref));   // §18.1 rule 10: clamp(w-8, 60, 110)
 const ox = w => Math.max(0, Math.floor((W - w) / 2));
 const MSGS = [];   // :messages (§29.8)
+// daemon-side conditions the board shows (backend plan: data-lifecycle §6, configuration §5, resilience §6); "degraded" turns them on
+const DEG = SCN === "degraded" ? { diskLow: true, diskFree: "0.8 GiB", restartNeeded: ["gateway.listen"], breaker: { key: "agent:claude", since: "12:31", resumes: "12:41" }, stalled: "dep-bump#22", recovered: "nightly-evals#9", newer: "nightly-evals#3" }
+  : { diskLow: false, diskFree: "41 GiB", restartNeeded: [], breaker: null, stalled: null, recovered: null, newer: null };
 
 /* ------------------------------------------------------------------ grid (cells are [char, class, width]; wide CJK takes two cells) */
 class G {
@@ -380,6 +383,12 @@ const STATE_ORDER = { failed: 0, crashed: 1, cancelled: 2, retrying: 3, running:
 const STATE_GL = { failed: ["✗", "red"], crashed: ["↯", "red"], cancelled: ["⊗", "red"], retrying: ["↻", "amb"], running: ["⠋", "blu"], ok: ["✓", "grn"], draft: ["○", "dim"] };
 if (SCN === "fresh-clone") for (const p of PIPES) if (p.scope === "project") Object.assign(p, { untrusted: true, state: "draft", hist: "", ago: "", lastSec: 1e12, live: false, cost: null, reason: null });
 if (SCN === "first-run") PIPES.splice(0, PIPES.length);
+// degraded (backend plan, decided defaults): an agent node held by an open breaker (resilience §6, D36), a stalled run actor
+// (concurrency §5), and a run recovered after a daemon restart with one decision per node (operations §3, spec §15.7)
+if (SCN === "degraded") PIPES.splice(5, 0,
+  { name: "pr-review", state: "running", ago: "", desc: "Review new PRs and post comments.", hist: "✓".repeat(18), typ: "3m", p90: "5m", typSec: 180, cost: 0.40, costToday: 0.21, trigger: "webhook /github", detail: "review · queued · claude rate limited · resumes 12:41", next: "on webhook", tags: ["code", "github"], scope: "project", lastSec: 0, uses: ["mill/github"] },
+  { name: "dep-bump", state: "running", stalled: true, ago: "", desc: "Bump dependencies weekly and open a PR.", hist: "✓".repeat(9), typ: "4m", p90: "7m", typSec: 240, cost: 0.30, costToday: 0.12, trigger: "cron mon 06:00", detail: "update · stalled · see mill doctor", next: "mon 06:00", tags: ["code"], scope: "project", lastSec: 0, uses: [] },
+  { name: "nightly-evals", state: "running", ago: "", desc: "Run the eval set against two agents.", hist: "✓".repeat(8), typ: "22m", p90: "31m", typSec: 1320, cost: 1.10, costToday: 0.64, trigger: "cron 02:00", detail: "recovered after a daemon restart · eval-b crashed (M4301)", next: "02:00", tags: ["code"], scope: "project", lastSec: 0, uses: [] });
 
 /* ------------------------------------------------------------------ run simulation (issue-to-pr#42) */
 const SIM = { speed: 6, start: 440, now: 440, lastReal: null, done: false, fired: {}, cancelled: false };
@@ -577,7 +586,7 @@ function shRun(cmd) {
   if (a[0] === "echo" && a[1] === "$?") { shOut(String(SH.exit)); return; }
   if (a[0] === "help" || (a[0] === "mill" && (a[1] === "--help" || a[1] === "help"))) {
     ["mill                     open the TUI (boot splash, then the board)", "mill status              one-line summary", "mill ls                  list pipelines", "mill runs                recent runs",
-      "mill run <pipeline>      start a run", "mill rerun <run> --from <node>", "mill trust .             review and trust this project", "mill explain <code>      what an error means", "mill doctor              check the setup", "echo $?                  the last exit code", "clear                    clear the screen"].forEach(l => shOut([[l, "dim"]]));
+      "mill run <pipeline>      start a run", "mill rerun <run> --from <node>", "mill trust .             review and trust this project", "mill explain <code>      what an error means", "mill doctor              check the setup, by layer", "mill digest              the day in one screen", "echo $?                  the last exit code", "clear                    clear the screen"].forEach(l => shOut([[l, "dim"]]));
     return;
   }
   if (a[0] !== "mill") { shOut([[`${a[0]}: not available in this demo · try `, "dim"], ["help", "b"]]); return; }
@@ -622,6 +631,9 @@ function shRun(cmd) {
       const E = { M6201: ["agent rate limited", "The agent's provider refused the request because too many were sent.", "mill retries automatically, as a new attempt, honoring Retry-After.", "Fix: lower max_concurrent_agents, or add retry: { on: [class:rate_limited], max: 5 }"],
         M1201: ["pipeline not found", "No pipeline with that name in .mill/pipelines/ or ~/.config/mill/pipelines/.", "Names are matched exactly; mill suggests close matches.", "Fix: mill ls to see what exists"],
         M4301: ["crashed during daemon restart", "milld restarted while a node was working, and the node was neither resumable nor idempotent.", "mill never re-runs something that might have had side effects.", "Fix: mill rerun <run> --from <node>"],
+        M2002: ["not enough disk space", "Free space in mill's data, state or workspace dir is low (mill doctor warns below 5 GiB).", "Below 1 GiB the scheduler stops granting new node-runs and retention runs early; appends never tear.", "Fix: mill prune --older 14d · mill doctor"],
+        M4108: ["run queue is full", "max_queued_runs (1000) runs are already queued, so the new run was refused, not dropped later.", "Running and queued runs are untouched.", "Fix: wait, or raise max_queued_runs"],
+        M7007: ["run written by a newer mill", "This run's event log uses a log_v newer than this mill reads; it is refused one by one and left intact.", "Downgrades keep working for runs the older version wrote.", "Fix: upgrade mill, then mill daemon restart"],
         M4101: ["budget exceeded", "A run hit a token, cost, time or node limit and was cancelled (exit code 9).", "Finished nodes keep their output.", "Fix: mill rerun <run> --from <node> --budget-tokens <more>"],
         M9101: ["pipeline not trusted", "Pipelines from a project you haven't trusted run nothing on their own: triggers stay off and manual runs are refused.", "Trust is recorded by hash; a change needs trust again.", "Fix: mill trust ."],
         M3204: ["destructive part not allowed", "The node uses a part flagged destructive that policy.allow_destructive doesn't list.", "Lint fails so nothing destructive runs by accident.", "Fix: add the part to policy.allow_destructive, or ga on the canvas"] };
@@ -639,9 +651,9 @@ function shRun(cmd) {
         shOut([["add it to Claude Code with:  ", "dim"], ["claude mcp add mill -- mill mcp serve", "b"]]); return; }
       shOut([["slack ● running · github ● running · notion ✗ auth expired · postgres ○ stopped", ""]]); return;
     case "doctor": {
-      for (const s of bootSteps("normal")) { if (s.st === "FAIL") break; shOut(bootRowSegs(s)); }
-      [["OK", "workspace", "root writable · 41 GB free for the run store"], ["OK", "secrets", "declared secrets resolve · GITHUB_TOKEN SLACK_TOKEN"], ["WARN", "agents.used", "aider not found on PATH (M6101) · not used by any pipeline"], ["OK", "runtimes", "git 2.47 · docker 27.3"], ["OK", "gateway", "port 7337 free"]].forEach(([st, step, t]) => shOut(bootRowSegs({ st, step, desc: t })));
-      SH.exit = 1; return;
+      const D = doctorLines(W - 2); D.lines.forEach(l => shOut(l)); SH.exit = D.exit; return;   // grouped by layer (operations.md §4)
+    }
+    case "digest": { digestLines().forEach(l => shOut(l)); return;
     }
     default:
       shOut([["error", "red b"], ["[M1301]", "red"], [`: unknown command "${a[1]}"`, "b"]]); shOut([["  help: ", "dim"], ["mill --help", ""]]); play("error"); SH.exit = 5;
@@ -726,7 +738,7 @@ function shellKey(e) {
   else if (k === "Backspace") SH.input = SH.input.slice(0, -1);
   else if (k === "ArrowUp") { if (SH.hist.length) { SH.hi = SH.hi < 0 ? SH.hist.length - 1 : Math.max(0, SH.hi - 1); SH.input = SH.hist[SH.hi]; } }
   else if (k === "ArrowDown") { if (SH.hi >= 0) { SH.hi++; SH.input = SH.hi < SH.hist.length ? SH.hist[SH.hi] : ""; if (SH.hi >= SH.hist.length) SH.hi = -1; } }
-  else if (k === "Tab") { const opts = ["mill status", "mill ls", "mill runs", "mill run ", "mill rerun nightly-sweep#118 --from build", "mill explain ", "mill doctor"]; const m = opts.find(o => o.startsWith(SH.input) && o !== SH.input); if (m) SH.input = m; }
+  else if (k === "Tab") { const opts = ["mill status", "mill ls", "mill runs", "mill run ", "mill rerun nightly-sweep#118 --from build", "mill explain ", "mill doctor", "mill digest"]; const m = opts.find(o => o.startsWith(SH.input) && o !== SH.input); if (m) SH.input = m; }
   else if (k === "Escape") SH.input = "";
   else if (k.length === 1) { if (e.ctrlKey && k === "l") SH.lines = []; else SH.input += k; }
   S.dirty = true;
@@ -796,8 +808,8 @@ function textFor(p) {
   const nx = p.next.startsWith("on ") || p.next.startsWith("every") || p.next.startsWith("after") ? p.next : p.next === "on demand" ? "manual" : "next " + p.next;
   return `${p.result || "ok"} · ${nx.startsWith("on ") ? "next " + nx : nx}`;
 }
-function textCls(p) { return p.untrusted || p.disabled ? "dim3" : p.state === "retrying" ? "amb" : p.state === "ok" || (p.state === "cancelled" && p.reason !== "budget") ? "dim" : p.state === "draft" ? "dim3" : ""; }
-function glyphFor(p) { if (p.untrusted) return ["◌", "dim"]; if (p.disabled) return ["⊘", "dim"]; if (p.state === "running") return [spin(), "blu"]; if (p.state === "cancelled" && p.reason !== "budget") return ["⊗", "dim"]; return STATE_GL[p.state]; }
+function textCls(p) { return p.untrusted || p.disabled ? "dim3" : p.state === "retrying" || p.stalled ? "amb" : p.state === "ok" || (p.state === "cancelled" && p.reason !== "budget") ? "dim" : p.state === "draft" ? "dim3" : ""; }
+function glyphFor(p) { if (p.untrusted) return ["◌", "dim"]; if (p.disabled) return ["⊘", "dim"]; if (p.state === "running") return [p.stalled ? "⠋" : spin(), "blu"]; if (p.state === "cancelled" && p.reason !== "budget") return ["⊗", "dim"]; return STATE_GL[p.state]; }
 function ageFor(p) { if (p.state === "draft" || p.untrusted) return "-"; if (p.live && p.state !== "ok" && p.state !== "cancelled") return fmtDur(SIM.now).replace(/\d+s$/, "") || "1m"; if (p.state === "running") return "12s"; return p.lastSec < 120 ? "now" : p.ago || "-"; }
 function elapsedOf(p) { return p.live && !SIM.done && !SIM.cancelled ? SIM.now : p.state === "running" ? 12 : 0; }
 function longBadge(p) {   // §18.12: running for over 1.5× its p50
@@ -850,6 +862,7 @@ function summaryParts() {
   const c = counts(), okToday = (PIPES.some(p => p.hist.length > 3) ? 12 : 0) + PIPES.filter(p => p.state === "ok" && p.lastSec < 86400).length, cost = PIPES.reduce((a, p) => a + costOf(p), 0);
   const parts = [[`${c.failed} failed`, c.failed ? "red" : "dim"], [" · ", "dim3"], [`${c.running + c.retrying} running`, "dim"], [" · ", "dim3"], [`${okToday} ok today`, "dim"], [" · ", "dim3"], [`$${cost.toFixed(2)} today`, "dim"]];
   if (S.board.detailed) parts.push([" · ", "dim3"], ["23 runs today · p50 4m", "dim"]);
+  if (DEG.diskLow) parts.unshift(["disk low", "amb"], [" · ", "dim3"]);   // < 5 GiB free (data-lifecycle §6, D41); first so a narrow header keeps it
   return parts;
 }
 /* columns give way in a fixed order until the text has 20 columns (§18.3 narrow terminals) */
@@ -892,6 +905,7 @@ function rBoard(g) {
   g.rsegs(W - 2, 0, sp);
   let y = 1;
   if (SCN === "config-error" && !S.configFixed) { g.put(1, y, trunc(`init.lua:7 unknown setting "max_agents" (running previous config) · did you mean max_concurrent_agents? · gx explains M8004`, W - 2), "amb"); y++; }
+  else if (DEG.restartNeeded.length) { g.put(1, y, trunc(`restart needed: ${DEG.restartNeeded.join(", ")} · settings.lua changed a key that applies on restart · mill daemon restart --drain`, W - 2), "amb"); y++; }   // ConfigStatus.restart_needed (configuration.md §5)
   const tags = [...new Set(PIPES.flatMap(p => p.tags))];
   if (tags.length > 1 || b.tag !== "all" || b.search || b.searchEdit) {
     let x = 6;
@@ -978,6 +992,18 @@ const STATIC_RUNS = {
   "release-notes": { num: 14, st: ["✓ done", "grn"], el: 77, tk: "88K", cost: 0.06, budget: 2, result: ["✓ draft release v1.4.0", "grn"],
     rows: [R_("done", "collect", "17 merged PRs since v1.3.2", 0, 4), R_("done", "draft", "claude/sonnet · notes in changelog style", 4, 60, { agent: 1 }), R_("done", "judge", "checked against the PR list", 60, 75, { agent: 1 }), R_("done", "publish", "draft release v1.4.0", 75, 77)] },
 };
+// degraded scenario runs (backend plan): breaker-held agent node (D36), stalled run actor, recovery decisions after a restart (operations §3)
+Object.assign(STATIC_RUNS, {
+  "pr-review": { num: 57, st: ["running", "blu"], el: 95, tk: "12K", cost: 0.21, budget: 2, result: ["review waits for the claude breaker, not as a retry · no attempt counted · resumes 12:41", "dim"],
+    rows: [R_("done", "fetch", "PR #1302 \"retry the webhook sender\" · 4 files", 0, 2), R_("done", "ws", "mill/review-1302", 2, 3), R_("queued", "review", "queued · claude rate limited · resumes 12:41", null, null, { agent: 1 }), R_("pending", "post", "")] },
+  "dep-bump": { num: 22, st: ["⠋ running · stalled", "amb"], el: 540, tk: "31K", cost: 0.12, budget: 2, result: ["stalled · see mill doctor · no heartbeat for 3m · mill cancel dep-bump#22 ends it", "amb"],
+    rows: [R_("done", "scan", "go list -m -u · 6 updates", 0, 20), R_("working", "update", "stalled · see mill doctor", 20, 540, { warn: 1 }), R_("pending", "test", ""), R_("pending", "pr", "")] },
+  "nightly-evals": { num: 9, st: ["running · recovered", "blu"], el: 1260, tk: "380K", cost: 0.64, budget: 5, result: ["recovered after a daemon restart · re-queued 1 · resumed 1 · re-run 1 · crashed 1 · mill events nightly-evals#9", "dim"],
+    cause: { head: "↯ nightly-evals#9 eval-b crashed during daemon restart (M4301)", lines: [["cause", "milld restarted (pid 48213 → 48390) while eval-b was working"], ["why", "eval-b is neither resumable nor idempotent, so mill won't guess"], ["kept", "eval-b's transcript and 14 of 40 items"], ["help", "mill rerun nightly-evals#9 --from eval-b"]],
+      tail: ["02:14:09 eval-b   INF case 14/40 scored 0.82", "02:14:11 run      ERR recovery: eval-b was working and isn't resumable or idempotent → crashed (M4301)"] },
+    rows: [R_("done", "fetch", "eval set v12 · 40 cases", 0, 30), R_("queued", "lint", "re-queued after restart · was queued"), R_("working", "eval-a", "resumed after restart · claude session kept", 30, 1260, { agent: 1 }),
+      R_("working", "index", "re-run after restart · try 2 · idempotent", 900, 1260), R_("crashed", "eval-b", "crashed in restart · not resumable (M4301)", 30, 860, { agent: 1 }), R_("pending", "report", "")] },
+});
 const RUN_ITEMS = {   // what `i` shows; secret values are redacted before storage (•••)
   "issue-to-pr": { webhook: { out: [{ action: "labeled", label: { name: "agent" }, issue: { number: 1287, title: "Webhook sender drops events on 429" } }] }, ws: { out: [{ branch: "mill/issue-1287", base: "main", remote: "https://x-access-token:•••@github.com/acme/app.git" }] },
     plan: { out: [{ plan: "retry helper with backoff; idempotency key; tests", files: ["sender.go", "retry.go", "sender_test.go"], risk: "medium" }] }, scope: { out: [{ risk: "medium", files: 3 }] }, build: { out: [{ diff: "+88 -12", passed: true }] },
@@ -1019,10 +1045,10 @@ function runRows(name) {
   const old = S.run.old, byYou = p && p.state === "cancelled" && p.reason === "you";
   const rows = R.rows.map(r => {
     const st = old ? (r.st === "skipped" ? "skipped" : "done") : byYou && r.st === "working" ? "cancelled" : r.st;
-    return { id: r.id, key: r.id, st, what: old ? (r.what || "").replace(/failed.*|crashed.*|milld restarted.*|\d\/5 · 2 stopped.*/, "done") : r.what, segs: r.a != null ? [[r.a, r.b, st === "failed" || st === "crashed" || st === "cancelled" ? "red" : st === "working" ? "blu" : "grn"]] : [], dur: r.a != null ? r.b - r.a : null, agent: !!r.agent, indent: r.indent, each: old ? null : r.each };
+    return { id: r.id, key: r.id, st, what: old ? (r.what || "").replace(/failed.*|crashed.*|milld restarted.*|\d\/5 · 2 stopped.*/, "done") : r.what, segs: r.a != null ? [[r.a, r.b, st === "failed" || st === "crashed" || st === "cancelled" ? "red" : st === "working" ? "blu" : "grn"]] : [], dur: r.a != null ? r.b - r.a : null, agent: !!r.agent, indent: r.indent, each: old ? null : r.each, warn: old ? null : r.warn };
   });
   if (byYou && !old) rows.forEach(r => { if (r.st === "cancelled") r.what = "cancelled by you"; });
-  return { title: `${name}#${old || R.num}`, state: old ? ["✓ done", "grn"] : byYou ? ["⊗ cancelled", "dim"] : R.st[0] === "running" ? [spin() + " running", "blu"] : R.st, ...(byYou && !old ? { result: ["⊗ cancelled by you · F reruns from the selected node", "dim"] } : {}), el: R.el, tk: R.tk, tkBudget: R.tkBudget, cost: R.cost, budget: R.budget, span: Math.max(R.el, 60), rows, result: old ? ["✓ done", "grn"] : byYou ? ["⊗ cancelled by you · F reruns from the selected node", "dim"] : R.result || null, cause: old ? null : R.cause };
+  return { title: `${name}#${old || R.num}`, state: old ? ["✓ done", "grn"] : byYou ? ["⊗ cancelled", "dim"] : R.st[0].startsWith("running") ? [spin() + " " + R.st[0], "blu"] : R.st, ...(byYou && !old ? { result: ["⊗ cancelled by you · F reruns from the selected node", "dim"] } : {}), el: R.el, tk: R.tk, tkBudget: R.tkBudget, cost: R.cost, budget: R.budget, span: Math.max(R.el, 60), rows, result: old ? ["✓ done", "grn"] : byYou ? ["⊗ cancelled by you · F reruns from the selected node", "dim"] : R.result || null, cause: old ? null : R.cause };
 }
 function visRows(info) {   // each-mode nodes expand with za into one row per item
   const out = [];
@@ -1032,7 +1058,7 @@ function visRows(info) {   // each-mode nodes expand with za into one row per it
   }
   return out;
 }
-const ST_GL = { done: ["✓", "grn"], failed: ["✗", "red"], retrying: ["↻", "amb"], pending: ["○", "dim2"], skipped: ["–", "dim2"], crashed: ["↯", "red"], cancelled: ["⊗", "red"] };
+const ST_GL = { done: ["✓", "grn"], failed: ["✗", "red"], retrying: ["↻", "amb"], pending: ["○", "dim2"], queued: ["○", "dim2"], skipped: ["–", "dim2"], crashed: ["↯", "red"], cancelled: ["⊗", "red"] };
 function runTitle(info, w) {
   const over = info.budget && info.cost / info.budget > 0.8;
   return [[info.title, "b"], [" · ", "dim"], [info.state[0], info.state[1]], [` · ${fmtDur(info.el)} · ${info.tk}${info.tkBudget ? " of " + info.tkBudget : ""} tk · `, "dim"], [`$${info.cost.toFixed(2)} of $${(+info.budget).toFixed(2)}`, over ? "amb" : "dim"]];
@@ -1047,14 +1073,14 @@ function rRunPopup(g) {
   const tlw = w >= 100 ? 28 : 16, tl0 = x0 + w - 4 - 8 - tlw, whatX = x0 + 17, whatW = tl0 - whatX - 2;
   rows.slice(S.run.top, S.run.top + vis).forEach((r, k) => {
     const y = y0 + 2 + k, sel = r.key === S.run.sel;
-    const [gl, gc] = r.st === "working" ? [spin(), "blu"] : ST_GL[r.st] || ["○", "dim2"];
+    const [gl, gc] = r.st === "working" ? (r.warn ? ["⠋", "amb"] : [spin(), "blu"]) : ST_GL[r.st] || ["○", "dim2"];
     let x = x0 + 3;
     if (r.indent) x = g.put(x + 2, y, r.indent, "dim2");
     g.put(x, y, gl, gc);
     const nm = r.sub ? "" : r.id, nx = g.put(x + 2, y, nm, r.st === "pending" || r.st === "skipped" ? "dim2" : sel ? "b" : "");
     if (r.each) g.put(x0 + 2, y, S.run.open[r.key] ? "▾" : "▸", "dim3");
     const wx = Math.max(whatX, nx + 1);
-    g.put(wx, y, trunc(r.what, whatW - (wx - whatX)), r.st === "retrying" ? "amb" : r.st === "failed" || r.st === "crashed" || (r.st === "cancelled" && !r.what.includes("you")) ? "red" : r.st === "skipped" || r.sub ? "dim2" : "dim");
+    g.put(wx, y, trunc(r.what, whatW - (wx - whatX)), r.st === "retrying" || r.warn ? "amb" : r.st === "failed" || r.st === "crashed" || (r.st === "cancelled" && !r.what.includes("you")) ? "red" : r.st === "skipped" || r.sub ? "dim2" : "dim");
     for (const [a, b, c] of r.segs) {
       const x1 = tl0 + Math.round(a / info.span * tlw), x2 = Math.max(x1, tl0 + Math.round(b / info.span * tlw) - 1);
       g.put(x1, y, (b - a < info.span / tlw / 2) ? "▏" : (c === "amb" ? "░" : "█").repeat(x2 - x1 + 1), c);
@@ -1079,6 +1105,7 @@ function openAgent(r) {
   if (!r) return;
   if (!r.agent) return toast(`${r.id} isn't an agent · i shows its items`, "dim");
   if (r.st === "pending") return toast(`${r.id} hasn't started yet`, "dim");
+  if (r.st === "queued") return toast(`${r.id}: ${r.what} · no attempt counted while the breaker holds it · mill doctor shows breakers`, "dim", 6000);
   S.run.agent = r.key; S.popup = "agent"; play("open");
 }
 function rCausePopup(g) {
@@ -3162,6 +3189,13 @@ const WEXPLAIN = {
   M3050: "a trigger setting is invalid: a cron schedule has 5 fields (or @every 10m), a webhook path starts with /",
 };
 Object.assign(EXPLAIN, WEXPLAIN);
+// backend plan codes (errors.md §2, D41, D38): wording from the registry table
+Object.assign(EXPLAIN, {
+  M2002: "not enough disk space in mill's data, state or workspace dir · below 1 GiB the scheduler stops granting and retention runs early · help: mill prune --older 14d · mill doctor",
+  M4108: "run queue is full: max_queued_runs (1000) runs are already queued, so new runs are refused · help: wait, or raise max_queued_runs",
+  M7007: "run written by a newer mill: its event log has a log_v this mill can't read, so it is refused and left intact · help: upgrade mill, then mill daemon restart",
+  M4301: "crashed during daemon restart: the node was working and is neither resumable nor idempotent, so mill won't re-run it · help: mill rerun <run> --from <node>",
+});
 
 function wizNew(o = {}) {
   if (!o.fresh && S.wizLast && !Object.keys(o).length) { S.wiz = S.wizLast; S.wizLast = null; S.wiz.ins = null; S.wiz.picker = null; S.wiz.drafting = null; S.wiz.help = false; S.wiz.err = null; S.wiz.say = "resumed your draft · :new! starts over"; play("open"); return; }
@@ -3939,7 +3973,8 @@ const CMDS = [
   ["help", ["h"], "global", "topic", "mill <command> --help · mill explain <code>", "help: keys, commands, one command, or an error code"],
   ["messages", ["mes"], "global", "", "mill daemon logs", "this session's errors and results"], ["settings", [], "global", "setting", "mill config list", "settings"],
   ["set", ["se"], "global", "set", "mill config set <key> <value>", "key=value · key? shows it · key& resets it"],
-  ["plugins", [], "global", "", "mill plugin ls", "plugins, MCP servers and agents"], ["stats", [], "global", "", "mill stats", "runs, cost and time"],
+  ["plugins", [], "global", "", "mill plugin ls", "plugins, MCP servers and agents"], ["stats", [], "global", "stats", "mill stats [--health]", "runs, cost and time · --health: milld's own health"],
+  ["digest", [], "global", "", "mill digest", "the day in one screen: failures, spend, slow nodes, tomorrow"], ["doctor", [], "global", "", "mill doctor", "health checks by layer, each with its fix"],
   ["runs", [], "global", "pipeline", "mill runs [--pipeline p]", "older runs"], ["new", ["n"], "global", "new", "mill new [<name>] [--from …]", "the new pipeline wizard"],
   ["edit", ["e"], "global", "pipeline", "mill edit <pipeline>", "open a pipeline in the editor (:e! reverts the buffer)"],
   ["run", ["r"], "global", "run", "mill run <p> [--input k=v]… [--dry-run]", "run a pipeline with inputs"], ["pipe", [], "global", "", "mill pipe '<expr>'", "run a pipe expression"],
@@ -4096,6 +4131,7 @@ function clCands(head, tok) {
     case "setting": return pre(Object.keys(SETTING));
     case "topic": return pre(["commands", "keys", "board", "editor", "wizard", "run", ...CMDS.map(c => c[0]), ...Object.keys(EXPLAIN)]);
     case "code": return pre(Object.keys(EXPLAIN));
+    case "stats": return pre(["--health"]);
     case "path": return pathCands(tok);
     case "new": return tok.startsWith("-") ? pre(["--from", "--trigger", "--budget", "--agent", "--dry-run"]) : /^--from$/.test(words[words.length - 1]) ? pre(["describe:", "template:", "pipeline:", ...pathCands(tok)]) : [];
     case "node": return S.screen === "editor" ? pre(edc().gr.ids) : [];
@@ -4335,8 +4371,9 @@ function commitSettingText(r, text) {
 
 /* ------------------------------------------------------------------ :stats (§18.12) */
 function rStatsOverlay(g) {
+  if (S.statsTab === "health") return rStatsHealth(g);
   const w = ow(116), x0 = ox(w), y0 = 3, rows = PIPES, h = Math.min(H - 6, rows.length + 9);
-  overlayBox(g, x0, y0, w, h, [["stats", "b"], [" · today · 7 days · 30 days", "dim"]]);
+  overlayBox(g, x0, y0, w, h, [["stats", "b"], [" · runs", "b"], [" · health ", "dim3"], [" · today · 7 days · 30 days", "dim"]]);
   const X = x0 + 3, cols = [[0, "pipeline", 22], [22, "runs 1d/7d/30d", 15], [38, "ok", 6], [45, "p50", 8], [54, "p90", 8], [63, "cost 1d", 9], [73, "cost 7d", 9], [83, "cost 30d", 10]].filter(([dx, , cw]) => X + dx + cw < x0 + w - 2);
   cols.forEach(([dx, t]) => g.put(X + dx, y0 + 2, t, "dim3"));
   const tot = [0, 0, 0];
@@ -4348,7 +4385,115 @@ function rStatsOverlay(g) {
   });
   const yt = y0 + 4 + rows.length; g.hl(X, x0 + w - 4, yt - 1, "dim3");
   g.put(X, yt, "total", "b"); cols.forEach(([dx, t]) => { const k = ["cost 1d", "cost 7d", "cost 30d"].indexOf(t); if (k >= 0) g.put(X + dx, yt, `$${tot[k].toFixed(2)}`, "b"); });
-  g.segs(X, y0 + h - 2, [["esc", "b"], [" back · same as ", "dim"], ["mill stats", "b"]]);
+  g.segs(X, y0 + h - 2, [["tab", "b"], [" health · ", "dim"], ["esc", "b"], [" back · same as ", "dim"], ["mill stats", "b"]]);
+}
+
+/* ------------------------------------------------------------------ backend plan views: :stats --health, :doctor, :digest (observability §8, operations §4) */
+// fit a list of [text, class] segments into n columns (the overlays never draw past their right border)
+function segsFit(parts, n) { const out = []; let left = n; for (const [t, c] of parts) { if (left <= 0) break; const s = len(t) > left ? trunc(t, left) : t; out.push([s, c]); left -= len(s); } return out; }
+// `mill doctor`: one line per check, grouped by layer, each failed or warned check with its fix command (operations.md §4)
+function doctorChecks() {
+  const d = SCN === "degraded", lint = bootSteps("normal").find(s => s.step === "pipelines.lint") || { st: "OK", desc: "lint clean" };
+  const C = (layer, st, check, desc, fix) => ({ layer, st, check, desc, fix: st === "OK" ? "" : fix });
+  return [
+    C("L0 platform", "OK", "paths", "~/.local/share/mill · ~/.local/state/mill writable · socket path 31 chars · local disk"),
+    d ? C("L0 platform", "WARN", "disk", `${DEG.diskFree} free in the data dir (M2002) · +2.6 GiB in 7 days`, "mill prune --older 14d") : C("L0 platform", "OK", "disk", `${DEG.diskFree} free in data, state and workspaces · +0.4 GiB in 7 days`),
+    C("L0 platform", "OK", "file limits", "ulimit -n 10240 (≥ 1024)"),
+    d ? C("L1 domain", "WARN", "event logs", `${DEG.newer} has log_v 4 (M7007) · log_v 1–3 readable`, "upgrade mill · mill daemon restart") : C("L1 domain", "OK", "event logs", "log_v 1–3 present · all readable by this mill"),
+    C("L2 language", lint.st === "OK" ? "OK" : "WARN", "pipelines", lint.desc.replace(/^\S+ · /, "") + " · project trusted", "mill lint " + ((lint.desc.match(/· ([\w-]+): M\d+/) || [])[1] || "<file>")),
+    C("L3 persistence", "OK", "index", "schema 4 · 0 ops behind the logs · integrity_check ok"),
+    d ? C("L3 persistence", "WARN", "live runs", `${DEG.recovered} recovered · 1 crashed (M4301)`, "mill rerun nightly-evals#9 --from eval-b") : C("L3 persistence", "OK", "live runs", "2 live, each locked by milld · none stranded"),
+    d ? C("L4 execution", "WARN", "agents", `${DEG.breaker.key} breaker open · resumes ${DEG.breaker.resumes}`, "wait, or lower max_concurrent_agents")
+      : C("L4 execution", "WARN", "agents", "claude · codex · gemini signed in · aider not on PATH (M6101)", "mill agent test aider"),
+    C("L4 execution", "OK", "runners", "local · docker 27.3 reachable"),
+    C("L4 execution", "OK", "secrets", "GITHUB_TOKEN · SLACK_TOKEN resolve (names only, never values)"),
+    C("L4 execution", "OK", "workspaces", "0 orphaned · 0 stale worktrees"),
+    C("L5 integration", "OK", "plugins", "8 pinned · hashes match the lockfile"),
+    C("L5 integration", "FAIL", "mcp servers", "notion: auth expired (M6202) · slack · github list tools", "mill part info mcp:notion"),
+    d ? C("L5 integration", "WARN", "config", `loads · restart needed: ${DEG.restartNeeded.join(", ")}`, "mill daemon restart --drain") : C("L5 integration", "OK", "config", "init.lua + settings.lua load · no restart-needed keys"),
+    C("L5 integration", "OK", "triggers", "6 armed · state files parse · next 03:00 nightly-sweep"),
+    d ? C("L6 service", "FAIL", "daemon", `1 stall: run actor ${DEG.stalled}, no beat 3m · 0.5.0 · up 4m`, `mill cancel ${DEG.stalled}`)
+      : C("L6 service", "OK", "daemon", "milld 0.5.0 = mill 0.5.0 · up 3d 4h · 0 stalls · 0 internal errors"),
+    C("L6 service", "OK", "gateway", "off"),
+  ];
+}
+function doctorSegs(c, first, width = 999) {   // the fix command is never cut: the description gives way first
+  const tok = c.st === "OK" ? ["  OK  ", "grn"] : c.st === "WARN" ? [" WARN ", "amb"] : [" FAIL ", "red"], lw = width >= 115 ? 15 : 4;
+  const lab = first ? (lw === 4 ? c.layer.split(" ")[0] : c.layer) : "", room = width - lw - 21 - (c.fix ? 8 + len(c.fix) : 0);
+  return [[lab.padEnd(lw), "dim"], ["[", "dim2"], tok, ["] ", "dim2"], [c.check.padEnd(12), ""], [trunc(c.desc, Math.max(8, room)), "dim"], ...(c.fix ? [[" · fix: ", "dim3"], [c.fix, "b"]] : [])];
+}
+function doctorLines(width) {
+  const cs = doctorChecks(), n = st => cs.filter(c => c.st === st).length, fail = n("FAIL");
+  const out = cs.map((c, i) => doctorSegs(c, !i || cs[i - 1].layer !== c.layer, width));
+  out.push([["", ""]], [[`${cs.length} checks · ${n("OK")} ok · ${n("WARN")} warn · `, "dim"], [`${fail} fail`, fail ? "red" : "dim"], [` · exit ${fail ? 1 : 0}`, "dim"]]);
+  return { lines: out, exit: fail ? 1 : 0 };
+}
+function rDoctorOverlay(g) {
+  const w = ow(), L = doctorLines(w - 6).lines, x0 = ox(w), y0 = 2, vis = Math.min(L.length, H - 10), h = vis + 5;
+  S.doctorTop = Math.max(0, Math.min(S.doctorTop || 0, L.length - vis));
+  overlayBox(g, x0, y0, w, h, [["doctor", "b"], [" · checks by layer · same as mill doctor", "dim"]]);
+  L.slice(S.doctorTop, S.doctorTop + vis).forEach((segs, i) => g.segs(x0 + 3, y0 + 2 + i, segsFit(segs, w - 6)));
+  g.segs(x0 + 3, y0 + h - 2, [["j/k", "b"], [" scroll · ", "dim"], ["esc", "b"], [" back · ", "dim"], [":", "b"], [" command", "dim"]]);
+}
+// `mill stats --health`: golden signals, targets O1–O8, slots, breakers, indexer, disk, goroutines, uptime (observability §5–§7)
+function healthLines() {
+  const d = SCN === "degraded", P = ok => ok ? ["pass", "grn"] : ["warn", "amb"], K = t => [t.padEnd(12), "dim3"];
+  const tg = [["O1", "intent reply p99 ≤ 50 ms", "12 ms", true], ["O2", "event visible p99 ≤ 100 ms after append", d ? "140 ms" : "31 ms", !d], ["O3", "ready node-run granted p99 ≤ 10 ms", "3 ms", true],
+    ["O4", "start to Snapshot ≤ 300 ms · recovery ≤ 2 s", d ? "240 ms · 1.1 s" : "212 ms", true], ["O5", "index behind the logs p99 ≤ 1 s", "0.2 s", true],
+    ["O6", "zero lost or duplicate events (crash points)", "nightly stress", true], ["O7", "idle: CPU < 1 % · RSS ≤ 60 MiB", "0.4 % · 38 MiB", true], ["O8", "zero internal errors (bugs in mill) per week", "0", true]];
+  return [
+    [["GOLDEN SIGNALS", "dim3"]],
+    [["  ", ""], K("latency"), ["intent p99 12 ms · event delivery p99 " + (d ? "140" : "31") + " ms · grant wait p99 3 ms", "dim"]],
+    [["  ", ""], K("traffic"), ["4 runs/min · 11 node-runs/min · 6 intents/s · 38 events/s", "dim"]],
+    [["  ", ""], K("errors"), [`node-runs failed: transient 1 · rate_limited ${d ? 6 : 3} · internal 0 · protocol 0 · bugs 0`, "dim"]],
+    [["  ", ""], K("saturation"), [`queue ${d ? 4 : 3} · index lag 0 ops · conns 2 · goroutines 212 · fds 61 · disk `, "dim"], [DEG.diskFree + " free", d ? "amb" : "dim"]],
+    [["TARGETS", "dim3"], [" ".repeat(47) + "measured", "dim3"]],
+    ...tg.map(([id, t, m, ok]) => [["  " + id + "  ", "b"], [t.padEnd(48), "dim"], [m.padEnd(16), "dim"], P(ok)]),
+    [["SLOTS", "dim3"], ["       in use / max", "dim3"]],
+    [["  ", ""], [`runs 5/8 · nodes 6/16 · agents 2/4 · agent:claude ${d ? "0/3 held" : "2/3"} · agent:codex 1/2 · runner:local 2/8`, "dim"]],
+    [["BREAKERS  ", "dim3"], d ? [`${DEG.breaker.key} open · resumes ${DEG.breaker.resumes}`, "amb"] : ["agent:claude closed", "dim"], [" · agent:codex closed · host api.linear.app closed", "dim"]],
+    [["DAEMON    ", "dim3"], [`index lag 0 ops · 0 dirty runs · disk free data ${DEG.diskFree} · goroutines 212 · heap 31 MiB · uptime ${d ? "4m" : "3d 4h"}`, "dim"]],
+  ];
+}
+function rStatsHealth(g) {
+  const L = healthLines(), w = ow(116), x0 = ox(w), y0 = 3, h = Math.min(H - 6, L.length + 6);
+  overlayBox(g, x0, y0, w, h, [["stats", "b"], [" · runs ", "dim3"], ["· health", "b"], [" · milld 0.5.0", "dim"]]);
+  L.slice(0, h - 5).forEach((segs, i) => g.segs(x0 + 3, y0 + 2 + i, segsFit(segs, w - 6)));
+  g.segs(x0 + 3, y0 + h - 2, [["tab", "b"], [" runs · ", "dim"], ["esc", "b"], [" back · same as ", "dim"], ["mill stats --health", "b"]]);
+}
+// `mill digest`: a day in one screen (observability §8.2, spec §24)
+function digestLines() {
+  const H_ = t => [[t, "dim3"]], I = (...p) => [["  ", ""], ...p];
+  return [
+    [["14 runs", "b"], [" · ", "dim3"], ["1 failed", "red"], [" · ", "dim3"], ["$4.10", "b"], [" · ", "dim3"], ["2 retries", "b"]],
+    [["", ""]],
+    H_("FAILURES"),
+    I(["✗ ", "red"], ["nightly-sweep#118", "b"], [" · build · make check failed on all 3 tries (exit 2)", "dim"]),
+    I(["    help: ", "dim3"], ["mill rerun nightly-sweep#118 --from build", "b"]),
+    H_("BUDGET STOPS"),
+    I(["⊗ ", "red"], ["multi-repo-refactor#7", "b"], [" · refactor · 2,000,000 tokens used (M4101)", "dim"]),
+    I(["    help: ", "dim3"], ["mill rerun multi-repo-refactor#7 --from refactor --budget-tokens 3m", "b"]),
+    H_("CRASHED AND RECOVERED"),
+    I(["↯ ", "red"], ["pr-fixer#12", "b"], [" · fix crashed during a daemon restart (M4301) · help: ", "dim"], ["mill rerun pr-fixer#12 --from fix", "b"]),
+    H_("SLOWEST NODES            p90    share of run"),
+    I(["multi-repo-refactor/refactor  38m    96%", "dim"]),
+    I(["issue-to-pr/build             9m     61%", "dim"]),
+    I(["nightly-sweep/build           5m     88%", "dim"]),
+    H_("SPEND BY AGENT AND MODEL"),
+    I(["claude/opus $2.10 · claude/sonnet $1.42 · claude/haiku $0.31 · codex/gpt-5 $0.27", "dim"]),
+    I(["ollama/llama3.2 · price unknown, not in the total", "amb"]),
+    H_("BREAKER OPENINGS AND PART RESTARTS"),
+    I(["agent:claude opened 12:31 (rate_limited, retry_after 600s) · closed 12:41 · no attempt spent", "dim"]),
+    H_("TOMORROW"),
+    I(["02:00 nightly-evals · 03:00 nightly-sweep · 07:30 morning-brief · inbox-triage every 15m (96 fires)", "dim"]),
+  ];
+}
+function rDigestOverlay(g) {
+  const L = digestLines(), w = ow(), x0 = ox(w), y0 = 2, vis = Math.min(L.length, H - 10), h = vis + 5;
+  S.digestTop = Math.max(0, Math.min(S.digestTop || 0, L.length - vis));
+  overlayBox(g, x0, y0, w, h, [["digest", "b"], [" · today · same as mill digest", "dim"]]);
+  L.slice(S.digestTop, S.digestTop + vis).forEach((segs, i) => g.segs(x0 + 3, y0 + 2 + i, segsFit(segs, w - 6)));
+  g.segs(x0 + 3, y0 + h - 2, [["j/k", "b"], [" scroll · ", "dim"], ["esc", "b"], [" back · ", "dim"], [":", "b"], [" command · ", "dim"], ["mill digest --json", "b"], [" for scripts", "dim"]]);
 }
 
 /* ------------------------------------------------------------------ help (§18.5) */
@@ -4356,7 +4501,7 @@ const HELP_L = [["NAVIGATION", ""], ["j k ↓ ↑", "move"], ["g G", "first / la
   ["ACTIONS", ""], ["enter", "open the latest run"], ["R", "run (dry run if never run)"], ["F", "rerun from the failed node"], ["e  n", "edit · new pipeline"], [":run  :pipe", "run a pipeline with inputs · a pipe"], ["p", "preview line"], ["x  dd", "disable/enable · delete"], ["S  ?", "settings · this help"], ["q ctrl+c", "quit (asks first)"],
   ["MOUSE", ""], ["click", "select · double-click opens"], ["wheel", "move · click a tag chip filters"],
   ["MODES", ""], ["esc", "leaves any mode back to the board"], ["", "the mode shows bottom left"]];
-const HELP_R = [["COMMANDS", ""], [":plugins :stats", "apps · runs, success, time, cost"], [":settings :new", "settings · new pipeline"], [":runs :messages", "older runs · errors this session"], [":sort :set", "sort · change a setting"], [":enable :disable", "a pipeline's triggers"], [":bg :detach", "leave, everything keeps running"], [":screensaver :sh :q", "now · shell (demo) · quit"],
+const HELP_R = [["COMMANDS", ""], [":plugins :stats", "apps · runs, success, time, cost"], [":settings :new", "settings · new pipeline"], [":runs :messages", "older runs · errors this session"], [":digest :doctor", "the day · health checks by layer"], [":sort :set", "sort · change a setting"], [":enable :disable", "a pipeline's triggers"], [":bg :detach", "leave, everything keeps running"], [":screensaver :sh :q", "now · shell (demo) · quit"],
   ["RUN", ""], ["enter", "agent screen, or the cause if failed"], ["L  i", "log · items"], ["F  c", "rerun from here · cancel"], ["za", "expand an each node"],
   ["EDITOR", ""], ["a c enter", "add · connect · inspect"], ["]e ga R", "problems · fix · dry run"], ["?", "every editor key, in the editor"],
   ["BADGES", ""], ["▴2× ▴4× ▴8×", "running longer than usual"], ["82% $", "a running run's budget used"], ["p u", "project / user pipeline"], ["↯  ⊗", "crashed · cancelled"], ["◌  ⊘  ○", "not trusted · disabled · never run"]];
@@ -4402,7 +4547,7 @@ function bootSteps(scn) {
   const c = counts();
   return [
     { st: "OK", step: "log.init", desc: "~/.local/state/mill/logs/tui.log" },
-    { st: "OK", step: "paths.ensure", desc: first ? "config + state dirs created" : "config + state dirs ok" },
+    scn === "degraded" ? { st: "WARN", step: "paths.ensure", desc: `not enough disk space in ~/.local/share/mill (${DEG.diskFree} free) · help: mill prune --older 14d · mill doctor`, code: "M2002" } : { st: "OK", step: "paths.ensure", desc: first ? "config + state dirs created" : "config + state dirs ok" },
     { st: "OK", step: "tty.probe", desc: `${W}x${H} · truecolor · en_US.UTF-8` },
     first ? { st: "SKIP", step: "config.load", desc: "no init.lua yet (defaults)" } : cfg ? { st: "WARN", step: "config.load", desc: "init.lua:7 unknown setting \"max_agents\" (M8004) · running defaults", code: "M8004" } : { st: "OK", step: "config.load", desc: "~/.config/mill/init.lua + settings.lua" },
     first ? { st: "SKIP", step: "project.trust", desc: "no .mill/ here" } : fresh ? { st: "WARN", step: "project.trust", desc: "~/code/app · not trusted, loaded data-only (M9101) · mill trust .", code: "M9101" } : { st: "OK", step: "project.trust", desc: "~/code/app · trusted · .mill/mill.lua" },
@@ -4449,6 +4594,11 @@ function bootTick() {
   if (BOOT.done && e >= BOOT.handoff) bootHandoff();
 }
 function bootHandoff() {
+  if (SCN === "degraded" && !S.degSeeded) {   // errors the daemon reported before the board came up (errors.md §2)
+    S.degSeeded = true; const t = new Date().toTimeString().slice(0, 8);
+    MSGS.unshift({ t, lvl: "warn", code: "M7007", text: `run ${DEG.newer} was written by a newer mill (log_v 4) · help: upgrade mill, then mill daemon restart` });
+    MSGS.unshift({ t, lvl: "error", code: "M4108", text: "run queue is full (1000 queued runs) · inbox-triage#914 not started · help: wait, or raise max_queued_runs" });
+  }
   if (SCN === "first-run" && !S.setupDone) { S.screen = "setup"; S.setup = { step: 0, set: 0, voice: true, dirs: "~/code", plugins: { "mill/github": true, "mill/slack": true, "mill/rex": true }, err: null, done: [] }; play("open"); return; }
   S.screen = "board"; S.lastInput = performance.now(); SIM.lastReal = performance.now(); sayMill();
 }
@@ -4558,7 +4708,7 @@ function render() {
       if (S.screen === "editor") rEditor(g); else rBoard(g);
       if (S.popup || S.overlay || S.wiz || S.confirm) dimAll(g);
       if (S.popup === "run") rRunPopup(g); else if (S.popup === "agent") rAgentPopup(g); else if (S.popup === "log") rLogPopup(g); else if (S.popup === "cause") rCausePopup(g); else if (S.popup === "items") rItemsPopup(g);
-      if (S.overlay === "plugins") rPluginsOverlay(g); else if (S.overlay === "settings") rSettingsOverlay(g); else if (S.overlay === "stats") rStatsOverlay(g); else if (S.overlay === "runs") rRunsOverlay(g); else if (S.overlay === "messages") rMessages(g); else if (S.overlay === "cmds") rCmdsOverlay(g);
+      if (S.overlay === "plugins") rPluginsOverlay(g); else if (S.overlay === "settings") rSettingsOverlay(g); else if (S.overlay === "stats") rStatsOverlay(g); else if (S.overlay === "runs") rRunsOverlay(g); else if (S.overlay === "messages") rMessages(g); else if (S.overlay === "cmds") rCmdsOverlay(g); else if (S.overlay === "digest") rDigestOverlay(g); else if (S.overlay === "doctor") rDoctorOverlay(g);
       if (S.wiz) rWizard(g);
       if (S.overlay === "help") rHelp(g);
       if (S.confirm) rConfirm(g);
@@ -4591,7 +4741,9 @@ function command(text) {
   if (c === "new") { wizNew(); return; }
   if (c === "settings") { S.overlay = "settings"; S.settings.pick = null; play("open"); return; }
   if (c === "plugins") { S.overlay = "plugins"; S.plugins.detail = false; play("open"); return; }
-  if (c === "stats") { S.overlay = "stats"; play("open"); return; }
+  if (c === "stats") { if (arg && !/^--health$/.test(arg)) return errorToast("M1305", `:stats takes --health, not "${arg}"`, ":stats --health"); S.overlay = "stats"; S.statsTab = arg ? "health" : "runs"; play("open"); return; }
+  if (c === "digest") { S.overlay = "digest"; S.digestTop = 0; play("open"); return; }
+  if (c === "doctor") { S.overlay = "doctor"; S.doctorTop = 0; play("open"); return; }
   if (c === "runs") { S.overlay = "runs"; S.runs.cur = 0; play("open"); return; }
   if (c === "messages" || c === "mes") { S.overlay = "messages"; play("open"); return; }
   if (c === "help") { S.overlay = "help"; return; }
@@ -4601,7 +4753,7 @@ function command(text) {
   if (c === "enable" || c === "disable") { const p = PIPES.find(x => x.name === arg) || selected(); if (p) { if (p.untrusted) return errorToast("M9101", `${p.name} isn't trusted, so its triggers can't be armed`, "mill trust ."); p.disabled = c === "disable"; play("toggle"); toast(`${p.name} ${c}d`, "dim"); } return; }
   if (c === "sort") { const i = SORTS.indexOf(arg); if (i < 0) return errorToast("M1305", `unknown sort "${arg}"`, SORTS.join(", ")); S.board.sort = i; return; }
   if (c === "set") { if (/^drafter\.simulate_down\b/.test(arg)) { OLLAMA.down = !/=\s*(false|off|0)$/i.test(arg); play("toggle"); return toast(`prototype: ollama ${OLLAMA.down ? "unreachable" : "reachable"} · describe ${OLLAMA.down ? "falls back to keyword rules (M2212)" : "drafts with " + setting("drafter.model")}`, OLLAMA.down ? "amb" : "grn", 4000); } const m = arg.match(/^([\w.]+)\s*=\s*(.*)$/); if (!m || !SETTING[m[1]]) { const near = m && closest(m[1], Object.keys(SETTING)); return errorToast("M8004", `unknown setting "${m ? m[1] : arg}"`, near ? `did you mean ${near}?` : ":settings to browse"); } const r = SETTING[m[1]]; let v = m[2]; if (r.src) return errorToast("M8203", `${r.id} is set in ${r.src}`, "change it there"); if (r.type === "bool") v = /^(true|on|1)$/i.test(v); else if (r.type === "num") { v = +v; if (isNaN(v) || v < r.min || v > r.max) return errorToast("M8005", `${r.id} must be ${r.min}–${r.max}`, ""); } if (r.type === "enum" && !r.vals.includes(v)) return errorToast("M8005", `${r.id} can't be "${v}"`, r.vals.join(", ")); if (r.type === "text") return commitSettingText(r, v); r.val = v; if (r.id === "sound.volume") setVolume(); play("toggle"); toast(`${r.id} = ${v}`, "grn"); return; }
-  const near = closest(c, ["plugins", "stats", "settings", "new", "runs", "messages", "sort", "set", "enable", "disable", "bg", "detach", "screensaver", "sh", "help", "q"]);
+  const near = closest(c, ["plugins", "stats", "digest", "doctor", "settings", "new", "runs", "messages", "sort", "set", "enable", "disable", "bg", "detach", "screensaver", "sh", "help", "q"]);
   errorToast("M1306", `unknown command ":${c}"`, near ? `did you mean :${near}?` : ":help commands lists them");
 }
 function runPrompt(text) {
@@ -4760,6 +4912,8 @@ function onKey(e) {
   if (S.overlay === "plugins") { const s = seq(k, ["gd", "gx"]); if (s === "") return; return keyPlugins(s || k); }
   if (S.overlay === "settings") { const s = seq(k, ["gd"]); if (s === "") return; return keySettings(s || k); }
   if (S.overlay === "cmds") { if (k === "j" || k === "ArrowDown") S.cmdsTop = (S.cmdsTop || 0) + 1; else if (k === "k" || k === "ArrowUp") S.cmdsTop = Math.max(0, (S.cmdsTop || 0) - 1); else if (k === "Escape" || k === "q") { S.overlay = null; play("back"); } return; }
+  if (S.overlay === "stats" && k === "Tab") { S.statsTab = S.statsTab === "health" ? "runs" : "health"; play("tick"); return; }
+  if (S.overlay === "digest" || S.overlay === "doctor") { const t = S.overlay + "Top"; if (k === "j" || k === "ArrowDown") S[t] = (S[t] || 0) + 1; else if (k === "k" || k === "ArrowUp") S[t] = Math.max(0, (S[t] || 0) - 1); else if (k === "Escape" || k === "q") { S.overlay = null; play("back"); } return; }
   if (S.overlay === "stats" || S.overlay === "messages") { if (k === "Escape" || k === "q") { S.overlay = null; play("back"); } return; }
   if (S.overlay === "runs") { const rows = runList(); if (k === "j" || k === "ArrowDown") { S.runs.cur = Math.min(rows.length - 1, S.runs.cur + 1); play("tick"); } else if (k === "k" || k === "ArrowUp") { S.runs.cur = Math.max(0, S.runs.cur - 1); play("tick"); } else if (k === "Enter" && rows[S.runs.cur]) openRunFromList(rows[S.runs.cur]); else if (k === "Escape" || k === "q") { S.overlay = null; play("back"); } return; }
   if (k === "S") { S.overlay = "settings"; play("open"); return; }

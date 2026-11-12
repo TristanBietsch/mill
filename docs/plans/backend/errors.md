@@ -61,7 +61,7 @@ Codes this refinement reserves (explain pages and goldens land with the code tha
 
 | Code | Class | Headline | Where |
 |---|---|---|---|
-| `M2002` | `transient` | `not enough disk space in <dir> (<free> free)` · `help: mill prune --older 30d · mill doctor` | `store` on ENOSPC, `mill doctor` low-space check ([data-lifecycle.md](data-lifecycle.md) §6) |
+| `M2002` | `transient` | `not enough disk space in <dir> (<free> free)` · `help: mill prune --older 14d · mill doctor` | `store` on ENOSPC, `mill doctor` low-space check ([data-lifecycle.md](data-lifecycle.md) §6) |
 | `M4108` | `transient` | `run queue is full (<n> queued runs)` · `help: wait, or raise max_queued_runs` | `engine.Start` when the queued-run cap is hit ([resilience.md](resilience.md) §4) |
 | `M7007` | `refused` | `run <id> was written by a newer mill (log_v <n>)` · `help: upgrade mill, then mill daemon restart` | `core/event` decoder, surfaced by recovery and `GetRun` ([versioning.md](versioning.md) §3) |
 

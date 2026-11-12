@@ -100,12 +100,12 @@ Codes are `M` plus four digits, grouped by area. A code is never reused or renum
 |---|---|---|
 | `M0xxx` | Internal: a bug in mill | `M0001` unexpected internal error |
 | `M1xxx` | CLI, selectors, arguments | `M1201` pipeline not found · `M1203` ambiguous run selector · `M1301` unknown flag · `M1304` ambiguous command · `M1306` unknown command · `M1307` command belongs to another screen |
-| `M2xxx` | Files and pipelines | `M2101` YAML parse error · `M2201` conflicting edit (file changed since you loaded it) · `M2203` lint errors, not saved · `M2212` drafter unavailable (`M2212 drafter unavailable: ollama unreachable at 127.0.0.1:11434 · drafting with keyword rules`) · `M2301` not an importable file |
+| `M2xxx` | Files and pipelines | `M2002` not enough disk space (below 1 GiB free the scheduler stops starting work) · `M2101` YAML parse error · `M2201` conflicting edit (file changed since you loaded it) · `M2203` lint errors, not saved · `M2212` drafter unavailable (`M2212 drafter unavailable: ollama unreachable at 127.0.0.1:11434 · drafting with keyword rules`) · `M2301` not an importable file |
 | `M3xxx` | Lint and expressions | `M3012` unknown node in expression · `M3020` cycle outside a loop · `M3021` ambiguous input · `M3024` unreachable node · `M3030` branch port not connected · `M3101` CEL type mismatch · `M3204` destructive part not allowed · `M3206` waits for a person. The full list is in §18.7.9. |
-| `M4xxx` | Runs and scheduling | `M4101` budget exceeded · `M4201` node timed out · `M4301` crashed during daemon restart |
+| `M4xxx` | Runs and scheduling | `M4101` budget exceeded · `M4108` run queue full · `M4201` node timed out · `M4301` crashed during daemon restart |
 | `M5xxx` | Parts and plugins | `M5101` plugin not found · `M5102` version conflict · `M5201` part failed · `M5301` checksum mismatch |
 | `M6xxx` | Agents | `M6101` agent CLI not installed · `M6201` rate limited · `M6202` auth expired · `M6301` output didn't match schema · `M6304` agent asked for input |
-| `M7xxx` | Daemon and protocol | `M7001` daemon unreachable · `M7002` socket path can't be resolved or is too long · `M7003` daemon older than client · `M7101` line too long |
+| `M7xxx` | Daemon and protocol | `M7001` daemon unreachable · `M7007` run written by a newer mill · `M7002` socket path can't be resolved or is too long · `M7003` daemon older than client · `M7101` line too long |
 | `M8xxx` | Lua config | `M8001` Lua syntax error · `M8004` unknown setting · `M8101` hook error |
 | `M9xxx` | Security, trust, secrets | `M9101` pipeline not trusted · `M9201` secret not declared · `M9202` secret missing · `M9301` path refused |
 
