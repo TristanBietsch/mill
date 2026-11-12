@@ -84,6 +84,7 @@ internal/
   parthost/                 part registry and resolution, process pool, health, PartCall
   parts/builtin/            sh, exec, check, data, control, agent*, git, gh, http, mcp, file …
   agents/ agents/detect/    agent registry and merge; terminal-agent state detection
+  drafter/                  sentence → pipeline proposal for the wizard: local Ollama client, model resolver, keyword fallback, output validation
   runner/                   local, pty, container, ssh (remote, external later); process groups
   workspace/                worktrees, temp dirs, cleanup, retry snapshots, path safety
   secrets/ secrets/redact/  broker and backends; redactor

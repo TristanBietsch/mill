@@ -6,8 +6,11 @@
 mill                                   # TUI
 mill pipe '<expr>' [--save name] [--dry-run] [--stdin] [--each]
 
-mill new [<name>] [--from template|file.json|describe:"plain English"] [--trigger spec] [--agent id/model]
-         [--steps a,b,c] [--budget small|medium|large] [--allow part,...] [--on-failure target] [--dry-run]   # no flags: the wizard
+mill new [<name>] [--from <source>] [--describe "…"] [--agent id/model] [--effort low|medium|high]
+         [--steps a,b,c] [--trigger spec] [--budget small|medium|large] [--on-failure none|gh.issue|rex]
+         [--allow part,...] [--scope project|user] [--then edit|dry-run|none] [--dry-run] [--json]   # no flags: the wizard
+         # <source>: template:<id> | pattern:<id> | pipeline:<name> | describe:"…" | <file> | <url> | gh:owner/repo[/path][@ref] | -
+         # --describe drafts with drafter.backend (§18.8, §19.6): local Ollama by default, keyword rules when it's unavailable
 mill ls [--filter expr] [--group by] [--sort by] [--json]
 mill show <pipeline> [--outline|--yaml|--graph]
 mill render <pipeline|run> [--format text|svg|mermaid] [-w cols] [-h rows]
@@ -118,8 +121,9 @@ Each TUI screen has a CLI equivalent:
 | Log (in the run popup) | `mill logs <run> [-f] [--node n]` |
 | Agent screen | `mill attach <run>/<node>` (view-only) |
 | Editor | `mill show <p> --outline`, `mill node …`, `mill edge …`, `mill pipeline set`, `mill wrap`, `mill extract`, `mill pattern`, `mill lint --fix`, `mill refs`, `mill estimate`, `mill edit` (the full map is §18.7.16) |
-| Wizard | `mill new` (prompts in the terminal, or flags) |
-| `λ` prompt | `mill run <p> --input k=v`, `mill pipe '…'` |
+| Wizard | `mill new` (prompts in the terminal, or flags; `--from -` reads stdin) |
+| `:run`, `:pipe` | `mill run <p> --input k=v`, `mill pipe '…'` |
+| `:` commands | Each lists its CLI in `:help commands` |
 | Plugins | `mill plugin ls`, `mill part ls`, `mill agent ls`, `mill mcp ls` |
 | Settings | `mill config` |
 | Stats | `mill stats` |

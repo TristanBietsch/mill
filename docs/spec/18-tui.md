@@ -39,7 +39,6 @@ These rules come from rex and apply to every mill screen. A change that breaks o
    ✓  release-notes    draft release v1.4.0 · next on tag               ■■■■■■■■■■    3d
    ○  best-of-3        never run · R for a dry run                                    -
 
- λ
  enter open · n new · e edit · R run · ? more
 ```
 
@@ -47,7 +46,7 @@ These rules come from rex and apply to every mill screen. A change that breaks o
 
 **Header.** One line: `N failed · N running · N ok today · $X today`. `N failed` counts every pipeline in FAILED, crashed and budget-cancelled ones included. `failed` is red while above zero. With `v`, it adds `· N runs today · p50 4m`.
 
-**Prompt.** `i` focuses the bottom prompt (`λ`). It runs whatever you type: a pipeline name with inputs (`fix-flaky-test test=TestCache_Expiry`) or a pipe expression (`sh "git log -5" | agent claude/haiku "summarize"`, §14.2). `tab` completes pipeline names and input keys. The new run's pipeline is selected when it starts.
+**Command line.** `:` opens the command line on the last row (§18.5). `:run <pipeline> k=v …` runs a pipeline with inputs (`:run fix-flaky-test test=TestCache_Expiry`, `--dry-run` for a dry run) and `:pipe <expr>` runs a pipe expression (`:pipe sh "git log -5" | agent claude/haiku "summarize"`, §14.2). `tab` completes pipeline names and input keys. The new run's pipeline is selected when it starts. The board has no text field, so `i` only echoes this hint.
 
 **Filter, sort, find.**
 - `t` cycles the tag filter (`all · code · daily · mail …`). The filter row only shows while pipelines use more than one tag or a filter is active.
@@ -123,9 +122,8 @@ By default a row shows five things: **state, name, text, runs, age**.
 |---|---|---|
 | Boot | launching `mill` | hands off to the board (or setup on first launch); `q`, `esc`, `ctrl+c` quit |
 | Board | default | |
-| Prompt | `i` | `esc` |
-| Search | `/` | `enter` keeps it, `esc` clears it |
-| Command | `:` | `esc`, or after the command runs |
+| Search | `/` (board, log, plugins, settings, wizard lists, editor) | `enter` keeps it, `esc` clears it |
+| Command | `:` from any screen or mode except a text field or a pending confirm, or a click on the last row | `esc` (back to exactly where you were), or after the command runs |
 | Run | `enter` on a pipeline | `esc` |
 | Log | `L` in a run | `L` or `esc` |
 | Agent screen | `enter` on an agent node in a run | `esc`, `qq`, `ctrl+]` |
@@ -135,9 +133,9 @@ By default a row shows five things: **state, name, text, runs, age**.
 | Settings | `S` or `:settings` | `esc` |
 | Stats | `:stats` | `esc` |
 | Help | `?` | `esc`, `?` |
-| Confirm | `dd`, `:disable`, `:q` | `y` / `n` |
+| Confirm | `dd`, `:disable`, `:q` | `y` / `n` (`esc` is `n`). It takes nothing else: `:` and a click on the last row do nothing until it is answered, as in nvim's `confirm()` |
 
-The mode name shows the way vim shows `-- INSERT --`. On the board, which has no status line, it shows at the left of the help bar (`PROMPT  enter run · tab complete · esc cancel`); the default board mode shows no name. Overlays and the editor show it at the left of their status line.
+The mode name shows the way vim shows `-- INSERT --`: at the left of the status line on screens that have one (popups, overlays, the editor, the wizard: `RUN`, `LOG`, `NORMAL`, `NEW · INSERT`), and at the left of the help bar on the board, which has no status line (the default board mode shows no name). The last row belongs to the help bar, the echo of the last command, or the command line and `/` search while you type, always starting at column 0.
 
 ### 18.5 Keys and mouse
 
@@ -154,7 +152,6 @@ The mode name shows the way vim shows `-- INSERT --`. On the board, which has no
 | `F` | Rerun the latest failed run from the node that failed |
 | `e` | Open in the editor (§18.7) |
 | `n` | New pipeline wizard (§18.8) |
-| `i` | Focus the prompt |
 | `v` | Simple / detailed rows |
 | `t` | Cycle the tag filter |
 | `/` | Search |
@@ -163,12 +160,20 @@ The mode name shows the way vim shows `-- INSERT --`. On the board, which has no
 | `p` | Toggle the preview line under the selected row: description, trigger, budget, last outputs |
 | `x` | Disable / enable the selected pipeline's triggers (confirm) |
 | `dd` | Delete the selected pipeline (confirm; the file goes to `.mill/trash/`) |
-| `:` | Command mode |
+| `:` | Command line on the last row (below) |
 | `?` | Help |
 | `S` | Settings |
 | `q`, `ctrl+c` | Quit (confirm with `:q`) |
 
-**Mouse.** With `mouse_enabled` on (the default): click a row to select it, double-click to open its run, scroll to move the selection, click a filter chip to set the filter. Overlays and prompts swallow mouse events. Hold Option (iTerm2, Terminal.app) or Shift (Ghostty, kitty) to select text natively, or turn `mouse_enabled` off.
+**Mouse.** With `mouse_enabled` on (the default): click a row to select it, double-click to open its run, scroll to move the selection, click a filter chip to set the filter. Overlays swallow mouse events, except a click on the last row, which opens the command line (not while a confirm waits). Hold Option (iTerm2, Terminal.app) or Shift (Ghostty, kitty) to select text natively, or turn `mouse_enabled` off.
+
+**Command line.** `:` opens one command line, vim-style, on the terminal's last row with `:` in the bottom-left corner. It works from every screen except a pending y/n confirm: the boot screen, the board, every popup and overlay, the editor's NORMAL, VISUAL and CONNECT, the wizard. In INSERT and other text fields (the wizard's fields, the inspector, the prompt and YAML editors, the palette's query, any `/` search, the settings value editor) `:` types a colon. A confirm takes only `y`, `n` and `esc`, as nvim's `confirm()` does. Overlays don't move; the line draws below them.
+
+- Commands are `:[count]name[!] [args]`. Unique prefixes and vim's short forms work (`:q :w :wq :x :e! :mes :se`); an ambiguous prefix is `M1304`, and abbreviations never resolve by context. `!` forces (`:q!`, `:w!`, `:e!`, `:new!`). A number alone jumps to that row, node, step or line; before a command it repeats it (`:3undo`).
+- `tab` completes commands (this screen's first, then global ones, alphabetical within each), pipelines, node ids, settings keys and values, `k=v` inputs and paths; several matches open a one-row wildmenu above the line (`<` `>` scroll it). `↑`/`↓` walk the history entries that start with what's typed (200 lines per user, `~/.local/state/mill/cmdline_history`, shared by every screen); `ctrl+r` searches it. `esc` cancels, `enter` runs.
+- The result or error echoes on the same row in the usual shape (`error[M1305]: unknown sort "bogus" · help: …`) until the next key (12 s at most), and goes to `:messages`. A command from another screen echoes `M1307` naming where it works; global commands work everywhere.
+- `:help commands` lists every command with its CLI equivalent; `:help <command>` and `:help <code>` explain one. `/` is search only, on the same row; no command starts with `/`.
+- Codes: `M1302` an input isn't `key=value` · `M1303` no such input · `M1304` ambiguous abbreviation · `M1305` an argument isn't one of its values · `M1306` unknown command (with `did you mean`) · `M1307` the command works on another screen · `M1308` the command needs an argument.
 
 **Help overlay.** `?` opens a square panel. At 96+ columns it has two columns: Navigation, Actions, Mouse, Modes on the left; Commands, Run, Editor, Badges on the right. Narrower terminals get one column. If it doesn't fit, the badges and then the mouse groups are dropped with a dim `(truncated, enlarge terminal)` note. It lists every `:` command.
 
@@ -190,7 +195,7 @@ The mode name shows the way vim shows `-- INSERT --`. On the board, which has no
 │  ○ pr                                                                                             │
 │  ○ ping                                                                                           │
 │                                                                                                   │
-│  enter agent · L log · F rerun from here · i items · esc back                                     │
+│  enter agent · L log · F rerun from here · gi items · esc back                                    │
 │                                                                                                   │
 └───────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -198,7 +203,7 @@ The mode name shows the way vim shows `-- INSERT --`. On the board, which has no
 - **Columns:** state, node, what it did (or is doing), a timeline bar on the run's own clock (`░` is time an attempt spent waiting to retry), and duration. Nodes in `each` mode show `3/5` and expand with `za`.
 - **Title:** run, state, elapsed time, tokens, and cost against the budget. The budget turns amber over 80%.
 - **`enter` on an agent node** shows its screen, view-only, repainted by the daemon so it appears at once. `esc`, `qq` or `ctrl+]` goes back.
-- **`L`** turns the popup into the log (below). **`i`** shows the selected node's input and output items. **`F`** reruns from the selected node, reusing earlier outputs. **`c`** cancels the run (confirm).
+- **`L`** turns the popup into the log (below). **`gi`** shows the selected node's input and output items (as in the editor; `i` stays as a quiet alias for one release). **`F`** reruns from the selected node, reusing earlier outputs. **`c`** cancels the run (confirm).
 - **Branches** show as indented rows under the node that split (`├─ true`, `└─ else`), never as top-level rows: in the drawing, `hand-back` sits under `scope` on its `else` branch. Skipped branches are dim with the reason.
 - **Retries** are new attempts (§4). The node's row shows the current attempt (`try 2`, with `░` while it waits out its backoff). Each failed attempt stays `failed` as its own sub-row under it (`└ try 1 ✗` with its code), and `enter` on that sub-row shows its cause.
 - **Live:** the popup follows the run. When it finishes, the title turns green or red and the result line (`draft PR #1293`) appears at the bottom.
@@ -634,6 +639,7 @@ Lint runs on every change, as you type.
 | `M3040` | error | `loop` without `max_iters` | Add `max_iters: 3` |
 | `M3041` | error | Edge crosses a loop's border other than through `in`, `out` or `exhausted` | Route it through the loop's port |
 | `M3042` | warning | `until` doesn't depend on anything in the loop's body, so it never changes | Focus `until` |
+| `M3050` | error | A trigger setting is invalid: a cron schedule without 5 fields (or `@every`), a webhook path without a leading `/` | Focus the trigger |
 | `M3101` | error | Expression type mismatch (§29.4) | |
 | `M3102` | error | The target needs fields the source doesn't produce (for example `agent.judge` gets items with no candidates) | Show both schemas |
 | `M3103` | error | A part that needs a workspace (`gh.pr`, `git.commit`, `git.push`, `git.diff`, a code-changing agent) gets items with none upstream | Insert `git.worktree` before the first node that needs it |
@@ -802,7 +808,7 @@ A dry run in progress, after `gA` and `ga` cleaned up lint (states paint the bor
 | `gp` / `Y` / `D` / `E` | Pipeline panel / YAML pane / diff / `$EDITOR` |
 | `+ - =` / `zz` / `zh zj zk zl` / `M` / `O` | Zoom / center / pan / minimap / outline |
 | `u` / `ctrl+r` | Undo / redo |
-| `:` | Commands: `:w`, `:w!`, `:q`, `:q!`, `:wq`, `:e!` (revert), `:lint`, `:copen`, `:wrap loop`, `:extract <name>`, `:layout reset`, `:pattern save <name>`, `:prompt file|inline`, `:sample edit` |
+| `:` | Command line (§18.5): `:w`, `:w!`, `:q`, `:q!`, `:wq`, `:x`, `:e!` (revert), `:lint`, `:copen`, `:cclose`, `:goto <node>`, `:refs`, `:wrap loop`, `:extract <name>`, `:layout reset`, `:pattern save <name>`, `:prompt file\|inline`, `:sample edit`, `:dry`, `:estimate`, `:[n]undo`, `:[n]redo`, `:<n>` (n-th node in run order). Editor commands complete first. `r` (rename), `gP` (extract) and `/` (jump) edit on the same last row |
 | `?` | Editor help (every key above) |
 | `esc` | Leave the editor (asks to save if changed) |
 
@@ -861,19 +867,30 @@ Every command edits through the daemon with the file's hash, keeps comments and 
 
 #### New pipeline (`n`)
 
-`n` on the board, `:new`, or `mill new` (the same steps as terminal prompts) opens a square overlay with five steps and a breadcrumb at the top: `✓ describe › 2 trigger › 3 agent › 4 limits › 5 review`.
+`n` on the board, `:new`, or `mill new` (the same steps as terminal prompts, or flags) opens a square overlay with four steps and a breadcrumb: `1 start › 2 shape › 3 run › 4 review`. Every field has a default, so `enter` goes all the way through. Nothing is written until review.
 
 | Step | You choose | Notes |
 |---|---|---|
-| **1 describe** | A name, then one of: a sentence ("every night find flaky tests, fix them and open a draft PR"), a template, or import | A sentence goes to a headless agent, which proposes the trigger, agent and steps. Templates come from built-ins and plugins. Import takes an n8n workflow or a `.millpkg`. Errors show inline (`M1210` bad name, `M2205` name taken). |
-| **2 trigger** | Manual, schedule, webhook, git, file change, or after another pipeline | Manual also covers "run by a script or by an agent over MCP". |
-| **3 agent** | Agent and model from the registry, with effort | Shows installed and signed in. A missing CLI is `M6101`. "None" makes a pipeline without agent steps. |
-| **4 limits** | Budget (small, medium, large), max agents, which destructive steps are allowed, what happens on failure (nothing, a GitHub issue, a rex session), dry run first | The run never waits on you, so its limits are set here. |
-| **5 review** | The proposed steps as a checklist (`space` toggles) beside the YAML and the lint result | `enter` creates and opens the editor; `r` creates and dry-runs. Nothing is written before this step. |
+| **1 start** | Where it comes from: **describe it** (a sentence), **template** (built-ins, plugin templates and the editor's patterns, in a gallery), **duplicate** (a pipeline you have), **import a file**, or **blank** | A sentence goes to the drafter (below), which proposes the steps, trigger and agent, each with the words that caused it. A copy's triggers start as `manual`, so a copy never fires twice by accident (step 3 offers `as in <original>`). Import takes a path (`tab` completes; `o` opens a file picker; a path pasted by dropping a file on the terminal also works), a URL, `gh:owner/repo/path`, or a pipe expression; it detects n8n workflows, `.millpkg` bundles, mill pipelines and pipe expressions, and previews what it would create before anything is written. |
+| **2 shape** | What it does: the steps (`space` toggles), the agent and effort, a `refine` sentence that redrafts | A live graph beside it, `Y` for the YAML. A copy or an import shows its nodes instead of the checklist. |
+| **3 run** | Trigger (and its one setting), budget preset (`medium` by default), what happens on failure (nothing, a GitHub issue, a rex session; a GitHub issue by default when `mill/github` is installed) | `▸ advanced` folds max agents, the destructive steps it may run, and scope. The run never waits on you, so its limits are set here. |
+| **4 review** | The name (suggested from the source), then **dry run, then edit** (the default) or **open the editor** | Shows the files it writes, the estimate against the budget, and live lint. `enter` (or `:w`) creates, runs a dry run (once lint is clean; a dry run never runs destructive steps, §18.7.12) and opens the editor on the new pipeline; lint errors don't block create (§18.7.9). |
 
-**Keys:** `j`/`k` move, `enter` next, `backspace` back, `space` toggle, `h`/`l` change a value, `esc` cancel (nothing saved). The status line shows `NEW` and the step.
+**Modes and keys.** The editor's model (§18.7.4): `NORMAL` moves with `hjkl` (`j`/`k` rows, `h`/`l` change a `◂ value ▸` or move between the source list and its pane), `enter` uses the selection and goes on, `tab`/`shift+tab` and `1`–`4` change step, `space` toggles, `Y` switches the preview, `o` opens the file picker, `/` filters (on the last row), `gx` explains an error, `:` opens the command line, `?` lists every key, `esc` leaves the pane and then cancels (nothing written; `n` resumes the draft, `:new!` starts over). `i` (or `enter` on a text field) enters `INSERT`: `tab` completes paths, names and cron presets, `enter` finishes (and drafts, loads or checks), `esc` keeps the text, `ctrl+c` drops it, and `:` types a colon. The status line shows `NEW · NORMAL` or `NEW · INSERT` and the step.
 
-**CLI parity:** `mill new <name> --from <template|describe:"…"> --trigger … --agent claude/sonnet --steps ws,work,check,pr --budget medium --allow gh.pr --on-failure gh.issue --dry-run`.
+**Drafter.** *describe it* and `mill new --describe` send the sentence to milld, which drafts with `drafter.backend` (§19.6):
+
+- **`ollama`** (default): a local model through Ollama's HTTP API (`drafter.base_url`, `drafter.model`, `drafter.timeout`), free and offline. The model is resolved against the pulled ones the way rex's summarizer does: the configured model if it is pulled, else the first pulled model from a short list of small models, never an arbitrary one. milld checks Ollama at start and every 30 s.
+- **`agent`** (opt-in): a headless registry agent (`drafter.agent`, the cheapest signed-in model by default), run as a normal one-node run with its cost shown and counted in today's spend.
+- **`off`**: local keyword rules only.
+
+The sentence is untrusted input: it is put in a delimited block whose delimiter is defused, and it never reaches a shell. The reply is untrusted too: milld parses it into the fixed proposal shape (steps from the step catalog, trigger, agent and effort, name, description, a reason per choice), validates it against the pipeline schema and runs lint before the wizard shows it; anything that doesn't parse or validate is dropped. Optional never blocks (§2 principle 10): when Ollama is unreachable, has no usable model or times out, or the reply fails validation, the keyword rules draft instead and the wizard says so in one line (`M2212` drafter unavailable, `M2213` proposal invalid; both warnings, both in `:messages`). The pane names the drafter (`drafting with ollama · llama3.2:3b…`). The settings page has a **Drafter** section (§18.10) and `mill doctor` reports it (§29.10).
+
+**Import.** n8n workflows map as in §23.3; unmapped nodes become `n8n.call` stubs that run on your n8n (`M2304`, needs `N8N_URL`) and a node that waited for a person becomes a `handoff` that ends its branch (`M2307`). mill pipelines open as-is; a `.millpkg` shows the §9.10 summary and which of its pipelines to open. Imports are read by milld, capped at 5 MB, and refused with a code: `M2301` unknown kind, `M2302` newer `mill:` version, `M2303` unreadable source, `M2305` not a valid `.millpkg`, `M2306` too large or binary, `M2308` `-` outside a shell. A created import is trusted (§22). `mill import <src>` (§9.10) keeps its own summary and confirm for bundles; `mill new --from <src>` goes through the wizard's choices. In the TUI, files come from a path, the picker or a pasted path (terminals can't receive uploads).
+
+**Errors** show inline and on the status line: `M1210` bad name, `M2205` name taken, `M2211` no steps on, `M2212` drafter unavailable, `M2213` drafter proposal invalid, `M2309` unknown template, `M3050` invalid trigger setting, `M6101` agent CLI missing.
+
+**CLI parity:** `mill new [<name>] --from template:<id>|pattern:<id>|pipeline:<p>|describe:"…"|<file>|<url>|gh:…|- --agent claude/sonnet --effort medium --steps ws,work,check,pr --trigger "cron 0 3 * * *" --budget medium --on-failure gh.issue --allow gh.pr --scope project --then dry-run`. `--dry-run` prints the YAML, lint and estimate and writes nothing.
 
 #### First-run setup (`mill setup`)
 
@@ -905,7 +922,7 @@ The first `mill` on a new machine runs setup right after the boot splash (§18.1
 | `c` | Run its health check now |
 | `t` | Agents view: run `mill agent test` on the selected agent |
 | `gd` | Open its manifest, or the line in `init.lua` that declares it |
-| `/` | Filter installed plugins, or search the registry in Available |
+| `/` | Filter installed plugins, or search the registry in Available (typed on the last row; the overlay shows the active filter) |
 
 **Rules**
 - **Permissions are explicit.** Installing shows everything the plugin asks for. An update that asks for *new* permissions shows only what changed and needs a confirm; an update that asks for nothing new applies with one key.
@@ -922,7 +939,7 @@ The first `mill` on a new machine runs setup right after the boot splash (§18.1
 `S` (or `:settings`) opens the settings page over the board. It's a view of the settings registry (§19.6), so every setting appears here automatically, with its type, default, help text and validation. Nothing is hidden in a file you have to find.
 
 **Layout**
-- **Left:** sections, navigated like the board (`j`/`k`, relative line numbers): General, Runs, Agents, Plugins, Appearance, Sound, Gateway, Advanced.
+- **Left:** sections, navigated like the board (`j`/`k`, relative line numbers): General, Runs, Agents, Drafter, Plugins, Appearance, Sound, Gateway, Advanced.
 - **Right:** one row per setting: name, current value, and a short note of the choices. The selected row's help text, default and source sit on the bottom line.
 - **Statusline:** the `SETTINGS` mode, the setting id under the cursor (`sound.set`), and the file changes are written to.
 
@@ -936,13 +953,15 @@ The first `mill` on a new machine runs setup right after the boot splash (§18.1
 | `p` | Preview: plays the sound, shows the color, or renders a sample row |
 | `u` | Reset to the default |
 | `gd` | Go to where the value is set: opens `init.lua` or `.mill/mill.lua` at that line |
-| `/` | Search every setting by name or help text |
+| `/` | Search every setting by name or help text (typed on the last row; the overlay shows the active search) |
 
 **Rules**
 - Changes apply immediately and are written to the managed `settings.lua` (§19.1). There's no save button and no restart.
 - A value set in `init.lua`, a project file, an environment variable or a flag is shown with its source (`init.lua:9`) and can't be changed here, because the higher layer would override it anyway. `gd` takes you to it.
 - Invalid values are refused with the same error format as everywhere else (§29), and the old value stays.
 - Every setting on the page is also reachable as `mill config get|set <id>`.
+
+**Drafter section.** The `drafter.*` settings (§19.6) with a status row on top: `ollama ✓ 127.0.0.1:11434 · llama3.2:3b · 3 models pulled`, or why it is unavailable (`✗ unreachable · describe uses keywords`, `M2212`). `enter` on `drafter.model` opens a picker of the models Ollama reports as pulled (`/api/tags`), with their size; `h`/`l` cycles them. `c` checks Ollama again now. With `drafter.backend` set to `agent`, `drafter.agent` picks the registry agent and model; with `off`, the other rows are dim.
 
 
 ### 18.11 Sound
@@ -1013,7 +1032,7 @@ After 5 minutes (`screensaver.after_minutes`) with no key or mouse event, the sc
 - **Same size as rex's.** The logo is one line of normal text, the mark and the name (`≋ mill`), the same size and placement as rex's `∴ rex`. It isn't a large banner or block letters. Both tools' screensavers look like a matched pair.
 - **Live counts.** Daemon events keep the counts current. `failed` shows in red while above zero; everything else stays dim. While the daemon is unreachable, the reconnect status shows under the counts.
 - **Waking is safe.** Any key or mouse event (click, wheel) brings the screen back, and that key or click does nothing else. An `enter`, `R` or `ctrl+c` that wakes mill never opens, reruns or quits anything, and a half-typed `dd` from before is dropped.
-- **Only when you're idle.** It only starts over the bare board. Popups, the editor, the wizard, settings, prompts and confirmations never time out, because there you're in the middle of something.
+- **Only when you're idle.** It only starts over the bare board. Popups, the editor, the wizard, settings, the command line and confirmations never time out, because there you're in the middle of something.
 - **Burn-in safe.** Once a minute it moves a little (at most 6 columns and 2 rows from the center). With `reduce_motion` on it stays centered.
 - **Costs nothing.** No CPU while idle: spinners stop and one timer fires at most once a minute. It plays no sound. The startup voice and run sounds are separate.
 - **Keep awake (macOS).** With `screensaver.keep_awake` on (the default), mill runs `/usr/bin/caffeinate -d -w <mill pid>` while the screensaver shows, so the display doesn't sleep. It's stopped when the screensaver goes away or the TUI exits, and `-w` ends it if mill dies. On other systems the setting does nothing. If macOS turns the display off sooner than `screensaver.after_minutes`, mill doesn't turn it back on, so set the minutes below the system's display timeout.

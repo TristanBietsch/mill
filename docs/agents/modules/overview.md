@@ -15,6 +15,7 @@ Each module doc has the same fields: path (backend layout), status and first mil
 | Daemon | [server](server.md) |
 | Config and Lua | [config](config.md), [luaapi](luaapi.md), [settings](settings.md) |
 | Parts | [plugins](plugins.md), [parthost](parthost.md), [builtin](builtin.md), [agents](agents.md) |
+| Services for the surface | [drafter](drafter.md) (the wizard's describe drafter, in milld) |
 | Language | [pipeline](pipeline.md), [pipe](pipe.md) (`pipeline/pipe`), [expr](expr.md) |
 | Outside `internal/` | [sdk](sdk.md), [examples](examples.md) |
 

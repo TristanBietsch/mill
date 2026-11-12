@@ -88,6 +88,7 @@ internal/
                         http mcp file.* stdin stdout notify (n8n.call, zapier.call later)
   agents/               registry (merge by id), argv builder, headless output parsers, error normalization, usage extraction
   agents/detect/        terminal-agent state detection (regex/idle/hooks), auto_answer
+  drafter/              wizard describe drafter: Ollama client, ResolveModel, health, prompt + output guard, keyword fallback (added 2026-11-12, ADR-047)
   runner/               Runner interface, selection, per-runner caps
   runner/proc/          process groups and kill per OS (proc_unix.go, proc_windows.go Job Objects)
   runner/local/ runner/pty/ runner/container/ runner/ssh/ (runner/remote, runner/external later)
@@ -127,7 +128,7 @@ Lower layers never import higher ones. Enforced by `depguard` rules plus a `laye
 |---|---|---|
 | 0 base | `core`, `errs`, `clock`, `paths`, `mlog`, `wire/jsonl` | stdlib only (+ each other where acyclic) |
 | 1 language | `expr`, `schema`, `pipeline/**`, `partproto`, `wire/protocol` | layer 0, cel-go, yaml, jsonschema |
-| 2 services | `store/**`, `secrets/**`, `workspace`, `runner/**`, `agents/**`, `config/**`, `luaapi` | layers 0–1 |
+| 2 services | `store/**`, `secrets/**`, `workspace`, `runner/**`, `agents/**`, `config/**`, `luaapi`, `drafter` | layers 0–1 (`drafter` gets its settings as a `Config` and its `agent` backend as an interface, both from `daemon/boot`) |
 | 3 execution | `engine/**`, `parthost`, `parts/builtin/**`, `trigger/**`, `plugins` | layers 0–2 |
 | 4 hosts | `daemon/**`, `gateway`, `surface/mcpserver`, `wire/client`, `daemonctl` | layers 0–3 |
 | 5 surface | `surface/cli`, `surface/tui`, `surface/sound` | layers 0–1, `wire/client`, `daemonctl`, `config`; **plus `engine` + `parthost` + `store` only from `surface/cli/local`** (the `--local` entry) |

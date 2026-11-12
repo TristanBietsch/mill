@@ -1,6 +1,6 @@
 # TUI reference
 
-The board, the `λ` prompt, the run popup, the editor, wizards, settings, sound and the boot splash.
+The board, the `:` command line, the run popup, the editor, wizards, settings, sound and the boot splash.
 
 Status: **not written yet.** Written when the feature ships: v0.2 (see it) and v0.3 (edit it) ([roadmap](spec/28-roadmap.md#28-roadmap)).
 

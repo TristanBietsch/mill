@@ -4,7 +4,7 @@
 **Status:** planned · first built in v0.1  
 **Spec v2 path (superseded):** `internal/surface/pipe`  
 **Depends on:** pipeline  
-**Depended on by:** cli, tui (`λ` prompt), server (`Compile` intent)
+**Depended on by:** cli, tui (`:pipe`), server (`Compile` intent)
 
 ## Purpose
 

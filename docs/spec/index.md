@@ -12,7 +12,7 @@ mill — Machine Intelligence Logistics Layer
 >
 > **Companion:** built to be used alongside [rex](https://github.com/TristanBietsch/rex), the terminal board for agent sessions you work with directly. rex handles the work that needs a person; mill runs the work that needs no one. mill doesn't depend on rex, though, and works with anything (§23.6).
 >
-> **Status:** specification draft, **v2.1** (v2 plus the decisions of 2026-11-11, below). v2 keeps everything the engine does and redesigns the surface around rex's design rules: one board, one line per pipeline, everything readable at a glance (§18.1). No code yet. When this spec and the eventual source disagree, the source wins, and this document gets fixed.
+> **Status:** specification draft, **v2.2** (v2 plus the decisions of 2026-11-11 and 2026-11-12, below). v2 keeps everything the engine does and redesigns the surface around rex's design rules: one board, one line per pipeline, everything readable at a glance (§18.1). No code yet. When this spec and the eventual source disagree, the source wins, and this document gets fixed.
 
 ---
 
@@ -28,9 +28,9 @@ The engine is the same; the surface is much smaller. The goal is a mill as simpl
 | Text column showed the state again | **Text says the one useful thing:** where it failed, what it's doing, or the last result and next run |
 | Run view as a box graph + a separate log tab | **Run popup:** one row per node with an inline timeline; `L` shows the log in the same popup (§18.6) |
 | Canvas with a permanent parts drawer | **Editor:** graph + inspector only; parts on demand with `a`; port-aware connect, branches and loops, live lint with quick fixes, dry run painted on the graph (§18.7) |
-| Seven-step wizard | **Five steps:** describe, trigger, agent, limits, review (§18.8) |
+| Seven-step wizard | **Five steps:** describe, trigger, agent, limits, review (§18.8). v2.2 replaced them with four |
 | Help bars with up to nine keys | **Five keys:** `enter open · n new · e edit · R run · ? more` |
-| Bottom prompt unused | **`λ` prompt runs things:** a pipeline with inputs, or a pipe expression (§18.2) |
+| Bottom prompt unused | **A bottom prompt runs things:** a pipeline with inputs, or a pipe expression (§18.2). v2.2 replaced it with the `:` command line (`:run`, `:pipe`) |
 | Plugins as a tab | `:plugins` overlay; `:stats` added (§18.9, §18.12) |
 | A blank screen until the board loaded | **Boot splash:** a clone of rex's bootloader with mill's own steps, `[  OK  ]`/`[ WARN ]`/`[ SKIP ]`/`[ FAIL ]` rows, and a cause and fix when boot fails (§18.13) |
 
@@ -49,6 +49,16 @@ The open decisions in the backend and editor plans were decided, and the backend
 - **Board and run popup:** crashed and budget-cancelled pipelines sit in FAILED; user-cancelled and untrusted ones in READY (§4, §18.2, §18.3); conditional columns sit between the text and the runs strip (§18.3); the board shows the mode name at the left of the help bar (§18.4); branches and failed attempts are indented sub-rows (§18.6).
 - **Editor:** loop YAML is `with.body` + `until` + `max_iters` with `out` and `exhausted` (§10.3); `M3201` is an error only with an automatic trigger (§18.7.9); `:w!` saves broken pipelines disarmed; samples are committed and checked for secrets (`M9208`, §18.7.12).
 - **Open questions** 3, 9, 10 and 12 are resolved (§30).
+
+## v2.2 (2026-11-12): wizard and command line
+
+The wizard and command-line plans (`docs/plans/wizard.md`, `docs/plans/command-line.md`) were decided and merged. The record is in `docs/agents/DECISIONS.md` (ADR-045 to ADR-052).
+
+- **Command line:** one vim-style `:` line on the terminal's last row, from every screen except a pending y/n confirm (a confirm takes only `y`, `n`, `esc`, like nvim's `confirm()`); completion with a wildmenu, history with `ctrl+r`, counts, `!`, echoes in the error shape, `:help commands`; `/` is search only, also on the last row (§18.4, §18.5, §18.9, §18.10, §29.8). New codes `M1302`–`M1308`.
+- **The board's bottom prompt is gone:** `:run <pipeline> k=v` and `:pipe <expr>` replace it; `i` on the board only echoes that hint. In the run popup, items move to `gi` (§18.2, §18.5, §18.6, §17.5).
+- **Wizard:** four steps (start › shape › run › review), the editor's NORMAL/INSERT keys, sources describe, template (with plugin templates and patterns), duplicate, import a file and blank; the name is chosen last, on review; create runs a dry run, then opens the editor (§18.8, §17.1).
+- **Drafter:** *describe it* drafts with a local model through Ollama by default (`drafter.*` settings, a Drafter section in settings, model resolved against pulled models), a headless agent when opted in, keyword rules when off or unavailable (`M2212`, `M2213`); the reply is validated against the schema and lint before it shows (§18.8, §18.10, §19.6, §16.3, §29.10).
+- **Import:** type detection for n8n, `.millpkg`, mill pipelines and pipe expressions with a preview; n8n steps that waited for a person become a `handoff` (`M2307`); new codes `M2301`–`M2309`, `M3050` (§18.8, §18.7.9). A duplicate's triggers start as `manual`.
 
 ## Contents
 

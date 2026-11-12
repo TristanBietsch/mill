@@ -76,6 +76,7 @@ internal/
 ├── parthost/               # part registry and resolution, process pool, health, PartCall
 ├── parts/builtin/          # sh, exec, check, data, control, agent*, git, gh, http, mcp, file …
 ├── agents/  agents/detect/ # agent registry; terminal-agent state detection
+├── drafter/                # wizard's describe drafter: local Ollama, keyword fallback, validation
 ├── runner/                 # local, pty, container, ssh; process groups per OS
 ├── workspace/              # worktrees, temp dirs, cleanup, retry snapshots, path safety
 ├── secrets/  secrets/redact/

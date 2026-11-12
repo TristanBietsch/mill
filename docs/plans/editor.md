@@ -177,7 +177,7 @@ The whole prototype, screen by screen, against `docs/spec/18-tui.md` (and the CL
 | Conditional columns: cost today, long-run badge, budget, scope | §18.3, §18.12 | covered | Budget `NN% $` appears once issue-to-pr passes 80% of $4.50; `▴2×` on the live run. The inverse `▴8×` past `max_wall` isn't reached by the demo data. |
 | Narrow terminals: give-way order, name down to 12 | §18.3 | covered | Width button. |
 | Filter row, `/` search tokens, `t`, `s` `-`, `V`, `p` | §18.2 | covered | Tokens `state: tag: trigger: scope: uses: ok: cost: ran:`. |
-| `λ` prompt | §18.2 | covered | Pipeline + `key=value` inputs with a hint of missing ones, `tab` completes names and input keys, pipe expressions. |
+| `:` command line (`:run`, `:pipe`) | §18.2, §18.5 | covered | Replaced the board's bottom prompt in spec v2.2: `:run <pipeline> k=v` with a hint of missing inputs, `tab` completes names and input keys, `:pipe` runs pipe expressions; see [command-line.md](command-line.md). |
 | Focus modes and the mode name | §18.4 | covered | Every mode works. The board shows the mode name at the left of the help bar; overlays show it in their status line (spec v2.1). |
 | Board keys and mouse | §18.5 | covered | `ctrl+c` asks to quit like `q`. |
 | Help overlay `?` | §18.5 | covered | Two columns at 96+, one column below with BADGES then MOUSE dropped and the truncation note. |

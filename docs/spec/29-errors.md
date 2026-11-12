@@ -99,8 +99,8 @@ Codes are `M` plus four digits, grouped by area. A code is never reused or renum
 | Range | Area | Examples |
 |---|---|---|
 | `M0xxx` | Internal: a bug in mill | `M0001` unexpected internal error |
-| `M1xxx` | CLI, selectors, arguments | `M1201` pipeline not found · `M1203` ambiguous run selector · `M1301` unknown flag |
-| `M2xxx` | Files and pipelines | `M2101` YAML parse error · `M2201` conflicting edit (file changed since you loaded it) · `M2203` lint errors, not saved |
+| `M1xxx` | CLI, selectors, arguments | `M1201` pipeline not found · `M1203` ambiguous run selector · `M1301` unknown flag · `M1304` ambiguous command · `M1306` unknown command · `M1307` command belongs to another screen |
+| `M2xxx` | Files and pipelines | `M2101` YAML parse error · `M2201` conflicting edit (file changed since you loaded it) · `M2203` lint errors, not saved · `M2212` drafter unavailable · `M2301` not an importable file |
 | `M3xxx` | Lint and expressions | `M3012` unknown node in expression · `M3020` cycle outside a loop · `M3021` ambiguous input · `M3024` unreachable node · `M3030` branch port not connected · `M3101` CEL type mismatch · `M3204` destructive part not allowed · `M3206` waits for a person. The full list is in §18.7.9. |
 | `M4xxx` | Runs and scheduling | `M4101` budget exceeded · `M4201` node timed out · `M4301` crashed during daemon restart |
 | `M5xxx` | Parts and plugins | `M5101` plugin not found · `M5102` version conflict · `M5201` part failed · `M5301` checksum mismatch |
@@ -109,7 +109,7 @@ Codes are `M` plus four digits, grouped by area. A code is never reused or renum
 | `M8xxx` | Lua config | `M8001` Lua syntax error · `M8004` unknown setting · `M8101` hook error |
 | `M9xxx` | Security, trust, secrets | `M9101` pipeline not trusted · `M9201` secret not declared · `M9202` secret missing · `M9301` path refused |
 
-The boot splash's codes (`M0002`, `M2001`, `M4401`, `M7002`, `M7004`, `M7006`) are listed with their fix hints in §18.13.
+The boot splash's codes (`M0002`, `M2001`, `M4401`, `M7002`, `M7004`, `M7006`) are listed with their fix hints in §18.13. The command line's (`M1302`–`M1308`) are in §18.5, and the wizard's (`M2211`–`M2213`, `M2301`–`M2309`, `M3050`) in §18.8; each has an explain page (§29.5).
 
 Plugins report their own codes namespaced by plugin (`linear/E_TEAM_NOT_FOUND`), and mill wraps them as the cause of an `M5201`.
 
@@ -179,7 +179,7 @@ So a pipeline can say `retry: { on: [class:rate_limited] }` and have it work for
 
 ### 29.8 Errors in the TUI
 
-- **Never modal, never steal focus.** An error appears in the statusline as one red line with its code: `M5201 linear.issue.create: team "ENGG" not found  gx explain`. It fades after a few seconds, or when you press a key.
+- **Never modal, never steal focus.** An error from a `:` command echoes on the last row; any other error appears in the status line as one red line with its code: `M5201 linear.issue.create: team "ENGG" not found  gx explain`. It fades after a few seconds, or when you press a key.
 - **`:messages`** lists every error and warning from this session, newest first, the way vim does.
 - **Lint uses a quickfix list.** `:lint` fills it; `]e` / `[e` jump between problems in the editor, `!` (or `:copen`) shows the list, `ga` applies a fix and `gA` every safe one, and each problem node gets a red `✗` or amber `!` in its title and border (§18.7.9).
 - **Failed pipelines** show the cause as their row's text on the board. In the run popup the failed node's row is red; `enter` on it shows the full cause chain and the log lines around the failure. `gx` opens the explain page.
@@ -202,7 +202,7 @@ So a pipeline can say `retry: { on: [class:rate_limited] }` and have it work for
 
 ### 29.10 `mill doctor`
 
-`mill doctor` checks the whole setup and prints one line per check, with a fix command for each problem. It starts with the boot splash's steps (§18.13) in the same `[ STATUS ] step · finding` form, then goes deeper: daemon reachable and same version; config loads; every plugin present, pinned and unchanged; every agent in use is installed and signed in; declared secrets resolve; workspace root writable; disk space for the run store; git and container runtimes available if used; gateway port free.
+`mill doctor` checks the whole setup and prints one line per check, with a fix command for each problem. It starts with the boot splash's steps (§18.13) in the same `[ STATUS ] step · finding` form, then goes deeper: daemon reachable and same version; config loads; every plugin present, pinned and unchanged; every agent in use is installed and signed in; the describe drafter (`drafter` row: OK `ollama · llama3.2:3b`, WARN `M2212` when Ollama is unreachable or has no usable model, SKIP with `drafter.backend = off`; never FAIL, since describe falls back to keyword rules); declared secrets resolve; workspace root writable; disk space for the run store; git and container runtimes available if used; gateway port free.
 
 `mill doctor --bundle` writes a single archive for bug reports: versions, OS, effective settings with secrets stripped, the daemon log tail, and (if you name one) a run's event log. Everything goes through the redactor, and the command prints what it included before writing.
 

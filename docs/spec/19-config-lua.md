@@ -151,6 +151,11 @@ One registry defines every setting: id, type, default, section, help text and va
 | `trusted_dirs` | empty | Folders where agents' folder-trust dialogs may be answered automatically (refuses `/`, home, relative paths and `..`) |
 | `env.passthrough` | `PATH HOME USER LOGNAME SHELL LANG LC_* TERM TZ TMPDIR SSH_AUTH_SOCK XDG_* GIT_* EDITOR` (+ Windows essentials) | Variables from `milld`'s environment that steps see (§12.1). Everything else is dropped |
 | `agents.extract` | same agent, cheapest priced model | Agent and model for the extraction pass (§11.3), or `off` |
+| `drafter.backend` | `ollama` | Who drafts a pipeline from a sentence (the wizard's *describe it*, `mill new --describe`, §18.8): `ollama` (a local model through Ollama's HTTP API: free, offline), `agent` (a headless registry agent: costs tokens, opt-in) or `off` (local keyword rules only). An unavailable backend falls back to keyword rules with `M2212`; it never blocks |
+| `drafter.base_url` | `$OLLAMA_HOST`, else `http://127.0.0.1:11434` | Ollama's base URL. A URL off this machine receives your sentence |
+| `drafter.model` | `llama3.2:3b` | Resolved against the pulled models (`/api/tags`): if it isn't pulled, the first pulled one of `llama3.2:3b`, `qwen2.5:3b`, `gemma2:2b`, `llama3.2:1b`, `phi3:mini` is used and logged, never an arbitrary model; none pulled makes the backend unavailable (`ollama pull <model>` fixes it) |
+| `drafter.agent` | cheapest signed-in model | Agent and model for `drafter.backend = agent` (`claude/haiku`) |
+| `drafter.timeout` | `20s` | Per request, 1s–2m. Only an unreachable server or a 5xx is retried, once; a timeout falls back to keyword rules |
 | `shutdown.drain_timeout` | `10m` | How long `mill daemon stop --drain` waits for live node-runs (§15.7) |
 | `plugins.sandbox` | `none` | `container` runs executable parts inside the container runner, with their declared permissions enforced |
 | `plugins.registry` | official | Registry URL, or a list for private registries |

@@ -37,6 +37,7 @@ All status: **planned**. Paths follow the backend plan's layout, accepted 2026-1
 | [expr](modules/expr.md) | `internal/expr` | CEL environment and helpers |
 | [settings](modules/settings.md) | `internal/config/settings` | Settings registry |
 | [agents](modules/agents.md) | `internal/agents` | Agent registry and merge |
+| [drafter](modules/drafter.md) | `internal/drafter` | Wizard describe drafter: local Ollama, keyword fallback, validation |
 | [sdk](modules/sdk.md) | `sdk/{go,ts,python}` | Parts SDKs |
 | [examples](modules/examples.md) | `examples/` | Example pipelines, end-to-end suite |
 
@@ -55,6 +56,7 @@ All status: **planned**. Paths follow the backend plan's layout, accepted 2026-1
 | Config, settings, Lua | [interfaces/config.md](interfaces/config.md), [modules/config.md](modules/config.md), [modules/luaapi.md](modules/luaapi.md) |
 | Secrets, trust, sandboxes | [modules/secrets.md](modules/secrets.md), [../plans/backend/security.md](../plans/backend/security.md), [../../SECURITY.md](../../SECURITY.md) |
 | TUI board or editor | [modules/tui.md](modules/tui.md), [../plans/editor.md](../plans/editor.md), `mockups/` |
+| TUI wizard, command line, drafter | [modules/tui.md](modules/tui.md), [modules/drafter.md](modules/drafter.md), [../plans/wizard.md](../plans/wizard.md), [../plans/command-line.md](../plans/command-line.md) |
 | Errors | [CONVENTIONS.md](CONVENTIONS.md#errors), [../spec/29-errors.md](../spec/29-errors.md) |
 | Tests and CI | [../plans/backend/testing.md](../plans/backend/testing.md), [WORKFLOWS.md](WORKFLOWS.md) |
 

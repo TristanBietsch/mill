@@ -31,6 +31,7 @@ Maximum line length 16 MiB. `[]byte` fields are base64. Unknown fields are ignor
 | `EditPipeline` | `name`, `base_hash`, `ops` (node add/set/rm/mv, edge add/rm) | `Ack` with new hash and diff. CLI and TUI edits share this one implementation |
 | `Lint` | `source` or `name` | `LintResult` |
 | `Compile` | `pipe` (pipe expression) | `Pipeline` |
+| `DraftPipeline` | `sentence`, optional `base` (the current proposal, for a refine) | `Draft`: the validated proposal (steps, trigger, agent, effort, name, description, a reason per choice), `drafter` (`ollama/<model>`, `agent/<id>` or `keywords`), and a `warning` (`M2212`, `M2213`) when it fell back to keyword rules (§18.8). Health of the drafter is in the `Snapshot` and in `DrafterHealth` events |
 | `StartRun` | `pipeline` or `source`, `inputs`, `items`, `input_stream`, `budget`, `labels`, `priority`, `detach`, `dry_run` | `Ack` with `run_id`, `number` |
 | `RunInput` | `run_id`, `items` (batches up to 1 MiB) | `Ack`; the client sends the next batch after it. Streams stdin larger than one line when `input_stream` is set |
 | `RunInputEnd` | `run_id` | `Ack` |
@@ -62,7 +63,7 @@ Commands that only touch local files (`config`, `secrets set`, `trust`, `lint` o
 
 ### 16.4 Events
 
-`Snapshot`, `Ack`, `Error`, `RunAdded`, `RunUpdated`, `RunRemoved`, `NodeRunUpdated`, `ItemEmitted` (counts, not payloads, unless subscribed), `RunLog`, `NodeOutput` (PTY bytes for attached clients), `TriggerFired`, `PipelineChanged`, `PartStatus`, `Usage`.
+`Snapshot`, `Ack`, `Error`, `RunAdded`, `RunUpdated`, `RunRemoved`, `NodeRunUpdated`, `ItemEmitted` (counts, not payloads, unless subscribed), `RunLog`, `NodeOutput` (PTY bytes for attached clients), `TriggerFired`, `PipelineChanged`, `PartStatus`, `Usage`, `DrafterHealth` (the drafter's backend, model and availability, sent when it flips).
 
 ### 16.5 Error codes
 
