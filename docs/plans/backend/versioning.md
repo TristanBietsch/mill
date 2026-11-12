@@ -1,6 +1,6 @@
 # Versioning and compatibility
 
-Status: accepted with the 2026-11-12 refinement; D38 in [open-decisions.md](open-decisions.md). Spec: [§2](../../spec/02-principles.md#2-principles) principle 12 (additive evolution), [§16](../../spec/16-wire-protocol.md#16-daemon-wire-protocol), [§9.3](../../spec/09-parts-and-plugins.md#93-parts-protocol-v1).
+Status: review (2026-11-12 refinement, awaiting the user); D38 in [open-decisions.md](open-decisions.md). Spec: [§2](../../spec/02-principles.md#2-principles) principle 12 (additive evolution), [§16](../../spec/16-wire-protocol.md#16-daemon-wire-protocol), [§9.3](../../spec/09-parts-and-plugins.md#93-parts-protocol-v1).
 
 Every surface another program or another mill version reads, how each is versioned, and the rules for changing it. Formats live in L1 (`core/event`, `partproto`, `wire/protocol`) so the published languages are in the most stable layer ([layers.md](layers.md)) [DDD ch. 14].
 

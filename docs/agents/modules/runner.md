@@ -1,6 +1,6 @@
 # runner
 
-**Path:** `internal/runner` + `runner/proc`, `runner/local`, `runner/pty`, `runner/container`, `runner/ssh` (backend layout, accepted 2026-11-11)  
+**Path:** `internal/runner` + `runner/proc`, `runner/local`, `runner/pty`, `runner/container`, `runner/ssh` (backend layout, accepted 2026-11-11)   · D33 (open, [layers.md](../../plans/backend/layers.md)) proposes moving `runner/proc` to `internal/proc` (L0) and the runner interface into `partproto`  
 **Status:** planned · first built in M0 (local), M6 (pty), M9 (container, ssh), M10 (remote, external)  
 **Spec v2 path (superseded):** `internal/daemon/runner`  
 **Depends on:** workspace, secrets, paths  

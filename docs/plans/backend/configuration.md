@@ -1,6 +1,6 @@
 # Configuration
 
-Status: accepted with the 2026-11-12 refinement. Spec: [§19](../../spec/19-config-lua.md#192-load-order-and-precedence) (load order, settings registry, safety). Refines [architecture.md](architecture.md) §8.
+Status: review (2026-11-12 refinement, awaiting the user). Spec: [§19](../../spec/19-config-lua.md#192-load-order-and-precedence) (load order, settings registry, safety). Refines [architecture.md](architecture.md) §8.
 
 How config is layered, validated, frozen into snapshots, reloaded and handed to the rest of the backend. `config` and `config/settings` are L5 ([layers.md](layers.md)); nothing below L5 imports them, consumers get values from a composition root.
 

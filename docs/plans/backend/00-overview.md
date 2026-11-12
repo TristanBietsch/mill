@@ -2,7 +2,7 @@
 
 The backend and tech-stack plan for mill, turning the v2 spec (`docs/spec/`) into something a coding agent can build milestone by milestone. It covers `milld`, the engine, storage, protocols, execution, security and testing. The TUI is out of scope except for what the backend must provide to it.
 
-Status: plan, 2026-11-11. Its open decisions are decided and its spec issues are applied to the spec (v2.1, 2026-11-11; see [open-decisions.md](open-decisions.md) and [Spec issues](#spec-issues)). When this plan and the spec disagree, the spec wins. When the eventual source disagrees with this plan, the source wins and this plan gets fixed.
+Status: accepted plan (2026-11-11), refined 2026-11-12 into a layered design with cited sources; the refinement's new files and decisions D31–D41 are in review. Its original open decisions are decided and its spec issues are applied to the spec (v2.1, 2026-11-11; see [open-decisions.md](open-decisions.md) and [Spec issues](#spec-issues)). When this plan and the spec disagree, the spec wins. When the eventual source disagrees with this plan, the source wins and this plan gets fixed.
 
 ## Goals
 
@@ -13,22 +13,61 @@ Status: plan, 2026-11-11. Its open decisions are decided and its spec issues are
 5. **CGO-free single binaries** for macOS, Linux and Windows.
 6. Dogfood early: `nightly-vuln-sweep` from M0 (OS cron), then `morning-brief` (M1), then `issue-to-pr` (M4).
 
+## Layered design in one screen
+
+The backend is a layered monolith with a microkernel engine [FSA ch. 10] [FSA ch. 12]: eight layers, dependencies only downward, ports declared low and implemented high, wiring only at the top [CA ch. 22] [CA ch. 11]. Full definition, package map and CI rules: [layers.md](layers.md).
+
+| Layer | Owns | Example packages |
+|---|---|---|
+| L7 surface | what people and scripts touch | `surface/cli`, `surface/tui`, `surface/mcpserver`, `cmd/*` |
+| L6 service | `milld` and the shared wiring | `daemon/server`, `daemon/boot`, `gateway`, `assemble` |
+| L5 integration | everything mill doesn't control | `parthost`, `parts/builtin/*`, `agents`, `trigger/*`, `plugins`, `config`, `luaapi`, `wire/client` |
+| L4 execution | running graphs and where they run | `engine/**`, `runner/*`, `workspace`, `secrets` |
+| L3 persistence | durable facts and derived views | `store`, `store/cas`, `store/index` |
+| L2 language | files and expressions → IR | `pipeline/**`, `expr`, `schema` |
+| L1 domain and contracts | what runs, items and events are; published protocols | `core`, `core/event`, `core/fold`, `partproto`, `wire/protocol` |
+| L0 platform | OS, time, bytes, errors | `errs`, `clock`, `paths`, `mlog`, `metrics`, `lock`, `proc`, `redact`, `wire/jsonl` |
+
+Every design decision in the plan names its source as `[KEY ch. N]` or `[KEY, Pattern]`; the keys resolve in [references.md](references.md), which also says where mill departs from each book.
+
 ## Files
 
 | File | What it answers |
 |---|---|
-| [tech-stack.md](tech-stack.md) | Every dependency with pinned version, license, reason and rejected alternatives; Go version; build, CI, release; what to copy from rex |
-| [architecture.md](architecture.md) | Package layout and dependency rules; Go interfaces (Part, Runner, Trigger, secrets Backend, Sink, CAS, RunStore, Index, Engine, Scheduler); goroutine ownership; run lifecycle sequence diagrams |
+| [layers.md](layers.md) | **The backbone.** The eight layers: responsibility, packages, allowed imports, public interfaces, invariants, failure containment, tests; the package map; a `mill run` walk-through naming each layer crossing; the exact `archtest`, depguard and forbidigo rules |
+| [references.md](references.md) | Bibliography: every book, its short key, the chapters cited, where the plan uses it and where mill departs from it |
+| [architecture.md](architecture.md) | Package layout with layers; Go interfaces (Part, Runner, Trigger, secrets Backend, Sink, CAS, RunStore, Index, Engine, Scheduler); goroutine ownership; run lifecycle sequence diagrams |
 | [engine.md](engine.md) | Compile (YAML → Spec → IR), edge inference, items and streams, node-run state machine, scheduler and slots, budgets, retries, cache, teardown, crash recovery, sub-pipelines and loops |
-| [storage.md](storage.md) | On-disk layout, ids, event log schema with examples, items, CAS, SQLite DDL, rebuild, retention/GC, fsync policy, locking |
-| [protocols.md](protocols.md) | Daemon wire protocol and parts protocol message catalogs with JSON examples, versioning, handshake, flow control, how built-ins honor the protocol in-process |
+| [storage.md](storage.md) | On-disk layout, ids, event log schema with examples, items, CAS, SQLite DDL, rebuild, fsync policy, locking |
+| [data-lifecycle.md](data-lifecycle.md) | Data classes (truth vs derived), retention, GC, disk pressure, backups and restore, format changes |
+| [protocols.md](protocols.md) | Daemon wire protocol and parts protocol message catalogs with JSON examples, handshake, flow control, how built-ins honor the protocol in-process |
+| [versioning.md](versioning.md) | Every versioned surface, compatibility matrix, upgrades and downgrades, how a change ships |
 | [execution.md](execution.md) | Runners, process groups and kill per OS, PTY and terminal-agent detection, agent registry, structured output, workspaces and path safety, shutdown, dry run |
-| [security.md](security.md) | Secrets broker and redaction, CEL/Lua sandboxes, project/pipeline trust, plugins, socket and gateway, threat model |
-| [testing.md](testing.md) | Test tiers, echo agent, fixtures, testscript, fuzz targets, golden files, benchmarks with budgets, invariant-to-test map, CI gate |
-| [milestones.md](milestones.md) | M0 (weekend prototype) through M11, with scope, packages, exit criteria and size; when each dogfood pipeline first runs |
-| [open-decisions.md](open-decisions.md) | 30 decisions, each with a default and alternatives; all decided 2026-11-11 |
+| [concurrency.md](concurrency.md) | Goroutine ownership rules, the context tree, cancellation across process boundaries, shutdown order, stall detection, time |
+| [resilience.md](resilience.md) | Timeouts on every call out, retries, every bounded queue and its overflow, bulkheads, circuit breakers, steady state, the antipattern checklist |
+| [errors.md](errors.md) | Where errors are created, wrapped and translated in each layer; code ranges by layer; reserved codes |
+| [configuration.md](configuration.md) | Config layers and precedence, the snapshot, validation phases, reload and apply modes, evolving settings |
+| [observability.md](observability.md) | Logs, events as traces, metrics, golden signals, local targets O1–O8, `mill stats`, `mill digest`, the debugging path |
+| [performance.md](performance.md) | Hot-path budgets B1–B16, capacity model, memory/goroutine/fd budgets, USE checks, profiling |
+| [operations.md](operations.md) | Daemon lifecycle, upgrades, crash recovery, `mill doctor` by layer, support bundle, runbook |
+| [security.md](security.md) | Secrets broker and redaction, CEL/Lua sandboxes, project/pipeline trust, plugins, socket and gateway, threat model by layer |
+| [testing.md](testing.md) | Test tiers, echo agent, fixtures, testscript, fuzz targets, golden files, invariant-to-test map, CI gate |
+| [tech-stack.md](tech-stack.md) | Every dependency with pinned version, license, reason and rejected alternatives; Go version; build, CI, release; what to copy from rex |
+| [milestones.md](milestones.md) | M0 (weekend prototype) through M11: scope, layers built or extended, fitness functions, exit criteria, size; when each dogfood pipeline first runs |
+| [M0-weekend-prototype.md](M0-weekend-prototype.md) | M0 as TDD tasks, packages mapped to layers |
+| [open-decisions.md](open-decisions.md) | D1–D30 (decided 2026-11-11) and D31–D41 (new, open) |
 
-Read order for an implementer: this file → milestones → architecture → the file for the area being built.
+## Reading order
+
+For an implementer:
+1. This file.
+2. [layers.md](layers.md) (§1–3, then the layer you'll touch in §4, then §6, the walk-through).
+3. [milestones.md](milestones.md), then the task plan for the milestone ([M0-weekend-prototype.md](M0-weekend-prototype.md) first).
+4. [architecture.md](architecture.md) for the interfaces.
+5. The topic file for the area being built, and the cross-cutting ones it touches: [errors.md](errors.md) and [concurrency.md](concurrency.md) always; [resilience.md](resilience.md) for any call out of the process; [storage.md](storage.md) and [versioning.md](versioning.md) for anything persisted or on the wire.
+6. [references.md](references.md) when a citation's reasoning matters to a change.
+
+For a reviewer: [layers.md](layers.md) §8 (the checks your PR must pass), [open-decisions.md](open-decisions.md) D31–D41, then the "What changed" section below.
 
 ## Build order
 
@@ -49,21 +88,38 @@ flowchart LR
 
 ## Key decisions (summary)
 
-| # | Decision | Where |
+The 2026-11-11 decisions, unchanged by the refinement, now with their sources. The refinement's own decisions are D31–D41 in [open-decisions.md](open-decisions.md).
+
+| # | Decision | Where | Follows |
 |---|---|---|---|
-| 1 | Engine is a library; `milld` and `--local` both host it. Packages `engine`, `store`, `runner`, `workspace`, `secrets`, `trigger` live outside `daemon/`. | architecture §1–2 |
-| 2 | One run actor goroutine per live run is the only writer of its event log; one scheduler loop owns every slot; components talk over channels. | architecture §5 |
-| 3 | Event-sourced runs: a pure reducer folds `events.jsonl` live and on recovery; every outside-world decision is recorded before it takes effect; write-ahead `NodeRunStarting` before spawning. | engine §10, storage §3, §8 |
-| 4 | Items are written to per-port JSONL files and committed by event before downstream sees them; memory stays flat and reruns/caches read the same files. | engine §3 |
-| 5 | Edge inference splits order edges from the data input: the default `in` is the "primary upstream"; ambiguity is a lint error. | engine §2 |
-| 6 | `retrying` belongs to the next attempt's node-run, so terminal states stay final. | engine §4 |
-| 7 | Global content-addressed artifact store, SQLite index (modernc, WAL, write-behind, rebuild-only migrations), random 128-bit run ids. | storage |
-| 8 | Built-ins run in-process behind `partproto.Part`, proven equal to the wire by a loopback conformance suite; parts protocol reuses the daemon envelope plus an optional `ctx` field and credit-based flow control for multiplexed parts. | protocols §3 |
-| 9 | Process groups on Unix, Job Objects on Windows, orphan kill by recorded identity on restart; environment passed by allowlist; secrets only through env or the protocol. | execution §2–3 |
-| 10 | Redaction is the only transformation before persistence; secrets are an opaque CEL type that can't be interpolated into strings. | security §1–2 |
-| 11 | Untrusted projects (fresh clones) run nothing automatically until `mill trust .`; PATH/MCP parts never shadow existing ids. | security §4–5 |
-| 12 | Copy-and-diverge from rex (codec, server conns, peercred, daemonctl, paths, locks, PTY console, vt10x fork, Lua dispatcher, settings types, CLI kit, testenv, golden, CI, bench), no shared module until after M5. | tech-stack §6 |
-| 13 | Go 1.27, `CGO_ENABLED=0` everywhere (possible now with modernc sqlite and oto ≥ 3.5), yaml/v4 with text-splice edits, cel-go, gopher-lua, Bubble Tea v2. | tech-stack |
+| 1 | Engine is a library; `milld` and `--local` both host it. Packages `engine`, `store`, `runner`, `workspace`, `secrets`, `trigger` live outside `daemon/`. | architecture §1–2 | [FSA ch. 12] [CA ch. 26] |
+| 2 | One run actor goroutine per live run is the only writer of its event log; one scheduler loop owns every slot; components talk over channels. | architecture §5 | [CIG ch. 4] [DDD ch. 6] |
+| 3 | Event-sourced runs: a pure reducer folds `events.jsonl` live and on recovery; every outside-world decision is recorded before it takes effect; write-ahead `NodeRunStarting` before spawning. | engine §10, storage §3, §8 | [DDIA ch. 11] [DBI ch. 5] |
+| 4 | Items are written to per-port JSONL files and committed by event before downstream sees them; memory stays flat and reruns/caches read the same files. | engine §3 | [EIP, Guaranteed Delivery] [DDIA ch. 10] |
+| 5 | Edge inference splits order edges from the data input: the default `in` is the "primary upstream"; ambiguity is a lint error. | engine §2 | [EIP, Pipes and Filters] |
+| 6 | `retrying` belongs to the next attempt's node-run, so terminal states stay final. | engine §4 | [DDD ch. 6] |
+| 7 | Global content-addressed artifact store, SQLite index (modernc, WAL, write-behind, rebuild-only migrations), random 128-bit run ids. | storage | [DDIA ch. 12] [BEA ch. 6] [EIP, Claim Check] |
+| 8 | Built-ins run in-process behind `partproto.Part`, proven equal to the wire by a loopback conformance suite; parts protocol reuses the daemon envelope plus an optional `ctx` field and credit-based flow control for multiplexed parts. | protocols §3 | [FSA ch. 12] [SAHP ch. 13] |
+| 9 | Process groups on Unix, Job Objects on Windows, orphan kill by recorded identity on restart; environment passed by allowlist; secrets only through env or the protocol. | execution §2–3 | [RI ch. 5, Bulkheads] [BSRS ch. 5] |
+| 10 | Redaction is the only transformation before persistence; secrets are an opaque CEL type that can't be interpolated into strings. | security §1–2 | [BSRS ch. 12] |
+| 11 | Untrusted projects (fresh clones) run nothing automatically until `mill trust .`; PATH/MCP parts never shadow existing ids. | security §4–5 | [BSRS ch. 2] [BSRS ch. 5] |
+| 12 | Copy-and-diverge from rex (codec, server conns, peercred, daemonctl, paths, locks, PTY console, vt10x fork, Lua dispatcher, settings types, CLI kit, testenv, golden, CI, bench), no shared module until after M5. | tech-stack §6 | [SAHP ch. 8] |
+| 13 | Go 1.27, `CGO_ENABLED=0` everywhere (possible now with modernc sqlite and oto ≥ 3.5), yaml/v4 with text-splice edits, cel-go, gopher-lua, Bubble Tea v2. | tech-stack | [SEG ch. 21] |
+
+## What changed (2026-11-12 refinement)
+
+The user asked for a backend that works in layers, cites the industry-standard books chapter by chapter, and is fully fleshed out. What that changed:
+
+1. **New backbone: [layers.md](layers.md).** Eight layers (L0 platform … L7 surface) replace architecture.md's six-row dependency table, with responsibilities, public interfaces, invariants, failure containment and test strategy per layer, a package map covering every package, and a `mill run` walk-through naming each layer crossing.
+2. **Layering is enforced by machines:** `internal/archtest` (checks A1–A14 over `go list`, with an exception list that may only shrink), exact depguard rules, and forbidigo rules for time, processes, env, stdout and engine construction (D34).
+3. **Package moves so directory = layer** (D31, D33): `core/event` and `core/fold` (event catalog and reducer, so the index rebuild doesn't import the engine); `lock`, `proc`, `redact` out of higher directories; the runner interface into `partproto`; the agent registry out of `HostServices`; `surface/mcpserver` counted as surface. New: `metrics` (L0), `assemble` (L6, D32), `archtest`.
+4. **Nine new topic files** for gaps the plan left implicit: [concurrency.md](concurrency.md), [resilience.md](resilience.md), [errors.md](errors.md), [configuration.md](configuration.md), [observability.md](observability.md), [performance.md](performance.md), [data-lifecycle.md](data-lifecycle.md), [versioning.md](versioning.md), [operations.md](operations.md); [security.md](security.md) gains a threat model by layer and security fitness functions.
+5. **Citations everywhere:** each existing file has a Sources table mapping its decisions to book chapters or named patterns; [references.md](references.md) is the bibliography with departures.
+6. **Milestones by layer:** [milestones.md](milestones.md) says which layers each milestone builds or extends and which fitness functions it adds; M0 stays first and the dogfood order is unchanged (`nightly-vuln-sweep` M0, `morning-brief` M1, `issue-to-pr` ~M4). M1's exit-criteria numbering is fixed and M0's exit criterion 1 uses the corrected output contract.
+7. **M0 uses the final names now:** `partproto` (L1) instead of `parts`, a `parthost` registry (L5) filled by the `surface/cli/local` composition root (no `init` registration), `proc` and `clock` (L0), the `pipeline.PartSet` and `engine.PartSource` ports, and `archtest` in Task 1.
+8. **Protocol catalog catches up with spec §16.3:** `DraftPipeline`, `RunNode` and `Estimate` intents added to [protocols.md](protocols.md).
+9. **New mechanisms** with defaults, all open for the user: per-agent `agent:<id>` slot pools and circuit breakers that hold the queue (D36), `max_queued_runs` with M4108 and disk-pressure behavior with M2002 (D41), decoders for every `log_v` with M7007 for newer logs (D38), coverage floors per layer (D39), backup guidance (D37), CLI additions for health and operations (D40).
+10. Benchmark budgets moved from testing.md to [performance.md](performance.md) (B1–B12 unchanged, B13–B16 new); retention moved from storage.md to [data-lifecycle.md](data-lifecycle.md).
 
 ## Reuse from rex
 

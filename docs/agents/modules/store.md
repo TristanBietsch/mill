@@ -1,6 +1,6 @@
 # store
 
-**Path:** `internal/store` + `store/cas`, `store/index`, `store/lock` (out of `daemon/` so `--local` can use it) (backend layout, accepted 2026-11-11)  
+**Path:** `internal/store` + `store/cas`, `store/index`, `store/lock` (out of `daemon/` so `--local` can use it) (backend layout, accepted 2026-11-11)   · D33 (open, [layers.md](../../plans/backend/layers.md)) proposes moving `store/lock` to `internal/lock` (L0)  
 **Status:** planned · first built in M0 (run dir), M1 (event log), M2 (index)  
 **Spec v2 path (superseded):** `internal/daemon/store`  
 **Depends on:** protocol types, secrets (redactor), paths  

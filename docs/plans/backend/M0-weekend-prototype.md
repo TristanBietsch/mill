@@ -4,11 +4,11 @@
 
 **Goal:** A single `mill run <file.mill.yaml>` (no daemon) that parses a pipeline, infers edges, runs `sh`, headless `agent` and `stdout` nodes in topological order with JSONL items between them, records the run on disk, and is used nightly for the `nightly-vuln-sweep-lite` dogfood pipeline.
 
-**Architecture:** The engine is a library from day one (backend plan, decision 1): `cmd/mill` → `internal/surface/cli` → `internal/engine`, which compiles with `internal/pipeline` + `internal/expr` and executes parts from `internal/parts`. M0 runs nodes **sequentially**, `batch` mode only. Package names and paths follow [architecture.md §2](architecture.md#2-package-layout) so M1 extends rather than replaces them; M0's `parts.Part` interface is a deliberate in-process stand-in for `partproto` (M1).
+**Architecture:** The engine is a library from day one (backend plan, decision 1). M0 is a thin vertical slice through the layers of [layers.md](layers.md): `cmd/mill` → `surface/cli` (L7) → `surface/cli/local` (L7, the `--local` composition root) → `engine` (L4), which compiles with `pipeline` + `expr` (L2), writes through `store` (L3), and runs parts it gets through its `PartSource` port from `parthost` (L5). Built-ins (`parts/builtin/*`, L5) start processes with `proc` (L0). M0 runs nodes **sequentially**, `batch` mode only. Package names and paths are the final ones ([architecture.md §2](architecture.md#2-package-layout), refined 2026-11-12) so M1 extends rather than renames them; M0's `partproto.Part` (`Run(ctx, Call)`) is a deliberately small shape that M1 replaces with Open/Session/Emitter in the same package.
 
 **Tech Stack:** Go 1.27 (`toolchain go1.27.4`), `github.com/google/cel-go` v0.30.0, `go.yaml.in/yaml/v4` v4.0.0, `github.com/rogpeppe/go-internal/testscript` for CLI tests, `github.com/stretchr/testify`. Lint: golangci-lint v2.14.0 via `go run` (as rex). Vuln: `golang.org/x/vuln/cmd/govulncheck@v1.8.0` via `go run`.
 
-**Spec:** [milestones.md § M0](milestones.md#m0--weekend-prototype); spec [§6](../../spec/06-data-model.md), [§7](../../spec/07-pipeline-format.md), [§8](../../spec/08-expressions.md), [§11](../../spec/11-agents.md), [§14](../../spec/14-piping.md), [§17.2](../../spec/17-cli.md#172-exit-codes), [§29](../../spec/29-errors.md); [engine.md §1–3](engine.md), [storage.md §1, §3](storage.md), [execution.md §5](execution.md).
+**Spec:** [milestones.md § M0](milestones.md#m0--weekend-prototype), [layers.md](layers.md) (§3 rules, §8 fitness functions); spec [§6](../../spec/06-data-model.md), [§7](../../spec/07-pipeline-format.md), [§8](../../spec/08-expressions.md), [§11](../../spec/11-agents.md), [§14](../../spec/14-piping.md), [§17.2](../../spec/17-cli.md#172-exit-codes), [§29](../../spec/29-errors.md); [engine.md §1–3](engine.md), [storage.md §1, §3](storage.md), [execution.md §5](execution.md).
 
 ## Global Constraints
 
@@ -26,6 +26,8 @@
 - Exit codes (§17.2): `0` done, `1` run failed or cancelled, `5` invalid arguments or compile/lint failure.
 - stdout carries only results; progress, warnings and errors go to stderr (§14.1).
 - Output contract: without `--json`, stdout gets `stdout`-node lines during the run, then one line: the `outputs` object (`{"greeting":"…"}`) if the pipeline declares outputs. With `--json`, the final line is the run record `{"run":"<id>","pipeline":"<name>","state":"done","outputs":{…},"dir":"<run dir>"}`. (This corrects milestones.md exit criterion 1: `mill run hello.mill.yaml | jq .greeting`, `mill run hello.mill.yaml --json | jq .outputs.greeting`.)
+- **Layering** ([layers.md](layers.md)): every package below belongs to the layer in the File Structure table and imports only downward. `surface/cli` imports only L0–L2 and `surface/cli/local`; only `surface/cli/local` constructs the engine and registers built-ins (no `init()` registration). `engine` never imports `parthost` or `parts/builtin/*`; `parts/builtin/*` never import `engine`, `store` or `parthost`. `internal/archtest` and the M0 depguard/forbidigo rules fail `make check` otherwise.
+- **Owned concerns:** time only through `clock.Clock` (no `time.Now` outside `internal/clock`); processes only through `proc`; stdout only from `surface/cli` (M0 has no `cli/core` kit yet; forbidigo excludes `internal/surface/cli/` until M1 moves output into `cli/core`); `os.Getenv` only in `paths` and `proc.StepEnv`.
 - Conventional Commits, signed commits never bypassed, one branch `feat/M0-weekend-prototype` in worktree `../mill-M0`, one PR with an independent review (CONTRIBUTING).
 
 ## Review Focus
@@ -40,46 +42,51 @@
 
 ## File Structure
 
-| Path | Responsibility |
-|---|---|
-| `go.mod`, `Makefile`, `.golangci.yml`, `.github/workflows/ci.yml` | Module, gate (`make check`), lint config and CI copied from rex and trimmed (header comment names the rex commit) |
-| `cmd/mill/main.go` | `os.Exit(cli.Main(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))` |
-| `internal/core/{ids,item,state}.go` | `RunID`, `Item`, `ItemMeta`, `FileRef`, `WorkspaceRef`, `State` (architecture §4.1) |
-| `internal/errs/errs.go` | `Error` type, `Format`, exit-code mapping |
-| `internal/paths/paths.go` | `DataDir()` |
-| `internal/expr/{scan,env,template}.go` | `${{ }}` scanner, CEL env + helpers, compiled templates, reference extraction |
-| `internal/pipeline/{spec,parse,compile}.go` | YAML → `Spec` with positions → `Graph` (validation, edge inference, topo order) |
-| `internal/store/rundir.go` | Run directory writer: events, items, logs, `run.json` |
-| `internal/parts/{part,registry}.go` | `Part` interface, `Call`, `Result`, `Lookup` |
-| `internal/parts/builtin/sh/sh.go`, `.../stdout/stdout.go`, `.../agent/agent.go` | The three M0 parts |
-| `internal/agents/{entry,builtin,build,output}.go` | Agent registry (claude, echo), argv building, headless output parsing |
-| `internal/testutil/echoagent/main.go` | `mill-echo-agent` test helper binary |
-| `internal/engine/engine.go` | `Run`: sequential executor, vars, outputs, cancellation |
-| `internal/surface/cli/{main,run}.go` + `testdata/script/*.txtar` | `mill run`, flags, output modes, exit codes |
-| `examples/{hello,pipe-demo,nightly-vuln-sweep-lite}.mill.yaml`, `examples/README.md` | Example pipelines, crontab recipe |
-| `docs/plans/backend/m0-findings.md` | What dogfooding taught (exit criterion 4) |
+| Path | Layer | Responsibility |
+|---|---|---|
+| `go.mod`, `Makefile`, `.golangci.yml`, `.github/workflows/ci.yml` | — | Module, gate (`make check`), lint config (rex's set + the M0 depguard and forbidigo rules from [layers.md](layers.md) §8.2–8.3) and CI copied from rex and trimmed (header comment names the rex commit) |
+| `internal/archtest/{layers.txt,exceptions.txt,layering_test.go}` | T | Layer checker over `go list` (checks A1, A2, A3, A6, A8, A10) |
+| `cmd/mill/main.go` | L7 | `os.Exit(cli.Main(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))` |
+| `internal/errs/errs.go` | L0 | `Error` type, `Format`, exit-code mapping |
+| `internal/clock/clock.go` | L0 | `Clock` (`Now`), `Real`, `Fake` |
+| `internal/paths/paths.go` | L0 | `DataDir()` |
+| `internal/proc/{proc_unix,env}.go` | L0 | process-group start and cancel; `StepEnv` allowlist |
+| `internal/core/{ids,item,state}.go` | L1 | `RunID`, `Item`, `ItemMeta`, `FileRef`, `WorkspaceRef`, `State` (architecture §4.1) |
+| `internal/partproto/part.go` | L1 | M0 part contract: `Part`, `Call`, `Result` |
+| `internal/expr/{scan,env,template}.go` | L2 | `${{ }}` scanner, CEL env + helpers, compiled templates, reference extraction |
+| `internal/pipeline/{spec,parse,compile}.go` | L2 | YAML → `Spec` with positions → `Graph` (validation, edge inference, topo order); `PartSet` port |
+| `internal/store/rundir.go` | L3 | Run directory writer: events, items, logs, `run.json` |
+| `internal/engine/engine.go` | L4 | `Run`: sequential executor, vars, outputs, cancellation; `PartSource` port |
+| `internal/parthost/registry.go` | L5 | `Registry`: `Register`, `Lookup`, `Known` (implements `pipeline.PartSet` and `engine.PartSource`) |
+| `internal/parts/builtin/sh/sh.go`, `.../stdout/stdout.go`, `.../agent/agent.go` | L5 | The three M0 parts |
+| `internal/agents/{entry,builtin,build,output}.go` | L5 | Agent registry (claude, echo), argv building, headless output parsing |
+| `internal/surface/cli/{main,run}.go` + `testdata/script/*.txtar` | L7 | `mill run`, flags, output modes, exit codes |
+| `internal/surface/cli/local/local.go` | L7 | Composition root: registry with built-ins, compile, `engine.Run`; the one surface package allowed to import L3–L5 (exceptions until M2) |
+| `internal/testutil/echoagent/main.go` | T | `mill-echo-agent` test helper binary |
+| `examples/{hello,pipe-demo,nightly-vuln-sweep-lite}.mill.yaml`, `examples/README.md` | — | Example pipelines, crontab recipe |
+| `docs/plans/backend/m0-findings.md` | — | What dogfooding taught (exit criterion 4) |
 
 ---
 
 ### Task 1: Module and gate
 
 **Files:**
-- Create: `go.mod`, `Makefile`, `.golangci.yml`, `.github/workflows/ci.yml`, `cmd/mill/main.go`, `internal/surface/cli/main.go`, `internal/surface/cli/main_test.go`
+- Create: `go.mod`, `Makefile`, `.golangci.yml`, `.github/workflows/ci.yml`, `cmd/mill/main.go`, `internal/surface/cli/main.go`, `internal/surface/cli/main_test.go`, `internal/archtest/layers.txt`, `internal/archtest/exceptions.txt`, `internal/archtest/layering_test.go`, `internal/archtest/testdata/*.json`
 
 **Interfaces:**
 - Produces: `func Main(args []string, stdin io.Reader, stdout, stderr io.Writer) int` in package `cli`; `var Version = "0.0.0-dev"` (set by `-ldflags`).
 
-- [ ] **Step 1: Write the failing test** `TestMainVersion`: `Main([]string{"--version"}, …)` returns `0` and stdout is `mill 0.0.0-dev\n`; `TestMainUnknownCommand`: `Main([]string{"nope"}, …)` returns `5` and stderr starts with `error[M1306]: unknown command "nope"`.
+- [ ] **Step 1: Write the failing tests.** `TestCheck_Fixtures` in `archtest`: the checker run over recorded `go list -json` fixtures in `testdata/` reports an upward import (`internal/store` → `internal/engine`), an unmapped package, a built-in importing `internal/engine`, and a non-test import of `internal/testutil`, each with its check id (A2, A1, A6, A10); a clean fixture reports nothing. `TestLayering` runs the checker on the real module (passes trivially until packages exist). `TestMainVersion`: `Main([]string{"--version"}, …)` returns `0` and stdout is `mill 0.0.0-dev\n`; `TestMainUnknownCommand`: `Main([]string{"nope"}, …)` returns `5` and stderr starts with `error[M1306]: unknown command "nope"`.
 - [ ] **Step 2: Run** `go test ./internal/surface/cli/` → FAIL (package missing).
-- [ ] **Step 3: Implement** `go.mod` (module path, `go 1.27`, `toolchain go1.27.4`), `cmd/mill/main.go`, and `Main` dispatching on `args[0]` (`--version`, `run` stub returning 5 with "not implemented").
-- [ ] **Step 4: Gate.** Copy rex's `Makefile` targets `test test-race vet lint vuln check` (drop `lint-windows`, `cover-check`, `fuzz`, bench and every `third_party/vt10x` line; `check: vet test-race lint vuln`), rex's `.golangci.yml`, and rex's CI workflow reduced to `make check` on `ubuntu-latest` and `macos-latest`. Header comment in each: `# copied from rex <commit-sha>, trimmed for mill M0`.
+- [ ] **Step 3: Implement** `go.mod` (module path, `go 1.27`, `toolchain go1.27.4`), `cmd/mill/main.go`, and `Main` dispatching on `args[0]` (`--version`, `run` stub returning 5 with "not implemented"). Implement `archtest` per [layers.md](layers.md) §8.1 (A1, A2, A3, A6, A8, A10; `layers.txt` and `exceptions.txt` as given there, exceptions marked `until M2`).
+- [ ] **Step 4: Gate.** Copy rex's `Makefile` targets `test test-race vet lint vuln check` (drop `lint-windows`, `cover-check`, `fuzz`, bench and every `third_party/vt10x` line; `check: vet test-race lint vuln layering`, `layering: go test ./internal/archtest/`), rex's `.golangci.yml` plus the depguard rules `L0-platform`, `L1-domain`, `L1-pure-core`, `L2-language`, `L3-persistence`, `L5-builtins-no-internals`, `L7-surface-closed`, `no-testutil-in-prod` and the forbidigo rules from [layers.md](layers.md) §8.2–8.3 (with the M0 exclusion for `internal/surface/cli/`), and rex's CI workflow reduced to `make check` on `ubuntu-latest` and `macos-latest`. Header comment in each: `# copied from rex <commit-sha>, trimmed for mill M0`.
 - [ ] **Step 5: Run** `make check` → all targets pass.
-- [ ] **Step 6: Commit** `chore: Go module, make check gate and CI`.
+- [ ] **Step 6: Commit** `chore: Go module, make check gate, layer checker and CI`.
 
 ### Task 2: Core types and errors
 
 **Files:**
-- Create: `internal/core/ids.go`, `internal/core/item.go`, `internal/core/state.go`, `internal/core/core_test.go`, `internal/errs/errs.go`, `internal/errs/errs_test.go`, `internal/paths/paths.go`, `internal/paths/paths_test.go`
+- Create: `internal/core/ids.go`, `internal/core/item.go`, `internal/core/state.go`, `internal/core/core_test.go`, `internal/errs/errs.go`, `internal/errs/errs_test.go`, `internal/paths/paths.go`, `internal/paths/paths_test.go`, `internal/clock/clock.go`, `internal/clock/clock_test.go`
 
 **Interfaces:**
 - Produces:
@@ -88,6 +95,7 @@
   - `core.State` with consts `StatePending, StateWorking, StateDone, StateFailed, StateCancelled`; `func (State) Terminal() bool` (done, failed, cancelled true).
   - `errs.Error{Code, Message, File string; Line, Col int; Source string /* the offending source line, optional */; Help string}`; `func (e *Error) Error() string` (single line `MXXXX message`); `func Format(err error) string` (§29 multi-line shape; non-`*Error` → `error: <msg>`); `func ExitCode(err error) int` (`*Error` with code prefix `M1`,`M2`,`M3` → 5; otherwise 1).
   - `paths.DataDir() (string, error)` honoring `MILL_DATA_DIR`, `XDG_DATA_HOME`, then `~/.local/share/mill`.
+  - `clock.Clock interface{ Now() time.Time }`; `clock.Real{}`; `clock.NewFake(t time.Time) *Fake` with `Advance(d)`. The only package allowed to call `time.Now`.
 
 - [ ] **Step 1: Write failing tests.**
   - `TestNewRunID`: 1000 ids, each matches `^[0-9a-f]{32}$`, all distinct.
@@ -96,10 +104,11 @@
   - `TestFormatWithPosition`: `Format(&Error{Code:"M3012", Message:`unknown node "plann" in expression`, File:"p.mill.yaml", Line:41, Col:13, Source:"      show: ${{ nodes.plann.item }}", Help:"did you mean nodes.plan"})` contains, in order, `error[M3012]: unknown node "plann" in expression`, `┌─ p.mill.yaml:41:13`, `41 │       show: ${{ nodes.plann.item }}`, `help: did you mean nodes.plan`.
   - `TestExitCode`: `M3020` → 5, `M5201` → 1, `errors.New("x")` → 1.
   - `TestDataDir`: with `MILL_DATA_DIR=/a` → `/a`; unset and `XDG_DATA_HOME=/b` → `/b/mill`.
-- [ ] **Step 2: Run** `go test ./internal/core/ ./internal/errs/ ./internal/paths/` → FAIL.
+  - `TestFakeClock`: `NewFake(t0).Now() == t0`; after `Advance(2*time.Second)` → `t0+2s`.
+- [ ] **Step 2: Run** `go test ./internal/core/ ./internal/errs/ ./internal/paths/ ./internal/clock/` → FAIL.
 - [ ] **Step 3: Implement** the types and functions above.
 - [ ] **Step 4: Run** the same command → PASS.
-- [ ] **Step 5: Commit** `feat(core): ids, items, states; errs: §29 error shape`.
+- [ ] **Step 5: Commit** `feat(core): ids, items, states; errs: §29 error shape; clock`.
 
 ### Task 3: Expressions
 
@@ -134,7 +143,7 @@
 - Create: `internal/pipeline/spec.go`, `internal/pipeline/parse.go`, `internal/pipeline/compile.go`, `internal/pipeline/pipeline_test.go`, `internal/pipeline/testdata/*.mill.yaml`
 
 **Interfaces:**
-- Consumes: `expr.Env`, `expr.Template`, `errs.Error`; `parts.Known(id string) bool` (Task 6 provides; until then a stub list `sh`, `agent`, `stdout` in `compile.go` replaced in Task 6).
+- Consumes: `expr.Env`, `expr.Template`, `errs.Error`.
 - Produces:
   - `type Pos struct{ Line, Col int }`
   - `type Spec struct{ Mill int; Name, Description string; Inputs []InputDecl; Nodes []NodeSpec; Outputs []OutputSpec; Path string }`
@@ -145,7 +154,8 @@
   - `type Graph struct{ Name, BundleHash string; Inputs []InputDecl; Nodes []*Node /* topological, ties by file order */; Outputs []Output }`
   - `type Node struct{ ID, Uses, IO string; With any /* tree: map[string]any / []any / *expr.Template / literal */; In []string; After []string; Source bool; Pos Pos }`
   - `type Output struct{ Name string; Expr *expr.Template }`
-  - `func Compile(s *Spec, env *expr.Env) (*Graph, error)` — `BundleHash = "sha256:" + hex(sha256("mill-bundle-v1\n" + path + "\n" + hex(sha256(src))))`.
+  - `type PartSet interface{ Known(id string) bool }` — the port `parthost.Registry` implements in Task 6 (layers.md §3 rule 2); tests use a fake set `{sh, agent, stdout}`.
+  - `func Compile(s *Spec, env *expr.Env, parts PartSet) (*Graph, error)` — `BundleHash = "sha256:" + hex(sha256("mill-bundle-v1\n" + path + "\n" + hex(sha256(src))))`.
 
 - [ ] **Step 1: Write failing tests** (YAML fixtures in `testdata/`):
   - `TestParseOrder`: nodes `b`, `a` in file order → `Spec.Nodes[0].ID == "b"`.
@@ -191,17 +201,17 @@
 ### Task 6: Parts interface, `sh` and `stdout`
 
 **Files:**
-- Create: `internal/parts/part.go`, `internal/parts/registry.go`, `internal/parts/builtin/sh/sh.go`, `internal/parts/builtin/sh/sh_test.go`, `internal/parts/builtin/stdout/stdout.go`, `internal/parts/builtin/stdout/stdout_test.go`, `internal/runner/proc/proc_unix.go`
-- Modify: `internal/pipeline/compile.go` (replace the stub with `parts.Known`)
+- Create: `internal/partproto/part.go`, `internal/parthost/registry.go`, `internal/parthost/registry_test.go`, `internal/parts/builtin/sh/sh.go`, `internal/parts/builtin/sh/sh_test.go`, `internal/parts/builtin/stdout/stdout.go`, `internal/parts/builtin/stdout/stdout_test.go`, `internal/proc/proc_unix.go`, `internal/proc/env.go`, `internal/proc/proc_test.go`
 
 **Interfaces:**
 - Consumes: `core.Item`, `errs.Error`.
 - Produces:
-  - `type Call struct{ RunID core.RunID; Node, NR, IO string; With map[string]any /* evaluated */; Input []json.RawMessage /* item data */; Stdout, Stderr io.Writer /* log sinks */; Out io.Writer /* mill's stdout, stdout part only */; Env []string }`
+  - In `partproto` (L1): `type Call struct{ RunID core.RunID; Node, NR, IO string; With map[string]any /* evaluated */; Input []json.RawMessage /* item data */; Stdout, Stderr io.Writer /* log sinks */; Out io.Writer /* mill's stdout, stdout part only */; Env []string }`
   - `type Result struct{ Items []json.RawMessage; ExitCode int }`
   - `type Part interface{ Run(ctx context.Context, c Call) (Result, error) }`
-  - `func Lookup(id string) (Part, bool)`; `func Known(id string) bool`; `func Register(id string, p Part)` (built-ins register in `init`; tests register fakes); `func StepEnv(runID core.RunID, node string, extra map[string]string) []string` (allowlist from Global Constraints).
-  - `proc.Start(ctx, cmd *exec.Cmd)` sets `Setpgid`; on `ctx.Done()` sends `SIGTERM` to `-pgid`, waits 5 s, then `SIGKILL`.
+  - In `parthost` (L5): `type Registry struct{…}`; `func New() *Registry`; `func (r *Registry) Register(id string, p partproto.Part)`; `func (r *Registry) Lookup(id string) (partproto.Part, bool)`; `func (r *Registry) Known(id string) bool`. No `init()` registration: the composition root (`surface/cli/local`, Task 9) registers built-ins; tests register fakes.
+  - In `proc` (L0): `func StepEnv(runID, node string, extra map[string]string) []string` (allowlist from Global Constraints; takes plain strings because L0 can't import `core`).
+  - `proc.Start(ctx, cmd *exec.Cmd)` (L0) sets `Setpgid`; on `ctx.Done()` sends `SIGTERM` to `-pgid`, waits 5 s, then `SIGKILL`.
   - `sh` `with`: `run` (string, required), `dir` (string, optional, leading `~/` expanded), `ok_codes` ([]int, default `[0]`). Runs `/bin/sh -c <run>` in `dir`.
 
 - [ ] **Step 1: Write failing tests** (real `/bin/sh`; `//go:build unix`):
@@ -214,9 +224,10 @@
   - `TestShEnvAllowlist`: parent env has `SECRET_X=1`; `run: "env"` output has no `SECRET_X` and has `MILL_NODE_ID=`.
   - `TestShCancel`: `run: "sleep 307 & sleep 307"`, cancel ctx after 100 ms → returns within 6 s, and `pgrep -f 'sleep 307'` finds nothing.
   - `TestStdout`: two items → `Out` gets `{"a":1}\n{"b":2}\n`; `Result.Items` passes the input through unchanged.
-- [ ] **Step 2: Run** `go test ./internal/parts/... ./internal/runner/...` → FAIL.
-- [ ] **Step 3: Implement** the interface, registry, `sh`, `stdout`, `proc`. Output parsing: `bufio.Reader` with no line-length cap (lines up to 64 MiB), blank lines skipped.
-- [ ] **Step 4: Run** → PASS. Also `go test ./internal/pipeline/` → still PASS.
+  - `TestRegistry`: `Register("sh", fake)`; `Known("sh")` true, `Known("http")` false; `Lookup` returns the same value; the registry satisfies `pipeline.PartSet` (compile-time assertion `var _ pipeline.PartSet = (*Registry)(nil)`).
+- [ ] **Step 2: Run** `go test ./internal/parthost/ ./internal/parts/... ./internal/proc/` → FAIL.
+- [ ] **Step 3: Implement** the contract, registry, `sh`, `stdout`, `proc`. `sh` calls `proc.Start` directly in M0 (from M1 it gets a runner through `HostServices`). Output parsing: `bufio.Reader` with no line-length cap (lines up to 64 MiB), blank lines skipped.
+- [ ] **Step 4: Run** → PASS. Also `go test ./internal/pipeline/ ./internal/archtest/` → still PASS.
 - [ ] **Step 5: Commit** `feat(parts): sh and stdout parts, process-group cancel`.
 
 ### Task 7: Agents and the `agent` part
@@ -225,7 +236,7 @@
 - Create: `internal/agents/entry.go`, `internal/agents/builtin.go`, `internal/agents/build.go`, `internal/agents/output.go`, `internal/agents/agents_test.go`, `internal/testutil/echoagent/main.go`, `internal/parts/builtin/agent/agent.go`, `internal/parts/builtin/agent/agent_test.go`
 
 **Interfaces:**
-- Consumes: `parts.Part`, `parts.Call`, `parts.Result`, `parts.StepEnv`, `proc.Start`.
+- Consumes: `partproto.Part`, `partproto.Call`, `partproto.Result`, `proc.StepEnv`, `proc.Start`.
 - Produces:
   - `type Entry struct{ ID string; Command []string; Models map[string][]string; HeadlessArgs []string; Output string /* "stdout-json" | "stdout-text" */; ResultPath, UsageIn, UsageOut string /* dotted JSON paths */ }`
   - Built-ins: `claude` = `Command: ["claude"]`, `HeadlessArgs: ["-p", "--output-format", "json"]`, `Models: {"haiku": ["--model","haiku"], "sonnet": ["--model","sonnet"], "opus": ["--model","opus"]}`, `Output: "stdout-json"`, `ResultPath: "result"`, `UsageIn: "usage.input_tokens"`, `UsageOut: "usage.output_tokens"`, prompt as the last argv element. `echo` = `Command: ["mill-echo-agent"]`, `Output: "stdout-text"`, prompt on stdin.
@@ -243,7 +254,7 @@
   - `TestAgentFails`: `ECHO_AGENT_EXIT=2` → `M6300`, message contains `exit 2` and `boom`.
   - `TestAgentModelSyntax`: `agent: "claude/haiku"` and `agent: "claude", model: "haiku"` build identical argv.
 - [ ] **Step 2: Run** `go test ./internal/agents/ ./internal/parts/builtin/agent/` → FAIL.
-- [ ] **Step 3: Implement**; register `agent` in `parts`. Env for the agent: `StepEnv` (claude reads auth from `$HOME`).
+- [ ] **Step 3: Implement** (registration happens in Task 9's composition root). Env for the agent: `proc.StepEnv` (claude reads auth from `$HOME`).
 - [ ] **Step 4: Run** → PASS.
 - [ ] **Step 5: Commit** `feat(agents): headless claude and echo agents, agent part`.
 
@@ -253,14 +264,15 @@
 - Create: `internal/engine/engine.go`, `internal/engine/engine_test.go`
 
 **Interfaces:**
-- Consumes: `pipeline.Graph`, `pipeline.Node`, `expr.Vars`, `parts.Lookup`, `store.RunDir`, `core.*`.
+- Consumes: `pipeline.Graph`, `pipeline.Node`, `expr.Vars`, `partproto.Part`, `store.RunDir`, `clock.Clock`, `core.*`. Not `parthost` or any built-in (layers.md §3 rule 2).
 - Produces:
-  - `type Options struct{ StoreRoot string; Inputs map[string]any; Stdin []json.RawMessage; Out io.Writer /* results */; Progress io.Writer /* stderr */ }`
+  - `type PartSource interface{ Lookup(id string) (partproto.Part, bool) }` — the port `parthost.Registry` implements.
+  - `type Options struct{ Parts PartSource; Clock clock.Clock; StoreRoot string; Inputs map[string]any; Stdin []json.RawMessage; Out io.Writer /* results */; Progress io.Writer /* stderr */ }`
   - `type Result struct{ RunID core.RunID; State core.State; Outputs map[string]any; Dir string; Err error }`
   - `func Run(ctx context.Context, g *pipeline.Graph, opt Options) Result`
   - Behaviour: resolve inputs (declared defaults; a declared input without default and not provided → `M1309 input "<name>" is required` before any run dir is created); write `inputs.json`, `RunCreated`; for each node in `g.Nodes`: input items = concatenation of `items` of its `In` nodes, or `opt.Stdin` for the first source; evaluate `With` with `Vars{Inputs, Items: input, Item: input[0] or nil, Nodes: finished nodes}`; `NodeRunStarted`; `Part.Run`; write items with `ItemMeta{ID:"<node>@1/out/<i>", Run, Node, Port:"out", Index:i, TS}`; `NodeRunFinished`. First failure stops the run (`state failed`); later nodes get no events. Outputs evaluated after all nodes are done. `RunFinished` and `run.json` (`{run, pipeline, state, outputs, started_at, finished_at}`) always written, also on failure and cancel. Progress lines on `opt.Progress`: `≋ <pipeline> <short-id>`, then per node `  ✓ <node> <n> items <dur>` / `  ✗ <node> <code>`.
 
-- [ ] **Step 1: Write failing tests** (real `sh` nodes; fake parts via `parts.Register` where a test needs one):
+- [ ] **Step 1: Write failing tests** (real `sh` nodes; fake parts via a test `PartSource` where a test needs one; `clock.NewFake` for timestamps):
   - `TestRunLinear`: `a` sh `echo '{"n":1}'` → `b` sh `jq -c '{n: (.n+1)}'` → outputs `{ n: ${{ nodes.b.item.n }} }` → `State == done`, `Outputs["n"] == int64(2)`; `events.jsonl` types in order `RunCreated, NodeRunStarted, NodeRunFinished, NodeRunStarted, NodeRunFinished, RunFinished`.
   - `TestRunStdinFirstSourceOnly`: two sources; `Stdin` two items → first source sees 2 items, second sees 0.
   - `TestRunFailureStops`: `a` exits 1, `b` downstream → `State == failed`, `Err` code `M5201`, no `NodeRunStarted` for `b`, `RunFinished.state == "failed"`.
@@ -275,12 +287,12 @@
 ### Task 9: `mill run` CLI
 
 **Files:**
-- Create: `internal/surface/cli/run.go`, `internal/surface/cli/cli_test.go`, `internal/surface/cli/testdata/script/{run_hello,run_stdin,run_errors,run_json,run_signal}.txtar`
+- Create: `internal/surface/cli/run.go`, `internal/surface/cli/local/local.go`, `internal/surface/cli/local/local_test.go`, `internal/surface/cli/cli_test.go`, `internal/surface/cli/testdata/script/{run_hello,run_stdin,run_errors,run_json,run_signal}.txtar`
 - Modify: `internal/surface/cli/main.go`
 
 **Interfaces:**
-- Consumes: `pipeline.Parse`, `pipeline.Compile`, `expr.NewEnv`, `engine.Run`, `errs.Format`, `errs.ExitCode`, `paths.DataDir`.
-- Produces: `mill run <file> [--input k=v]... [--stdin] [--text] [--json] [--store dir]`. `--input` values are parsed as JSON when they parse (`n=2` → `2`, `x={"a":1}`), else as strings. `--stdin` reads JSONL (`--text`: each line a JSON string). SIGINT/SIGTERM cancel the context. Exit code from `errs.ExitCode` or the run state (done 0, failed/cancelled 1).
+- Consumes: in `surface/cli`: `errs.Format`, `errs.ExitCode`, `paths.DataDir`, `local.Run`. In `surface/cli/local` (the composition root): `pipeline.Parse`, `pipeline.Compile`, `expr.NewEnv`, `parthost.New` + `Register("sh"|"agent"|"stdout", …)`, `engine.Run`, `clock.Real`.
+- Produces: `local.Run(ctx, local.Options{File, Inputs, Stdin, StoreRoot, Out, Progress}) (local.Result, error)` with its own `Result{RunID, State, Outputs, Dir}` so `surface/cli` never imports `engine` (A3). `mill run <file> [--input k=v]... [--stdin] [--text] [--json] [--store dir]`. `--input` values are parsed as JSON when they parse (`n=2` → `2`, `x={"a":1}`), else as strings. `--stdin` reads JSONL (`--text`: each line a JSON string). SIGINT/SIGTERM cancel the context. Exit code from `errs.ExitCode` or the run state (done 0, failed/cancelled 1).
 
 - [ ] **Step 1: Write failing testscript tests** (`TestScript` runs `testscript.Run` with `mill` mapped to `cli.Main`, `jq` from PATH):
   - `run_hello`: two `sh` nodes with `outputs: {greeting: ...}`; `exec mill run hello.mill.yaml` → stdout `{"greeting":"hello, mill"}`; `exec mill run hello.mill.yaml --json` → stdout JSON has `.state == "done"`, `.outputs.greeting`, `.dir` exists; stderr contains `✓`.
@@ -288,8 +300,9 @@
   - `run_errors`: missing file → `error[M1201]`, exit 5 (invalid argument); unknown flag `--nope` → `M1301`, exit 5; YAML with `nodes.plann` → stderr contains `error[M3012]` and `┌─`, exit 5; failing node → `error[M5201]`, exit 1.
   - `run_json`: `--input n=2` reaches `${{ inputs.n + 1 }}` as `3`.
   - `run_signal`: `exec mill run sleep.mill.yaml &`, `sleep 1`, `kill -INT` the process (testscript `kill`), `wait` → exit 1, stderr contains `cancelled`.
-- [ ] **Step 2: Run** `go test ./internal/surface/cli/` → FAIL.
-- [ ] **Step 3: Implement** `run.go`.
+  - `TestLocal_RegistersBuiltins` (in `local`): `Run` on a pipeline using `sh`, `agent` (echo) and `stdout` succeeds; a pipeline using `http` fails `M5101` at compile time.
+- [ ] **Step 2: Run** `go test ./internal/surface/cli/...` → FAIL.
+- [ ] **Step 3: Implement** `local.go` and `run.go`. `go test ./internal/archtest/` still passes: `surface/cli` imports only L0–L2 and `surface/cli/local`; `local`'s imports of `engine`, `store`, `parthost`, `parts`, `agents` match the `until M2` exceptions.
 - [ ] **Step 4: Run** `make check` → PASS.
 - [ ] **Step 5: Commit** `feat(cli): mill run with inputs, stdin, json output, exit codes`.
 
@@ -317,7 +330,7 @@
 
 **Files:**
 - Create: `docs/plans/backend/m0-findings.md`
-- Modify: `docs/agents/HANDOFF.md` (state: code exists, M0 done, next M1), `CHANGELOG.md` (`### Added`: `mill run` prototype), `docs/plans/backend/milestones.md` (M0 exit criterion 1 wording per Global Constraints)
+- Modify: `docs/agents/HANDOFF.md` (state: code exists, M0 done, next M1), `CHANGELOG.md` (`### Added`: `mill run` prototype), `docs/plans/backend/milestones.md` (tick M0; exit criterion 1 was already corrected on 2026-11-12)
 
 **Interfaces:** none.
 

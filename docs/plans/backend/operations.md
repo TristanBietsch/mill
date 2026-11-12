@@ -1,6 +1,6 @@
 # Operations
 
-Status: accepted with the 2026-11-12 refinement. Spec: [§15.7](../../spec/15-execution.md#157-daemon-restarts-and-crash-recovery), [§29.9](../../spec/29-errors.md#299-common-failures-designed-in-advance), [§29.10](../../spec/29-errors.md#2910-mill-doctor), [§18.13](../../spec/18-tui.md#1813-boot-splash).
+Status: review (2026-11-12 refinement, awaiting the user). Spec: [§15.7](../../spec/15-execution.md#157-daemon-restarts-and-crash-recovery), [§29.9](../../spec/29-errors.md#299-common-failures-designed-in-advance), [§29.10](../../spec/29-errors.md#2910-mill-doctor), [§18.13](../../spec/18-tui.md#1813-boot-splash).
 
 Running `milld` day to day: start and stop, upgrades, what happens after a crash, `mill doctor`, the support bundle, and a runbook for the situations designed in advance. The user is the operator; every procedure is one or two commands. Layers per [layers.md](layers.md).
 
@@ -65,7 +65,7 @@ One line per check, grouped by layer so a failure points at the right part of th
 | L6 | gateway bind (when enabled): loopback unless `allow_public` | warning |
 | — | `--health`: targets O1–O8 ([observability.md](observability.md) §7) | warn with the measured value |
 
-Flags: `--reindex` (rebuild the index), `--bundle [--run <sel>] [--profile 30s]` (§5), `--json`.
+Flags: `--reindex` (rebuild the index), `--bundle [--run <sel>] [--profile 30s] [--include-logs]` (§5), `--health`, `--json`. `--health`, `--profile`, `--include-logs`, `mill prune --workspaces` and `mill daemon install` are additions to spec §17.1, proposed as D40.
 
 ## 5. Support bundle
 

@@ -1,6 +1,6 @@
 # Handoff: start here
 
-For the next coding agent on mill. Read this first, then follow the onboarding order. Last updated 2026-11-11, at the spec stage (no code), after the decisions were applied (spec v2.1).
+For the next coding agent on mill. Read this first, then follow the onboarding order. Last updated 2026-11-12, at the spec stage (no code): spec v2.2 and the layered backend refinement (in review).
 
 ## 1. Onboarding order
 
@@ -22,7 +22,7 @@ The spec is split: one file per section in `docs/spec/` (start at [../spec/index
 | Spec | **v2.2**, split into `docs/spec/NN-*.md` (start at [../spec/index.md](../spec/index.md)). v2.1 applied the 2026-11-11 decisions; v2.2 (2026-11-12) adds the 4-step wizard, the global `:` command line and the local-LLM drafter |
 | Decisions | All open decisions are decided: backend D1–D30, editor 1–30, spec issues S1–S31 (ADR-024 to ADR-044); wizard 1–13 and command line 1–9 (ADR-045 to ADR-053). See [DECISIONS.md](DECISIONS.md) |
 | Mockups | `mockups/v2/index.html` is the current TUI prototype and matches spec v2.2 (wizard v2, `:` command line, drafter settings, confirm swallows `:`); v1 is frozen. Prototype-only switch: `:set drafter.simulate_down=true` |
-| Backend plan | Accepted: [../plans/backend/00-overview.md](../plans/backend/00-overview.md), milestones M0–M11 |
+| Backend plan | Accepted: [../plans/backend/00-overview.md](../plans/backend/00-overview.md), milestones M0–M11. Refined 2026-11-12 (in review): layered design in [../plans/backend/layers.md](../plans/backend/layers.md), cited sources in [../plans/backend/references.md](../plans/backend/references.md), nine new topic files, open decisions D31–D41 |
 | Editor plan | Accepted: [../plans/editor.md](../plans/editor.md), phases E0–E7. Wizard and command line: [../plans/wizard.md](../plans/wizard.md), [../plans/command-line.md](../plans/command-line.md), both accepted |
 | Overviews | [../design.md](../design.md) (product) and [../tech.md](../tech.md) (stack), one page each |
 | Code | None. No `go.mod`, `Makefile`, CI or `examples/` |
@@ -61,6 +61,7 @@ If several worktrees lint at once, golangci-lint can fail on its lock. rex's fix
 | Wizard + command line merged into spec (v2.2) | done | 2026-11-12 | Plans keep their spec patches as history only; the spec wins |
 | Editor plan `docs/plans/editor.md` | accepted | decisions decided | Follow it for editor work (E0–E7) |
 | Backend plan `docs/plans/backend/` | accepted | decisions decided | Follow it for backend work (M0–M11) |
+| Backend layered refinement (`layers.md`, `references.md`, topic files) | review | 2026-11-12; D31–D41 open | Read `layers.md` before writing any package; ask the user about D31–D41 before building past them |
 | Mockups `mockups/` | done | v2 matches v2.2 (2026-11-12) | Read only; v1 is frozen |
 
 ## 6. Next milestone: M0, the weekend prototype
@@ -80,7 +81,7 @@ The three pre-M0 confirmations are answered (2026-11-11):
 
 | Question | Answer |
 |----------|--------|
-| Package layout | The backend plan's ([../plans/backend/architecture.md](../plans/backend/architecture.md) §2), now spec §27.4 and [../STRUCTURE.md](../STRUCTURE.md). Module docs give it as the primary path |
+| Package layout | The backend plan's ([../plans/backend/architecture.md](../plans/backend/architecture.md) §2), now spec §27.4 and [../STRUCTURE.md](../STRUCTURE.md). Module docs give it as the primary path. Layers and import rules: [../plans/backend/layers.md](../plans/backend/layers.md) (D31–D33 propose small moves) |
 | Go version | Go 1.27, `toolchain go1.27.4` (D28) |
 | Module path | `github.com/TristanBietsch/mill` |
 

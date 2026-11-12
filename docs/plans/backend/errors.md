@@ -1,6 +1,6 @@
 # Error handling across layers
 
-Status: accepted with the 2026-11-12 refinement. Spec: [§29](../../spec/29-errors.md#29-errors-and-diagnostics), [§17.2](../../spec/17-cli.md#172-exit-codes).
+Status: review (2026-11-12 refinement, awaiting the user). Spec: [§29](../../spec/29-errors.md#29-errors-and-diagnostics), [§17.2](../../spec/17-cli.md#172-exit-codes).
 
 Where errors are created, wrapped, translated and rendered in each layer ([layers.md](layers.md)), so the §29 promise (one shape everywhere, a stable code, a next command) holds from a failing `fsync` to a red line in the TUI.
 

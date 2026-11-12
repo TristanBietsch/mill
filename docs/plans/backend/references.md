@@ -1,6 +1,6 @@
 # References
 
-Status: accepted with the 2026-11-12 refinement. The books the backend plan follows, the short key each citation uses, where the plan uses each one and why it fits mill, and where mill departs from the book on purpose.
+Status: review (2026-11-12 refinement, awaiting the user). The books the backend plan follows, the short key each citation uses, where the plan uses each one and why it fits mill, and where mill departs from the book on purpose.
 
 ## How citations work
 

@@ -1,6 +1,6 @@
 # Layers
 
-Status: accepted structure, 2026-11-12 refinement (its new choices are D31–D39 in [open-decisions.md](open-decisions.md)). Spec: [§5](../../spec/05-architecture.md#5-architecture), [§27.4](../../spec/27-tech-stack.md#274-repository-layout).
+Status: review (2026-11-12 refinement, awaiting the user; its new choices are D31–D41 in [open-decisions.md](open-decisions.md)). Spec: [§5](../../spec/05-architecture.md#5-architecture), [§27.4](../../spec/27-tech-stack.md#274-repository-layout).
 
 The backbone of the backend plan. It sorts every package into one of eight layers, says what each layer owns, what it may import, which interfaces it publishes, which invariants it keeps, how its failures are contained and how it is tested, and gives the exact CI checks that keep the layering true. Every other backend file refers to these layer names (L0–L7).
 
@@ -70,7 +70,7 @@ Test support (`testutil/**`) is outside the stack: any test may import it, no pr
 4. **Built-ins get no special internals** (principle 7). `parts/builtin/**` may import L0–L2, `agents/**` and `luaapi` only. Runners, workspaces, sub-runs and the clock reach them through `partproto.HostServices`; secrets through the `SecretGrant`. This keeps every built-in replaceable by an external part [FSA ch. 12].
 5. **Config is data.** `config/**` evaluates Lua into an immutable `config.Snapshot`. It never imports the engine, part host, triggers or plugins; consumers receive values from the composition root [SRW ch. 14].
 6. **The surface is closed.** `surface/**` talks to the daemon through `wire/client`. The only way it reaches execution is `surface/cli/local`, the `--local` root (D32).
-7. **Time, processes, env and stdout are owned.** `time.Now`/timers only through `clock`; child processes only through `proc` and runners; `os.Getenv` only in `paths`, `config` and the `env` secret backend; `os.Stdout` only in `surface/cli/core` and `cmd/*`. Enforced by forbidigo (§8.3).
+7. **Time, processes, env and stdout are owned.** `time.Now`/timers only through `clock`; child processes are started only by `proc` (runners, `workspace` for `git` and `daemonctl` for `milld` build an `exec.Cmd` and hand it to `proc`); `os.Getenv` only in `paths`, `config`, the `env` secret backend and the env allowlist in `proc`/`runner`; `os.Stdout` only in `surface/cli/core` and `cmd/*`. Enforced by forbidigo (§8.3).
 8. **Third-party code by layer.** Each layer has an allowlist of external modules (§8.1). L1 has none; that is what keeps the domain stable [CA ch. 14] [SEG ch. 21].
 9. **Directory = layer.** A package's directory decides its layer, so tools can check by path prefix. This moves three L0 leaves out of higher directories (`store/lock` → `lock`, `runner/proc` → `proc`, `secrets/redact` → `redact`) and the runner interface into `partproto` (D33).
 
@@ -397,7 +397,7 @@ internal/surface/cli/local  internal/parthost      M2  same
 internal/surface/cli/local  internal/parts         M2  same (M0 registers built-ins here)
 internal/surface/cli/local  internal/agents        M2  same
 internal/surface/cli/local  internal/runner        M2  same
-internal/surface/cli/local  internal/assemble      -   permanent: the --local composition root (D32)
+internal/surface/cli/local  internal/assemble      -   permanent from M2: the --local composition root (D32)
 ```
 
 Checks in `layering_test.go`:
@@ -409,12 +409,12 @@ Checks in `layering_test.go`:
 | A3 | Closed surface | an L7 package imports L3–L6 other than `wire/client`, `daemonctl`, `config/**`, or an exception | [FSA ch. 10] |
 | A4 | Persistence below language | an L3 package imports L2 | §2 |
 | A5 | Engine ports | `engine/**` imports `runner/**`, `workspace` or `secrets`; or those import `engine/**` | [CA ch. 11] |
-| A6 | Built-ins have no internals | `parts/builtin/**` imports anything in L3–L6 or L5 other than `agents/**`, `luaapi` | principle 7 |
+| A6 | Built-ins have no internals | `parts/builtin/**` imports anything in L3, L4 or L6, or an L5 package other than `parts/builtin/**`, `agents/**`, `luaapi` | principle 7 |
 | A7 | Config is data | `config/**` imports `engine/**`, `parthost`, `trigger/**`, `plugins` | [SRW ch. 14] |
-| A8 | Pure domain | `core/**` imports anything outside stdlib + `errs`; `core/fold` imports `time` only for types (the forbidigo rule in §8.3 bans the calls) | [DDD ch. 4] |
+| A8 | Pure domain | `core/**` imports anything outside stdlib, `errs` and `core/**`; `core/fold` imports `time` only for types (the forbidigo rule in §8.3 bans the calls) | [DDD ch. 4] |
 | A9 | Third-party by layer | a direct import of an external module not in the layer's `ext` list (inherited) | [SEG ch. 21] |
 | A10 | Test code stays in tests | a non-test file imports `testutil/**` or `archtest` | |
-| A11 | Exceptions ratchet | an exception is no longer needed (no such import exists), or its `until` milestone is ≤ the current one in `internal/version/milestone.txt` | [BEA ch. 2] |
+| A11 | Exceptions ratchet | an exception is no longer needed (no such import exists while its target package exists), or its `until` milestone is ≤ the current one in `internal/version/milestone.txt` | [BEA ch. 2] |
 | A12 | Daemon binary stays lean | `go list -deps ./cmd/milld` contains `charm.land/`, `ebitengine/oto` or `internal/surface/` | |
 | A13 | SDK is independent | `sdk/go/go.mod` requires `github.com/TristanBietsch/mill` | [SAHP ch. 13] |
 | A14 | Composition roots | a package other than `daemon/boot`, `assemble`, `surface/cli/local` (and tests) imports both `engine` and `parthost` | [CA ch. 26] |
@@ -578,7 +578,7 @@ From M2, when `assemble` exists, `L7-cli-local-root` becomes `list-mode: strict`
         - pattern: ^os\.(Stdout|Stderr)$
           msg: "only surface/cli/core and cmd/* touch the process streams"
         - pattern: ^os\.(Getenv|LookupEnv|Environ)$
-          msg: "env is read only in paths, config and secrets (env backend)"
+          msg: "env is read only in paths, config, secrets (env backend) and the step-env allowlist in proc/runner"
         - pattern: ^exec\.Command(Context)?$
           msg: "child processes start only through proc and runners"
         - pattern: ^(log\.(Print|Fatal|Panic)\w*|slog\.(Debug|Info|Warn|Error|Default|SetDefault))$

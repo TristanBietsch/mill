@@ -1,6 +1,6 @@
 # secrets
 
-**Path:** `internal/secrets` + `secrets/redact` (backend layout, accepted 2026-11-11)  
+**Path:** `internal/secrets` + `secrets/redact` (backend layout, accepted 2026-11-11)   · D33 (open, [layers.md](../../plans/backend/layers.md)) proposes moving `secrets/redact` to `internal/redact` (L0)  
 **Status:** planned · first built in M1 (env backend, redactor), M3 (keychain and others)  
 **Spec v2 path (superseded):** `internal/daemon/secrets`  
 **Depends on:** secrets backend parts  

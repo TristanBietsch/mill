@@ -6,13 +6,13 @@ A plan says how to build part of the spec: scope, order, decisions, tasks. The s
 
 | Plan | Scope | Status | Owner |
 |------|-------|--------|-------|
-| [backend/00-overview.md](backend/00-overview.md) | `milld`, engine, storage, protocols, execution, security, testing; milestones M0–M11 | Accepted 2026-11-11; all 30 decisions decided, spec issues applied (spec v2.1) | another agent |
+| [backend/00-overview.md](backend/00-overview.md) | `milld`, engine, storage, protocols, execution, security, testing; milestones M0–M11 | Accepted 2026-11-11; all 30 decisions decided, spec issues applied (spec v2.1). Layered refinement 2026-11-12 in review: [backend/layers.md](backend/layers.md), [backend/references.md](backend/references.md), D31–D41 open | another agent |
 | [editor.md](editor.md) | TUI pipeline editor | Accepted 2026-11-11; all 30 decisions decided, applied in spec §18.7 | another agent |
-| [backend/M0-weekend-prototype.md](backend/M0-weekend-prototype.md) | M0: `mill run` prototype, no daemon (sh, headless agent, stdout; JSONL items; run dir); first dogfood nightly-vuln-sweep-lite | Draft 2026-11-12, awaiting review | — |
+| [backend/M0-weekend-prototype.md](backend/M0-weekend-prototype.md) | M0: `mill run` prototype, no daemon (sh, headless agent, stdout; JSONL items; run dir); first dogfood nightly-vuln-sweep-lite | Draft 2026-11-12, updated the same day for the layers (final package names, `archtest` in Task 1); awaiting review | — |
 | [wizard.md](wizard.md) | New-pipeline wizard: 4 steps, modal keys, import/upload, local-LLM drafter | Accepted 2026-11-12; all 13 decisions decided, applied in spec v2.2 (§18.8, §19.6) | done |
 | [command-line.md](command-line.md) | Global nvim-style `:` command line; `/` search only; `λ` prompt removed | Accepted 2026-11-12; all 9 decisions decided, applied in spec v2.2 (§18.2–18.7, §17.5) | done |
 
-Backend plan files: [milestones](backend/milestones.md) · [architecture](backend/architecture.md) · [engine](backend/engine.md) · [storage](backend/storage.md) · [protocols](backend/protocols.md) · [execution](backend/execution.md) · [security](backend/security.md) · [testing](backend/testing.md) · [tech-stack](backend/tech-stack.md) · [open-decisions](backend/open-decisions.md).
+Backend plan files: [overview](backend/00-overview.md) · [layers](backend/layers.md) · [references](backend/references.md) · [milestones](backend/milestones.md) · [architecture](backend/architecture.md) · [engine](backend/engine.md) · [storage](backend/storage.md) · [data lifecycle](backend/data-lifecycle.md) · [protocols](backend/protocols.md) · [versioning](backend/versioning.md) · [execution](backend/execution.md) · [concurrency](backend/concurrency.md) · [resilience](backend/resilience.md) · [errors](backend/errors.md) · [configuration](backend/configuration.md) · [observability](backend/observability.md) · [performance](backend/performance.md) · [operations](backend/operations.md) · [security](backend/security.md) · [testing](backend/testing.md) · [tech stack](backend/tech-stack.md) · [open decisions](backend/open-decisions.md) · [M0 task plan](backend/M0-weekend-prototype.md).
 
 Update this table when you add a plan or its status changes.
 

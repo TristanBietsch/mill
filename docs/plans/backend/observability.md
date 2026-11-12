@@ -1,6 +1,6 @@
 # Observability
 
-Status: accepted with the 2026-11-12 refinement; D35 (metrics registry) in [open-decisions.md](open-decisions.md). Spec: [§24](../../spec/24-observability.md#24-observability-and-cost), [§17](../../spec/17-cli.md#17-cli-reference), [§18.12](../../spec/18-tui.md#1812-screensaver-long-runs-detach) (`:stats`).
+Status: review (2026-11-12 refinement, awaiting the user); D35 (metrics registry) in [open-decisions.md](open-decisions.md). Spec: [§24](../../spec/24-observability.md#24-observability-and-cost), [§17](../../spec/17-cli.md#17-cli-reference), [§18.12](../../spec/18-tui.md#1812-screensaver-long-runs-detach) (`:stats`).
 
 How you find out what mill did and how `milld` itself is doing: logs, events, traces, metrics, the golden signals, local targets, and what `mill stats`, `mill digest` and `:stats` show. Layers per [layers.md](layers.md).
 
@@ -122,7 +122,7 @@ Spec §18.12 (`:stats`) and §17.1: one table per pipeline with runs, success ra
 | `--health` | the daemon block: golden signals (§6), targets O1–O8 with pass/warn, slot use per pool, breakers, indexer lag, disk free, goroutines, uptime |
 | `--json` | everything as one JSON object (stable field names, [versioning.md](versioning.md)) |
 
-`--by`, `--retries`, `--slow` and `--health` (and `mill daemon logs --run`) are additions to spec §17.1, proposed with D35.
+`--by`, `--retries`, `--slow` and `--health` (and `mill daemon logs --run`) are additions to spec §17.1, proposed as D40.
 
 ### 8.2 `mill digest`
 

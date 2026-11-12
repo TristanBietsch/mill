@@ -1,6 +1,6 @@
 # Resilience and stability
 
-Status: accepted with the 2026-11-12 refinement; D36 (breaker behavior) in [open-decisions.md](open-decisions.md).
+Status: review (2026-11-12 refinement, awaiting the user); D36 (breaker behavior) in [open-decisions.md](open-decisions.md).
 
 How mill stays up and keeps runs honest when the things it drives misbehave: timeouts on every call out, retries with backoff, bounded queues and backpressure, bulkheads, circuit breakers, load shedding and a steady state on disk. Pattern names follow [RI ch. 5]; the failure modes they answer are [RI ch. 4]'s antipatterns. Layers per [layers.md](layers.md).
 

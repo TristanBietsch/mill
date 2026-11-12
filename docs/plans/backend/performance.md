@@ -1,6 +1,6 @@
 # Performance and capacity
 
-Status: accepted with the 2026-11-12 refinement. Owns the benchmark budgets that [testing.md](testing.md) §7 used to list (B1–B12, unchanged) and adds B13–B16.
+Status: review (2026-11-12 refinement, awaiting the user). Owns the benchmark budgets that [testing.md](testing.md) §7 used to list (B1–B12, unchanged) and adds B13–B16.
 
 What has to be fast, how fast, how big mill is expected to get on one machine, and how it's checked. Layers per [layers.md](layers.md).
 

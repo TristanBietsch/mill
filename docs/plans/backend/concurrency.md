@@ -1,6 +1,6 @@
 # Concurrency model
 
-Status: accepted with the 2026-11-12 refinement. Refines [architecture.md](architecture.md) §5 (the goroutine and ownership table stays there).
+Status: review (2026-11-12 refinement, awaiting the user). Refines [architecture.md](architecture.md) §5 (the goroutine and ownership table stays there).
 
 How goroutines are owned, how cancellation flows, how `context` is used, and how leaks and stalls are prevented. Layers per [layers.md](layers.md).
 

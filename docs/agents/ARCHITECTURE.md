@@ -1,6 +1,6 @@
 # Architecture
 
-Agent-oriented summary of [spec §5](../spec/05-architecture.md#5-architecture). Nothing here is built yet. For depth (Go interfaces, goroutine ownership, run lifecycle diagrams) read [../plans/backend/architecture.md](../plans/backend/architecture.md).
+Agent-oriented summary of [spec §5](../spec/05-architecture.md#5-architecture). Nothing here is built yet. The layers every package belongs to, their import rules and the CI checks that enforce them are in [../plans/backend/layers.md](../plans/backend/layers.md); the books behind each design decision are in [../plans/backend/references.md](../plans/backend/references.md). For depth (Go interfaces, goroutine ownership, run lifecycle diagrams) read [../plans/backend/architecture.md](../plans/backend/architecture.md).
 
 ## Process model
 
@@ -59,7 +59,7 @@ Agent-oriented summary of [spec §5](../spec/05-architecture.md#5-architecture).
 
 Rules from the accepted layout ([backend plan §2–3](../plans/backend/architecture.md), spec §27.4):
 
-1. Lower layers never import higher ones. Base types and errors → language (pipeline, expr, protocol) → services (store, runner, secrets, config) → execution (scheduler, part host, built-ins, triggers) → hosts (daemon server, gateway) → surface (CLI, TUI).
+1. Lower layers never import higher ones. Eight layers since the 2026-11-12 refinement ([layers.md](../plans/backend/layers.md)): L0 platform → L1 domain and contracts → L2 language → L3 persistence → L4 execution → L5 integration → L6 service → L7 surface. Checked by `internal/archtest`, depguard and forbidigo in `make check`.
 2. The scheduler and engine see parts only through the parts interface. Built-ins are registered by the part host, never imported by the engine.
 3. Built-in parts never import the engine or the store. Everything they need arrives in the `Open` context.
 4. The TUI never reads run directories; it goes through the daemon. The CLI may read run files read-only (`mill runs --store`, `mill logs` with the daemon down).

@@ -1,6 +1,6 @@
 # Data lifecycle
 
-Status: accepted with the 2026-11-12 refinement; D37 (backups) and D38 (old log versions) in [open-decisions.md](open-decisions.md). Refines [storage.md](storage.md) §7 (retention), spec [§20](../../spec/20-paths.md#20-files-and-paths).
+Status: review (2026-11-12 refinement, awaiting the user); D37 (backups) and D38 (old log versions) in [open-decisions.md](open-decisions.md). Refines [storage.md](storage.md) §7 (retention), spec [§20](../../spec/20-paths.md#20-files-and-paths).
 
 Every kind of data mill keeps: whether it's truth or derived, who owns it, how long it lives, how it's collected, how it's backed up and how its format changes. Layers per [layers.md](layers.md).
 
