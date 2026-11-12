@@ -2,7 +2,7 @@
 
 The backend and tech-stack plan for mill, turning the v2 spec (`docs/spec/`) into something a coding agent can build milestone by milestone. It covers `milld`, the engine, storage, protocols, execution, security and testing. The TUI is out of scope except for what the backend must provide to it.
 
-Status: accepted plan (2026-11-11), refined 2026-11-12 into a layered design with cited sources; the refinement's new files and decisions D31–D41 are in review. Its original open decisions are decided and its spec issues are applied to the spec (v2.1, 2026-11-11; see [open-decisions.md](open-decisions.md) and [Spec issues](#spec-issues)). When this plan and the spec disagree, the spec wins. When the eventual source disagrees with this plan, the source wins and this plan gets fixed.
+Status: accepted plan (2026-11-11), refined 2026-11-12 into a layered design with cited sources; the refinement and its decisions D31–D41 were accepted by the user the same day (ADR-054). Its original open decisions are decided and its spec issues are applied to the spec (v2.1, 2026-11-11; see [open-decisions.md](open-decisions.md) and [Spec issues](#spec-issues)). When this plan and the spec disagree, the spec wins. When the eventual source disagrees with this plan, the source wins and this plan gets fixed.
 
 ## Goals
 
@@ -55,7 +55,7 @@ Every design decision in the plan names its source as `[KEY ch. N]` or `[KEY, Pa
 | [tech-stack.md](tech-stack.md) | Every dependency with pinned version, license, reason and rejected alternatives; Go version; build, CI, release; what to copy from rex |
 | [milestones.md](milestones.md) | M0 (weekend prototype) through M11: scope, layers built or extended, fitness functions, exit criteria, size; when each dogfood pipeline first runs |
 | [M0-weekend-prototype.md](M0-weekend-prototype.md) | M0 as TDD tasks, packages mapped to layers |
-| [open-decisions.md](open-decisions.md) | D1–D30 (decided 2026-11-11) and D31–D41 (new, open) |
+| [open-decisions.md](open-decisions.md) | D1–D30 (decided 2026-11-11) and D31–D41 (accepted 2026-11-12, ADR-054) |
 
 ## Reading order
 

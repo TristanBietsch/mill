@@ -1,6 +1,6 @@
 # Layers
 
-Status: review (2026-11-12 refinement, awaiting the user; its new choices are D31–D41 in [open-decisions.md](open-decisions.md)). Spec: [§5](../../spec/05-architecture.md#5-architecture), [§27.4](../../spec/27-tech-stack.md#274-repository-layout).
+Status: accepted (2026-11-12, ADR-054; its choices are D31–D41 in [open-decisions.md](open-decisions.md)). Spec: [§5](../../spec/05-architecture.md#5-architecture), [§27.4](../../spec/27-tech-stack.md#274-repository-layout).
 
 The backbone of the backend plan. It sorts every package into one of eight layers, says what each layer owns, what it may import, which interfaces it publishes, which invariants it keeps, how its failures are contained and how it is tested, and gives the exact CI checks that keep the layering true. Every other backend file refers to these layer names (L0–L7).
 

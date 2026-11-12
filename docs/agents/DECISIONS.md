@@ -427,3 +427,11 @@ ADR-001 to ADR-023 were recorded on 2026-11-11 from spec v2. ADR-024 to ADR-044 
 - **Context:** User requirement: commands are vim-like, typed after `:` on the bottom row, never after `/`; `:` runs from anywhere and sits in the bottom-left corner.
 - **Decision:** One command line on the terminal's last row at column 0, from every screen (ADR-052 exception). `/` is search only. The `λ` prompt is replaced by `:run <pipeline> k=v` and `:pipe <expr>`. The plan's other defaults are accepted: one-row wildmenu, this screen's commands first, palette `:` types a colon, 200-entry per-user history, `gi` for items with `i` as an alias for one release, echo until the next key (12 s at most).
 - **Source:** User requirement and accepted defaults. [command-line plan §7](../plans/command-line.md#7-decisions-2026-11-12), [spec §18.5](../spec/18-tui.md#185-keys-and-mouse).
+
+## ADR-054: Layered backend refinement defaults (D31–D41)
+
+- **Date:** 2026-11-12 · **Status:** accepted
+- **Context:** The layered backend plan ([layers.md](../plans/backend/layers.md), citations in [references.md](../plans/backend/references.md)) needed eleven new decisions.
+- **Decision:** The plan's defaults, accepted by the user: D31 event catalog and reducer in L1 (`core/event`, `core/fold`) · D32 `assemble` (L6) wires `milld` and `--local` · D33 directory decides layer (`lock`, `proc`, `redact` become L0 leaves; runner interface in `partproto`) · D34 `internal/archtest` + depguard + forbidigo enforce layering · D35 in-process metrics registry, OpenTelemetry/Prometheus only as optional sinks · D36 circuit breakers per agent (hold work queued, no retries spent) and per HTTP host (fail fast) · D37 no `mill backup` in v0 · D38 readers keep every shipped `log_v` decoder; newer → M7007 · D39 per-layer coverage floors · D40 CLI additions for stats/doctor/daemon logs/prune/daemon install · D41 stop granting below 1 GiB free (M2002), cap queued runs (M4108).
+- **Consequences:** Spec §27.4 paths follow the layered layout. The M0 plan already uses it.
+- **Source:** User decision. [open-decisions.md](../plans/backend/open-decisions.md).
