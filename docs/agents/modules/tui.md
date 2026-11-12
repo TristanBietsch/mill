@@ -1,8 +1,8 @@
 # tui
 
-**Path:** `internal/surface/tui`  
+**Path:** `internal/surface/tui` (outside the backend plan's scope) (backend layout, accepted 2026-11-11)  
 **Status:** planned · first built in v0.2 (board), v0.3 (editor)  
-**Backend plan path:** `internal/surface/tui` (outside the backend plan's scope)  
+**Spec v2 path (superseded):** `internal/surface/tui`  
 **Depends on:** wire/client, canvas, tui-settings, sound, settings registry  
 **Depended on by:** cmd
 

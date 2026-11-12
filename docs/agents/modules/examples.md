@@ -1,8 +1,8 @@
 # examples
 
-**Path:** `examples/`  
+**Path:** `examples/` (backend layout, accepted 2026-11-11)  
 **Status:** planned · first built in M0 (`hello`), grows each milestone  
-**Backend plan path:** same  
+**Spec v2 path:** same  
 **Depends on:** the `echo` agent, recorded HTTP fixtures  
 **Depended on by:** `make test-e2e`
 

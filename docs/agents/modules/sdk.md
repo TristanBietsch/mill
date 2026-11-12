@@ -1,8 +1,8 @@
 # sdk
 
-**Path:** `sdk/go`, `sdk/ts`, `sdk/python`  
+**Path:** `sdk/go` first (thin wrapper over `partproto`) (backend layout, accepted 2026-11-11)  
 **Status:** planned · first built in v0.5  
-**Backend plan path:** `sdk/go` first (thin wrapper over `partproto`)  
+**Spec v2 path (superseded):** `sdk/go`, `sdk/ts`, `sdk/python`  
 **Depends on:** the parts protocol only  
 **Depended on by:** third-party parts
 

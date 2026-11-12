@@ -1,8 +1,8 @@
 # builtin
 
-**Path:** `internal/parts/builtin`  
+**Path:** `internal/parts/builtin` (backend layout, accepted 2026-11-11)  
 **Status:** planned · first built in M0 (`sh`, `agent`, `stdout`), M1 (data, control), M3 (git, gh)  
-**Backend plan path:** same; agent logic split into `internal/agents` and `agents/detect`  
+**Spec v2 path:** same (agent logic split into `internal/agents` and `agents/detect`)  
 **Depends on:** the part interface, runner and workspace via `Open`, expr  
 **Depended on by:** parthost
 

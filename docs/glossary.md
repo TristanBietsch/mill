@@ -160,17 +160,17 @@ An isolated working directory (git worktree, temp dir or container volume) owned
 
 ## States
 
-Runs and node-runs share one vocabulary. Terminal states never change; only a new node-run (a retry) can follow one. Source: [spec §4 States](spec/04-concepts.md#states).
+Runs and node-runs share one vocabulary. Terminal states never change. A retry is a new node-run (a new attempt); the failed attempt stays `failed`. Source: [spec §4 States](spec/04-concepts.md#states).
 
 | State | Run | Node-run | Meaning |
 |---|---|---|---|
 | `pending` | | ✓ | Not ready yet (waiting on inputs) |
 | `queued` | ✓ | ✓ | Ready, waiting for capacity |
 | `working` | ✓ | ✓ | Executing |
-| `retrying` | | ✓ | Failed with a retryable error and waiting out its backoff |
+| `retrying` | ✓ | ✓ | The next attempt after a retryable failure, waiting out its backoff |
 | `done` | ✓ | ✓ | Finished successfully (terminal) |
 | `failed` | ✓ | ✓ | Finished with an error (terminal) |
 | `skipped` | | ✓ | On a branch not taken, or `when` was false (terminal) |
 | `cached` | | ✓ | Output reused from the cache; not executed (terminal) |
-| `cancelled` | ✓ | ✓ | Stopped by a person, a policy or a budget (terminal) |
+| `cancelled` | ✓ | ✓ | Stopped by a person, a policy or a budget; the reason is recorded (terminal) |
 | `crashed` | ✓ | ✓ | The daemon died while it was live and it could not be resumed or safely re-run (terminal) |

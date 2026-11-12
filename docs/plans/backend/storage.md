@@ -37,7 +37,7 @@ Base dirs from `internal/paths` (spec §20). XDG variables are honored on Linux 
 ~/.local/state/mill/                (state: may be lost)
   milld.log  logs/tui.log  logs/cli-errors.log  tui-state.json  status.json  (prompt/completion status file)
 
-socket: $XDG_RUNTIME_DIR/mill/milld.sock, else ~/.cache/mill/milld.sock (see open decision D20)
+socket: $XDG_RUNTIME_DIR/mill/milld.sock, else ~/.cache/mill/milld.sock (decision D20)
 ```
 
 Notes:

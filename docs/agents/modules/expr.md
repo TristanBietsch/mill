@@ -1,8 +1,8 @@
 # expr
 
-**Path:** `internal/expr`  
+**Path:** `internal/expr` (+ `internal/schema` for output shorthand) (backend layout, accepted 2026-11-11)  
 **Status:** planned · first built in M0  
-**Backend plan path:** `internal/expr` (+ `internal/schema` for output shorthand)  
+**Spec v2 path (superseded):** `internal/expr`  
 **Depends on:** cel-go  
 **Depended on by:** pipeline, sched, builtin
 

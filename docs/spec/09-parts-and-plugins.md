@@ -32,7 +32,7 @@ Levels 3–5 are usually distributed as plugins.
 
 ### 9.3 Parts protocol (v1)
 
-An executable part is a program that `milld` starts with stdin and stdout connected. It uses the same envelope as the daemon protocol: one JSON object per line, `{ "v": 1, "kind": "...", "type": "...", "id": "...", "data": { ... } }`. Stderr is captured as the part's log. Lua and WASM parts implement the same lifecycle through function calls instead of stdio.
+An executable part is a program that `milld` starts with stdin and stdout connected. It uses the same envelope as the daemon protocol: one JSON object per line, `{ "v": 1, "kind": "...", "type": "...", "id": "...", "ctx": "...", "data": { ... } }`. `kind` is `Intent` for messages from `milld` to the part and `Event` for messages from the part. `ctx` is optional: it carries the context id (one per `Open`) for long-lived parts that handle several contexts at once. Stderr is captured as the part's log. Lua and WASM parts implement the same lifecycle through function calls instead of stdio.
 
 **Lifecycle**
 
@@ -42,7 +42,7 @@ An executable part is a program that `milld` starts with stdin and stdout connec
 4. While working, the part may send `Log`, `Progress` (percent, message), `Usage` (tokens, cost), `Artifact` (register a file). There is no way for a part to ask a person anything: if it can't proceed, it fails with a clear error.
 5. The part ends the node-run with `Done` or `Fail` (error class, message, retryable flag).
 6. `milld` can send `Cancel` at any time; the part must finish with `Fail` (class `cancelled`) within the grace period, or it's killed.
-7. `Close` ends the context. Long-lived parts handle many contexts at once, multiplexed by context id; per-call parts exit after `Close`.
+7. `Close` ends the context. Long-lived parts handle many contexts at once, multiplexed by `ctx`, with credit-based flow control so one busy context can't starve the others; per-call parts exit after `Close`.
 
 **Rules**
 - Unknown message types are ignored. A part that doesn't support something answers `Error` with code `unsupported`.
@@ -55,7 +55,7 @@ An executable part is a program that `milld` starts with stdin and stdout connec
 
 ### 9.4 Resolution order
 
-Parts are resolved by id in this order. A later source overrides an earlier one with the same id (and `mill part ls` shows which one won):
+Parts are resolved by id from these sources (`mill part ls` shows where each id came from):
 
 1. Built-ins embedded in `milld`.
 2. Plugins installed in user scope (from `mill.plugins` in `init.lua`).
@@ -63,6 +63,8 @@ Parts are resolved by id in this order. A later source overrides an earlier one 
 4. Inline parts from `mill.part` in your config.
 5. Executables named `mill-part-<name>` on `PATH` (like git subcommands).
 6. MCP servers declared with `mill.mcp`, exposed as `mcp:<server>/<tool>`.
+
+**Built-ins win.** An id that's already taken is never replaced by accident. Executables on `PATH` and MCP tools only fill ids nobody else provides, so a stray `mill-part-sh` can't replace `sh`. Overriding an existing id, a built-in included, takes an explicit choice: a plugin or a `mill.part` that sets `override = true`. Overrides are listed by `mill part ls` and in `mill doctor`.
 
 Part ids are namespaced by plugin (`linear.issue.create`). If two plugins collide, alias one in config: `{ "acme/linear", as = "lin" }` turns its parts into `lin.issue.create`.
 
@@ -150,16 +152,18 @@ mill plugin ls [--outdated]
 mill plugin info acme/linear            # parts, permissions, secrets, dependents
 mill plugin update [name|--all]
 mill plugin rm acme/linear [--force]    # refuses while pipelines use it, lists them
-mill plugin search linear               # searches the registry (§25)
+mill plugin search linear               # searches the registry index (below)
 ```
 
 `mill plugin add` adds the line to `init.lua` (or `.mill/mill.lua` with `--scope project`) and installs immediately. Editing the Lua file by hand works too: `milld` notices the change and installs what's missing, or `mill plugin sync` does it on demand.
 
 **Sources:** registry names (`owner/name`), `gh:owner/repo[@tag]`, any git URL, a local `dir`, a `.millpkg` file, or an HTTPS URL to one.
 
+**The registry (v0.5).** GitHub is the registry: a curated index repository lists each plugin with its source repo, released versions and the SHA-256 of each archive. Registry names resolve through that index; `gh:` sources skip it. A hosted registry with signed packages comes later (§25).
+
 **Install flow:**
 1. Resolve versions against semver ranges and `requires`. Conflicts fail with a clear explanation.
-2. Download, verify checksums, and verify the signature when one is present (the registry requires signatures).
+2. Download and verify the archive's SHA-256 against the registry index (or the lockfile, when the plugin is already locked). Signatures (Sigstore, keyless) come with the hosted registry (§25); until then the hashes in the index and the lockfile are what's checked.
 3. Show a summary the first time: parts it adds, permissions (network hosts, filesystem, destructive actions), secrets it needs, and any build step. Ask once. `--yes` accepts in scripts.
 4. Build or fetch executables for this platform.
 5. Write `mill.lock` (project) or the user lock: exact versions plus hashes of the archive and every executable.
@@ -174,7 +178,7 @@ mill plugin new linear --lang lua|go|ts|python   # scaffold with manifest, one p
 mill plugin dev ./mill-linear                    # link into your config, hot-reload on save
 mill plugin test ./mill-linear                   # runs the plugin's test pipelines against recorded fixtures
 mill plugin pack ./mill-linear                   # → acme-linear-1.2.0.millpkg (+ checksums)
-mill plugin publish ./mill-linear                # sign and upload to the registry
+mill plugin publish ./mill-linear                # open a PR adding the release and its hash to the registry index
 ```
 
 A Lua node part is a few lines:
@@ -260,7 +264,7 @@ On confirm, it installs the missing plugins, records the pipeline's hash as trus
 
 ### 9.11 Lockfile
 
-`mill.lock` (project) and `~/.local/share/mill/plugins/lock` (user) record, for each plugin: source, exact version, archive hash, executable hashes and resolved dependencies. Runs record which lock entry they used. `mill plugin sync --frozen` installs exactly what the lockfile says and fails on any drift, which is what CI should use.
+`mill.lock` (project) and `~/.local/share/mill/plugins/lock` (user) record, for each plugin: source, exact version, archive SHA-256, executable SHA-256s, resolved dependencies and declared permissions. Both are JSON with sorted keys, so they diff cleanly. Before starting an executable part, `milld` hashes it and compares with the lock; a mismatch refuses to start it (`M5301`). Runs record which lock entry they used. `mill plugin sync --frozen` installs exactly what the lockfile says and fails on any drift, which is what CI should use.
 
 
 ---

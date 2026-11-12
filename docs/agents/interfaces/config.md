@@ -51,16 +51,15 @@ One registry defines every setting (id, type, default, section, help, validation
 
 | Variable | Effect |
 |----------|--------|
-| `MILL_CONFIG_DIR`, `MILL_DATA_DIR`, `MILL_SOCKET` | Override paths (spec §20) |
-| `MILL_STATE_DIR` | Proposed by the backend plan (S14) |
+| `MILL_CONFIG_DIR`, `MILL_DATA_DIR`, `MILL_STATE_DIR`, `MILL_SOCKET` | Override paths (spec §20) |
 | `MILL_<SETTING>` | Setting override, layer 5 |
 | `MILL_DEBUG=1` | Stack traces in errors |
 | `MILL_ASCII=1` | Words instead of glyphs |
 | `NO_COLOR` | Plain output |
 | `MILL_OUTPUT`, `MILL_RUN_ID`, `MILL_NODE_ID`, `MILL_WORKSPACE`, `MILL_ARTIFACTS` | Set by mill for agent and step processes ([§11.3](../../spec/11-agents.md#113-getting-structured-output-from-an-agent)) |
 
-## Open points
+## Decided (2026-11-11)
 
-- Socket fallback when `XDG_RUNTIME_DIR` is unset (always on macOS): backend D20 proposes `~/.cache/mill/milld.sock`.
-- Whether `XDG_*` is honored on macOS: backend D21.
-- Environment passed to steps: allowlist (backend D30).
+- Socket: `$XDG_RUNTIME_DIR/mill/milld.sock` on Linux, else `~/.cache/mill/milld.sock` (always on macOS) (backend D20, spec §20).
+- `XDG_*` is honored on macOS and Linux (backend D21, spec §20).
+- Environment passed to steps: the `env.passthrough` allowlist plus pipeline and node `env` (backend D30, [spec §12.1](../../spec/12-runners.md#121-environment)).

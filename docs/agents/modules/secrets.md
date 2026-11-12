@@ -1,8 +1,8 @@
 # secrets
 
-**Path:** `internal/daemon/secrets`  
+**Path:** `internal/secrets` + `secrets/redact` (backend layout, accepted 2026-11-11)  
 **Status:** planned · first built in M1 (env backend, redactor), M3 (keychain and others)  
-**Backend plan path:** `internal/secrets` + `secrets/redact`  
+**Spec v2 path (superseded):** `internal/daemon/secrets`  
 **Depends on:** secrets backend parts  
 **Depended on by:** sched, store, runner, server
 

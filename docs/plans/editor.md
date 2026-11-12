@@ -1,6 +1,6 @@
 # Plan: the pipeline editor
 
-Status: draft for review · spec: §18.7 in `docs/spec/18-tui.md` · prototype: `mockups/v2/index.html` (press `e` on a pipeline, `?` in the editor lists every key).
+Status: accepted 2026-11-11 (decisions in §5) · spec: §18.7 in `docs/spec/18-tui.md` · prototype: `mockups/v2/index.html` (press `e` on a pipeline, `?` in the editor lists every key).
 
 The editor is where pipelines get made. Today's §18.7 (v2 draft) had a graph, an inspector, a palette and a handful of keys: enough to look at a pipeline, not enough to build an agent pipeline without opening the YAML. This plan lists everything the editor needs, ranks it, says how to build it in Go, and lists the decisions that still need an answer.
 
@@ -16,7 +16,7 @@ Ranking:
 
 | Feature | Rank | Why |
 |---|---|---|
-| Buffer is the YAML node tree (`yaml.v3`); graph, layout, lint, inspector derived on every change | MUST | Files are the truth (§2.5). Anything else drifts from the file and loses comments. |
+| Buffer is the YAML node tree (`go.yaml.in/yaml/v4`, edits as text splices); graph, layout, lint, inspector derived on every change | MUST | Files are the truth (§2.5). Anything else drifts from the file and loses comments. |
 | Every action = one YAML edit (or a sidecar pin), one undo step, named | MUST | Predictable undo; the CLI can do the same thing. |
 | Edits shared with the CLI (`internal/pipeline/edit`) | MUST | Principle 9 (headless first) and one tested code path. |
 | Layout sidecar with slot pins only | MUST | Moving a box must never touch the pipeline file (§5.3). |
@@ -88,7 +88,7 @@ Ranking:
 | Live client-side lint on every edit; daemon lint (debounced) for machine-dependent checks | MUST | You need to see a mistake when you make it. |
 | Badges on nodes and edges, header counts, problems panel (`!`), `]e`/`[e` | MUST | Same quickfix model as the rest of mill (§29.8). |
 | Quick fixes (`ga`), fix-all-safe (`gA`), never auto-widen policy | MUST | Speed without silently granting destructive permissions. |
-| Checks M3001–M3302, M9201–M9203 (§18.7.9) | MUST (errors) / SHOULD (warnings, hints) | Graph, references, schemas, workspace, budget, policy, hands-off. |
+| Checks M3001–M3302, M9201–M9203, M9208 (§18.7.9) | MUST (errors) / SHOULD (warnings, hints) | Graph, references, schemas, workspace, budget, policy, hands-off. |
 | Save blocked on errors unless `:w!`; saved-broken pipelines stay disarmed | MUST | A broken pipeline must never run unattended. |
 | Explain (`gx`) | SHOULD | Same pages as `mill explain`. |
 
@@ -130,7 +130,7 @@ Each phase ends with something usable and tested; the CLI commands land with the
 
 | Phase | Builds | Done when |
 |---|---|---|
-| **E0 · edit core** | `internal/pipeline/edit`: load into a `yaml.v3` node tree, a typed path API (get/set/unset/insert-after on mapping nodes, flow vs block preserved), edge inference shared with the compiler, operations (add, insert, branch, connect, disconnect, rename with reference rewrite, delete with heal, wrap/unwrap loop, extract, patterns), each returning a description for undo. Golden tests: input YAML + op → output YAML, byte for byte, comments kept. | `mill node/edge/pipeline/wrap/extract/pattern/refs` work from the CLI on every example pipeline with no comment or order loss. |
+| **E0 · edit core** | `internal/pipeline/edit`: load into a `yaml/v4` node tree (edits applied as text splices by `pipeline/yamledit`), a typed path API (get/set/unset/insert-after on mapping nodes, flow vs block preserved), edge inference shared with the compiler, operations (add, insert, branch, connect, disconnect, rename with reference rewrite, delete with heal, wrap/unwrap loop, extract, patterns), each returning a description for undo. Golden tests: input YAML + op → output YAML, byte for byte, comments kept. | `mill node/edge/pipeline/wrap/extract/pattern/refs` work from the CLI on every example pipeline with no comment or order loss. |
 | **E1 · lint + fixes** | Lint rules as small functions over (document, derived graph, part manifests); fixes as edit operations flagged `safe` / `policy`; `mill lint --fix`, `--code/--node`; daemon `Lint` with `source` for machine checks. Explain pages for every new code. | Every code in §18.7.9 has a golden test and an explain page (§29.11 gates). |
 | **E2 · layout + render** | `internal/pipeline/layout`: layering, slot assignment, loop containers, pins, orthogonal routing into a cell grid with junction characters; used by `mill render` first. | `mill render` draws every example deterministically at three zoom levels; snapshot tests. |
 | **E3 · editor shell** | Bubble Tea model: canvas viewport over the cell grid (Charm `cellbuf` or a small own buffer), selection, `hjkl`/`w`/`b`/`/`, zoom, inspector (read-only), status line, help bar, undo stack, `:w` through `SavePipeline` with base hash, swap file. | Open, navigate and save any pipeline; `Y` shows the YAML. |
@@ -145,7 +145,7 @@ The browser prototype already covers E3–E6 behavior (see section 4), so E3+ ca
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| `yaml.v3` round trips aren't byte-perfect (comment placement, flow style, quoting) | Editor edits produce noisy diffs; people stop trusting it | Edit operations touch only the nodes they change; golden tests on real files; fall back to re-emitting a single node block, never the whole file. Evaluate `goccy/go-yaml` if `yaml.v3` comment handling blocks this. |
+| YAML round trips aren't byte-perfect in any Go library (comment placement, flow style, quoting) | Editor edits produce noisy diffs; people stop trusting it | Edits are text splices (backend tech-stack §5): touch only the bytes they change, re-parse and compare; golden tests on real files; fall back to re-emitting a single node block, never the whole file. `goccy/go-yaml` stays the fallback if `yaml/v4` positions aren't enough. |
 | Edge inference in the editor drifts from the compiler | The graph lies | One function in `internal/pipeline`, used by both; property test: compile(file) edges == editor edges. |
 | Orthogonal routing gets unreadable past ~25 nodes | Big pipelines are unusable on cards | Compact/dots zoom, folding, extract to sub-pipeline; routing tests on generated graphs; "edges point right" rule. |
 | Terminal width: cards need ~23 columns each | Few columns visible at 80–120 cols | Snap scrolling to whole columns, compact zoom by default under 80 cols, hide the right pane under 96. |
@@ -172,13 +172,13 @@ The whole prototype, screen by screen, against `docs/spec/18-tui.md` (and the CL
 | First launch hand-off to setup | §18.13, §18.8 | covered | Scenario "first run". |
 | First-run setup: 7 steps, ask once, refusals | §18.8 | covered | Sound step previews each set; trusted folders refuses `/`, home, relative and `..` (`M9301`). `--yes`/`--preview` are CLI-only and not mocked. |
 | Board: header, sections, counts, fold, selection follows a pipeline | §18.2 | covered | `1 2 3`, `tab`, fold over 5 READY rows. |
-| Board rows: five things, text per state, runs strip, age | §18.3 | covered | Strip uses `■ ✗ ↻ ■`; adds `↯` and `⊗` (provisional). |
+| Board rows: five things, text per state, runs strip, age | §18.3 | covered | Strip uses `■ ✗ ↯ ⊗ ↻ ■` (spec v2.1). |
 | Detailed view `v` | §18.3 | covered | runs (20), ok, typical, trigger, next, header `· N runs today · p50`. |
 | Conditional columns: cost today, long-run badge, budget, scope | §18.3, §18.12 | covered | Budget `NN% $` appears once issue-to-pr passes 80% of $4.50; `▴2×` on the live run. The inverse `▴8×` past `max_wall` isn't reached by the demo data. |
 | Narrow terminals: give-way order, name down to 12 | §18.3 | covered | Width button. |
 | Filter row, `/` search tokens, `t`, `s` `-`, `V`, `p` | §18.2 | covered | Tokens `state: tag: trigger: scope: uses: ok: cost: ran:`. |
 | `λ` prompt | §18.2 | covered | Pipeline + `key=value` inputs with a hint of missing ones, `tab` completes names and input keys, pipe expressions. |
-| Focus modes and the mode name | §18.4 | partial | Every mode works. The board has no status line in the spec drawing, so the mode shows at the left of the bottom line (board) or in a status line (overlays); the spec doesn't say where on the board. |
+| Focus modes and the mode name | §18.4 | covered | Every mode works. The board shows the mode name at the left of the help bar; overlays show it in their status line (spec v2.1). |
 | Board keys and mouse | §18.5 | covered | `ctrl+c` asks to quit like `q`. |
 | Help overlay `?` | §18.5 | covered | Two columns at 96+, one column below with BADGES then MOUSE dropped and the truncation note. |
 | Run popup: rows, timeline, title, budget amber, result line | §18.6 | covered | |
@@ -198,39 +198,39 @@ The whole prototype, screen by screen, against `docs/spec/18-tui.md` (and the CL
 | `:messages` | §29.8 | covered | Boot warnings and every error this session. |
 | Config error line under the header | §29.8, §18.13 | covered | Scenario "config error". |
 | Shell: `mill status`, `ls`, `runs`, `run`, `doctor`, `trust .`, `explain`, prompt segment | §17, §29.10, §22 | partial | Synthetic output for the commands the TUI points to; not the full CLI. |
-| Backend-plan states on screen | backend plan | covered (provisional) | `↯ crashed` (S18), untrusted projects with `mill trust .` (D18), retries as new attempts `try 1`/`try 2` (S8), `⊗ cancelled · budget` with the reason (S9), `M3021` ambiguous primary upstream (D9), `•••` redaction in logs and items (S1). Listed in the page footer as provisional. |
+| Backend-plan states on screen | §4, §18.2, §18.3, §18.6 | covered | `↯ crashed` (S18), untrusted projects with `mill trust .` (D18), retries as new attempts `try 1`/`try 2` (S8), `⊗ cancelled · budget` with the reason (S9), `M3021` ambiguous primary upstream (D9), `•••` redaction in logs and items (S1). Part of the spec since v2.1; the page footer still calls them provisional. Not yet in the prototype: `M3201` as a warning on manual-only pipelines (it still shows an error) and `M9208` for samples. |
 
-## 5. Open decisions
+## 5. Decisions
 
-Each has the default this spec and prototype use, and the alternatives. Answering these settles §18.7.
+Each has the default this spec and prototype use, and the alternatives. **All 30 were decided on 2026-11-11** and are applied in spec §18.7 (v2.1): the user decided 1, 4, 7, 8 and 12; the rest take the default. Only 7 differs from its default. Recorded in `docs/agents/DECISIONS.md` (ADR-028, ADR-032 to ADR-035, ADR-044).
 
-1. **Inferred edges when a node has no `in:` and references several nodes.** The backend plan settles this (D9) and the prototype now follows it: the input is the **primary upstream**, the referenced node downstream of all the others; when the references run in parallel there is none, and lint reports `M3021` with `in:` fixes. Still to do: §18.7.3 (Edges, "Inferred") and §18.7.9 (where `M3021` is "Unreachable") describe the old default and need updating to match; unreachable moves to a free code such as `M3024`. Alternatives: items from *every* referenced node; or require an explicit `in:` whenever a node references more than one node.
-2. **References when `in:` is explicit.** Default: references to nodes not already upstream add a dotted ordering edge, no items. Alternatives: they add a data edge too (§7.4 read literally); or they're a lint error until `needs:` is written.
-3. **Connecting into a node whose input is inferred.** Default: write `in: [<inferred sources>, <new>]` so nothing is lost. Alternatives: write only the new source (simpler YAML, may change behavior); ask each time.
-4. **Loop YAML shape.** Default: `loop` with `with.body: [ids]`, `until`, `max_iters`; body entry reads `<loop>.body`; ports `out` and `exhausted`. Alternatives: nested `nodes:` inside the loop node (self-contained, harder to edit with `mill node`); a `loop:` key on each body node.
-5. **`exhausted` port on loops and `agent.loop`.** Default: yes, carrying the last try. Alternatives: no port; an exhausted loop fails the node (`on_error` then decides).
-6. **Intentional drops.** Default: a new node key `discard: [port, ...]`. Alternatives: connect to a `noop` named `drop-…`; a YAML comment directive (`# mill: discard false`); no warning at all for unconnected branch ports.
-7. **Missing budget on agent pipelines (`M3201`).** Default: error. Alternatives: warning; error only for pipelines with non-manual triggers.
-8. **Saving with lint errors.** Default: `:w` refuses, `:w!` saves and the pipeline stays disarmed until clean. Alternatives: always save, show errors; never save errors.
-9. **Policy-widening fixes.** Default: never in `gA` / `--fix`; one at a time with `ga` and a visible "policy change" note. Alternatives: allowed in `gA` with a confirmation listing them; never offered as fixes at all (edit the pipeline panel instead).
-10. **Deleting a node in a chain.** Default: heal automatically when it has exactly one input and one output. Alternatives: never heal (lint shows the gap); always ask.
-11. **Layout pins.** Default: pins store slots (column, row) and edges must point right (moves that break this are refused). Alternatives: free cell positions; allow backward placement with routed back-edges.
-12. **Pinned samples location.** Default: `.mill/samples/<pipeline>/<node>.jsonl`, committed like code. Alternatives: inside the layout sidecar; user-only (`~/.local/share/mill/samples`), never committed.
-13. **Dry run of unsaved changes.** Default: `R` runs the buffer (`StartRun{source}`) and records it as a normal dry run. Alternatives: require `:w` first; run the buffer but don't keep the run in history.
-14. **Single-node runs of agents.** Default: confirm with the estimate every time. Alternatives: confirm only above a cost threshold (a setting); never confirm in the editor.
-15. **Right pane default.** Default: inspector always visible beside the canvas (35 columns). Alternatives: hidden until `enter` (more canvas); a bottom pane instead of a right one.
-16. **Default zoom.** Default: cards; compact automatically under 80 columns. Alternatives: compact by default; remember per pipeline in `tui-state.json`.
-17. **Help bar contents.** Default: five keys that change with mode and focus (rule 5 kept). Alternatives: a fixed five for the whole editor; six keys in the editor.
-18. **Leaving the editor.** Default: `esc` unwinds one layer at a time, then asks to save. Alternatives: `esc` from anywhere leaves (with the save prompt); `:q` is the only way out.
-19. **Palette key layout.** Default: `a` after, `i` before, `o` branch, `gt` trigger. Alternatives: only `a`, with the insert position chosen inside the palette; `A`/`I` capitals for before/after like vim.
-20. **Key collisions with vim habits.** Default: `x` disconnects, `dd` deletes, `r` renames, `u` undoes, `space` opens the action menu. Alternatives: `x` deletes the node (vim `x`), `C` reroutes; `space` as a leader key for multi-key commands.
-21. **Colors in the editor.** Default: color only for lint state, dry-run state and diff lines; selection is a background; expressions use dim delimiters, not color. Alternatives: a distinct accent for expressions and ports (bends rule 8 further); monochrome editor with glyph-only states.
-22. **Expression preview data.** Default: pinned sample first, then the last dry run's recorded items; nothing live. Alternatives: also the latest real run's items (more realistic, risk of sensitive data); synthetic data generated from schemas only.
-23. **Expression preview engine.** Default: the real `cel-go` environment with a sample activation (the prototype uses a small subset evaluator). Alternatives: daemon-side evaluation via a new intent; preview off by default.
-24. **Hands-off enforcement for plugins.** Default: a manifest flag `interactive`; such parts are listed greyed and refused by lint (`M3206`). Alternatives: hide them entirely; allow them only inside `handoff.to`.
-25. **Patterns format and source.** Default: patterns are partial pipeline YAML files with `‹placeholders›`; built-ins embedded, plugins via `provides.patterns`, user ones in `~/.config/mill/patterns/`. Alternatives: Lua functions that build nodes; only built-in patterns in v0.3.
-26. **Extract to sub-pipeline: inputs.** Default: each outside node referenced becomes an input named after it (`inputs.<node>`), and the parent passes `nodes.<node>.item`. Alternatives: one `items` input carrying the stream only; ask for names in a dialog.
-27. **Where new nodes go in the YAML.** Default: right after the node they're inserted after (file order follows the flow). Alternatives: always at the end of `nodes:`; sorted topologically on every save.
-28. **Swap files.** Default: write the buffer to `~/.local/state/mill/swap/` after each change; offer recovery on next open. Alternatives: no swap (undo only); autosave to the real file with a dirty-marker.
-29. **Estimates.** Default: p50 of the node's history, else model price × a typical token count per part; shown as a range (one try to `max_iters`). Alternatives: history only (blank until a run exists); a per-part `estimate` field in manifests.
-30. **CLI command names.** Default: `mill node|edge|pipeline|wrap|unwrap|extract|pattern|refs|layout|estimate`. Alternatives: everything under `mill edit <verb>`; fewer top-level verbs (`wrap`/`extract` as `mill node wrap|extract`).
+1. **Inferred edges when a node has no `in:` and references several nodes.** The backend plan settles this (D9) and the prototype now follows it: the input is the **primary upstream**, the referenced node downstream of all the others; when the references run in parallel there is none, and lint reports `M3021` with `in:` fixes. Alternatives: items from *every* referenced node; or require an explicit `in:` whenever a node references more than one node. **Decided (user):** primary upstream + `M3021` on ambiguity. Applied: §7.4, §18.7.3 (Inferred, Ordering), §18.7.9 (`M3021` ambiguous input; unreachable moved to `M3024`).
+2. **References when `in:` is explicit.** Default: references to nodes not already upstream add a dotted ordering edge, no items. Alternatives: they add a data edge too (§7.4 read literally); or they're a lint error until `needs:` is written. **Decided:** default accepted.
+3. **Connecting into a node whose input is inferred.** Default: write `in: [<inferred sources>, <new>]` so nothing is lost. Alternatives: write only the new source (simpler YAML, may change behavior); ask each time. **Decided:** default accepted.
+4. **Loop YAML shape.** Default: `loop` with `with.body: [ids]`, `until`, `max_iters`; body entry reads `<loop>.body`; ports `out` and `exhausted`. Alternatives: nested `nodes:` inside the loop node (self-contained, harder to edit with `mill node`); a `loop:` key on each body node. **Decided (user):** the default, `with.body` list + `until` + `max_iters`, ports `out` and `exhausted` (§10.3).
+5. **`exhausted` port on loops and `agent.loop`.** Default: yes, carrying the last try. Alternatives: no port; an exhausted loop fails the node (`on_error` then decides). **Decided:** default accepted.
+6. **Intentional drops.** Default: a new node key `discard: [port, ...]`. Alternatives: connect to a `noop` named `drop-…`; a YAML comment directive (`# mill: discard false`); no warning at all for unconnected branch ports. **Decided:** default accepted.
+7. **Missing budget on agent pipelines (`M3201`).** Default: error. Alternatives: warning; error only for pipelines with non-manual triggers. **Decided (user):** error when the pipeline has any automatic trigger, warning when it only runs by hand. This differs from the default above. Applied: §18.7.9 `M3201` is `error · warning`, and the best-of-3 drawings (manual) now show it as a warning (`✗ 2  ! 2`).
+8. **Saving with lint errors.** Default: `:w` refuses, `:w!` saves and the pipeline stays disarmed until clean. Alternatives: always save, show errors; never save errors. **Decided (user):** the default. `:w` refuses, `:w!` saves and the pipeline stays disarmed (§18.7.9).
+9. **Policy-widening fixes.** Default: never in `gA` / `--fix`; one at a time with `ga` and a visible "policy change" note. Alternatives: allowed in `gA` with a confirmation listing them; never offered as fixes at all (edit the pipeline panel instead). **Decided:** default accepted.
+10. **Deleting a node in a chain.** Default: heal automatically when it has exactly one input and one output. Alternatives: never heal (lint shows the gap); always ask. **Decided:** default accepted.
+11. **Layout pins.** Default: pins store slots (column, row) and edges must point right (moves that break this are refused). Alternatives: free cell positions; allow backward placement with routed back-edges. **Decided:** default accepted.
+12. **Pinned samples location.** Default: `.mill/samples/<pipeline>/<node>.jsonl`, committed like code. Alternatives: inside the layout sidecar; user-only (`~/.local/share/mill/samples`), never committed. **Decided (user):** the default, committed; lint warns when a sample looks like it holds a secret (`M9208`, §18.7.9, §18.7.12).
+13. **Dry run of unsaved changes.** Default: `R` runs the buffer (`StartRun{source}`) and records it as a normal dry run. Alternatives: require `:w` first; run the buffer but don't keep the run in history. **Decided:** default accepted.
+14. **Single-node runs of agents.** Default: confirm with the estimate every time. Alternatives: confirm only above a cost threshold (a setting); never confirm in the editor. **Decided:** default accepted.
+15. **Right pane default.** Default: inspector always visible beside the canvas (35 columns). Alternatives: hidden until `enter` (more canvas); a bottom pane instead of a right one. **Decided:** default accepted.
+16. **Default zoom.** Default: cards; compact automatically under 80 columns. Alternatives: compact by default; remember per pipeline in `tui-state.json`. **Decided:** default accepted.
+17. **Help bar contents.** Default: five keys that change with mode and focus (rule 5 kept). Alternatives: a fixed five for the whole editor; six keys in the editor. **Decided:** default accepted.
+18. **Leaving the editor.** Default: `esc` unwinds one layer at a time, then asks to save. Alternatives: `esc` from anywhere leaves (with the save prompt); `:q` is the only way out. **Decided:** default accepted.
+19. **Palette key layout.** Default: `a` after, `i` before, `o` branch, `gt` trigger. Alternatives: only `a`, with the insert position chosen inside the palette; `A`/`I` capitals for before/after like vim. **Decided:** default accepted.
+20. **Key collisions with vim habits.** Default: `x` disconnects, `dd` deletes, `r` renames, `u` undoes, `space` opens the action menu. Alternatives: `x` deletes the node (vim `x`), `C` reroutes; `space` as a leader key for multi-key commands. **Decided:** default accepted.
+21. **Colors in the editor.** Default: color only for lint state, dry-run state and diff lines; selection is a background; expressions use dim delimiters, not color. Alternatives: a distinct accent for expressions and ports (bends rule 8 further); monochrome editor with glyph-only states. **Decided:** default accepted.
+22. **Expression preview data.** Default: pinned sample first, then the last dry run's recorded items; nothing live. Alternatives: also the latest real run's items (more realistic, risk of sensitive data); synthetic data generated from schemas only. **Decided:** default accepted.
+23. **Expression preview engine.** Default: the real `cel-go` environment with a sample activation (the prototype uses a small subset evaluator). Alternatives: daemon-side evaluation via a new intent; preview off by default. **Decided:** default accepted.
+24. **Hands-off enforcement for plugins.** Default: a manifest flag `interactive`; such parts are listed greyed and refused by lint (`M3206`). Alternatives: hide them entirely; allow them only inside `handoff.to`. **Decided:** default accepted.
+25. **Patterns format and source.** Default: patterns are partial pipeline YAML files with `‹placeholders›`; built-ins embedded, plugins via `provides.patterns`, user ones in `~/.config/mill/patterns/`. Alternatives: Lua functions that build nodes; only built-in patterns in v0.3. **Decided:** default accepted.
+26. **Extract to sub-pipeline: inputs.** Default: each outside node referenced becomes an input named after it (`inputs.<node>`), and the parent passes `nodes.<node>.item`. Alternatives: one `items` input carrying the stream only; ask for names in a dialog. **Decided:** default accepted.
+27. **Where new nodes go in the YAML.** Default: right after the node they're inserted after (file order follows the flow). Alternatives: always at the end of `nodes:`; sorted topologically on every save. **Decided:** default accepted.
+28. **Swap files.** Default: write the buffer to `~/.local/state/mill/swap/` after each change; offer recovery on next open. Alternatives: no swap (undo only); autosave to the real file with a dirty-marker. **Decided:** default accepted.
+29. **Estimates.** Default: p50 of the node's history, else model price × a typical token count per part; shown as a range (one try to `max_iters`). Alternatives: history only (blank until a run exists); a per-part `estimate` field in manifests. **Decided:** default accepted.
+30. **CLI command names.** Default: `mill node|edge|pipeline|wrap|unwrap|extract|pattern|refs|layout|estimate`. Alternatives: everything under `mill edit <verb>`; fewer top-level verbs (`wrap`/`extract` as `mill node wrap|extract`). **Decided:** default accepted.

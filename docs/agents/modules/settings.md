@@ -1,8 +1,8 @@
 # settings
 
-**Path:** `internal/catalog/settings`  
+**Path:** `internal/config/settings` (types copied from rex) (backend layout, accepted 2026-11-11)  
 **Status:** planned · first built in M1  
-**Backend plan path:** `internal/config/settings` (types copied from rex)  
+**Spec v2 path (superseded):** `internal/catalog/settings`  
 **Depends on:** none  
 **Depended on by:** config, cli (`mill config`), tui-settings
 

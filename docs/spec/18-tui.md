@@ -43,9 +43,9 @@ These rules come from rex and apply to every mill screen. A change that breaks o
  enter open · n new · e edit · R run · ? more
 ```
 
-**Sections.** Pipelines sit in three sections by their latest state: **FAILED**, **RUNNING** (including retrying) and **READY** (ok, never run, disabled). Each title shows its count. `1`, `2`, `3` jump to a section. On a long READY, `3` also shows and hides it. When a pipeline changes section (a run starts or fails), the selection stays on that pipeline.
+**Sections.** Pipelines sit in three sections by their latest state (the full table is in §4): **FAILED** (failed, `↯` crashed, and `⊗` cancelled by a budget), **RUNNING** (including retrying) and **READY** (ok, never run, `⊗` cancelled by a person or a policy, `⊘` disabled, and `◌` not trusted). Each title shows its count. `1`, `2`, `3` jump to a section. On a long READY, `3` also shows and hides it. When a pipeline changes section (a run starts or fails), the selection stays on that pipeline.
 
-**Header.** One line: `N failed · N running · N ok today · $X today`. `failed` is red while above zero. With `v`, it adds `· N runs today · p50 4m`.
+**Header.** One line: `N failed · N running · N ok today · $X today`. `N failed` counts every pipeline in FAILED, crashed and budget-cancelled ones included. `failed` is red while above zero. With `v`, it adds `· N runs today · p50 4m`.
 
 **Prompt.** `i` focuses the bottom prompt (`λ`). It runs whatever you type: a pipeline name with inputs (`fix-flaky-test test=TestCache_Expiry`) or a pipe expression (`sh "git log -5" | agent claude/haiku "summarize"`, §14.2). `tab` completes pipeline names and input keys. The new run's pipeline is selected when it starts.
 
@@ -82,10 +82,15 @@ By default a row shows five things: **state, name, text, runs, age**.
   | running | The current node and its progress: `build · loop 2/3` |
   | retrying | Why and when: `build · rate limited, retry in 40s` (amber) |
   | ok | The last result, then the next run: `draft PR #1293 · next on webhook`. The result comes from the run's `outputs.summary`, or the first output. |
+  | crashed | Where, and how to go on: `fix: crashed during a daemon restart · F reruns from fix` |
+  | cancelled (budget) | Which limit and how far it got: `budget: 2M tokens used at refactor · 3 of 5 repos done` |
+  | cancelled (by a person or a policy) | `cancelled by you · F reruns from the node it stopped at` |
   | never run | `never run · R for a dry run` |
   | disabled | `disabled · :enable to turn its triggers back on` |
+  | not trusted | `not trusted · triggers off · mill trust .` (a fresh clone's pipelines, §22) |
+  | saved with lint errors | `lint errors · e to fix` (its triggers stay off, §18.7.9) |
 
-- **runs** is the last 10 runs as squares, oldest to newest: `■` green ok, `✗` red failed, `↻` amber retrying, `■` blue running.
+- **runs** is the last 10 runs as squares, oldest to newest: `■` green ok, `✗` red failed, `↯` red crashed, `⊗` red cancelled by a budget or dim cancelled by a person, `↻` amber retrying, `■` blue running. `·` fills the strip when there are fewer than 10 runs.
 - **age** is the time since the pipeline's last event, right-aligned against the edge. `-` means never.
 
 `v` switches to the **detailed view**, which adds the columns you need to compare pipelines:
@@ -95,7 +100,13 @@ By default a row shows five things: **state, name, text, runs, age**.
      state name        text                              runs (20)              ok    typical      trigger      next      age
 ```
 
-**Conditional columns** (rule 3): they appear in both views only while a row needs them:
+**Conditional columns** (rule 3): they appear in both views only while a row needs them. Scope, cost today and budget sit between the text and the runs strip, in that order; the long-run badge sits between the last column and the age (§18.12):
+
+```
+ ▸ ✗  nightly-sweep    build: make check failed on all 3 tries       p   $0.31  82% $  ■■✗■■■■■■✗  ▴2×    9h
+     state name        text                                          scope cost budget runs        badge  age
+```
+
 
 | Column | Shows while | Looks like |
 |---|---|---|
@@ -126,7 +137,7 @@ By default a row shows five things: **state, name, text, runs, age**.
 | Help | `?` | `esc`, `?` |
 | Confirm | `dd`, `:disable`, `:q` | `y` / `n` |
 
-The mode name shows at the left of the status line, the way vim shows `-- INSERT --`.
+The mode name shows the way vim shows `-- INSERT --`. On the board, which has no status line, it shows at the left of the help bar (`PROMPT  enter run · tab complete · esc cancel`); the default board mode shows no name. Overlays and the editor show it at the left of their status line.
 
 ### 18.5 Keys and mouse
 
@@ -172,22 +183,24 @@ The mode name shows at the left of the status line, the way vim shows `-- INSERT
 │  ✓ ws         mill/issue-1287                                   ▏                             1s  │
 │  ✓ plan       claude/opus · risk medium, 3 files · 210K tk       ████████████              5m38s  │
 │  ✓ scope      pass                                                           ▏                0s  │
-│  ↻ build      rate limited · retry in 40s · loop 2/3                          ████░░░      2m11s  │
+│    └─ else  – hand-back  skipped · scope passed                                                   │
+│  ↻ build      try 2 · rate limited · next try in 40s · loop 2/3                   ░░░        40s  │
+│    └ try 1 ✗  M6201 rate limited by the provider (429)                        ████         1m31s  │
 │  ○ review                                                                                         │
 │  ○ pr                                                                                             │
 │  ○ ping                                                                                           │
-│  – hand-back  skipped · scope passed                                                              │
 │                                                                                                   │
 │  enter agent · L log · F rerun from here · i items · esc back                                     │
 │                                                                                                   │
 └───────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Columns:** state, node, what it did (or is doing), a timeline bar on the run's own clock (`░` is time spent waiting to retry), and duration. Nodes in `each` mode show `3/5` and expand with `za`.
+- **Columns:** state, node, what it did (or is doing), a timeline bar on the run's own clock (`░` is time an attempt spent waiting to retry), and duration. Nodes in `each` mode show `3/5` and expand with `za`.
 - **Title:** run, state, elapsed time, tokens, and cost against the budget. The budget turns amber over 80%.
 - **`enter` on an agent node** shows its screen, view-only, repainted by the daemon so it appears at once. `esc`, `qq` or `ctrl+]` goes back.
 - **`L`** turns the popup into the log (below). **`i`** shows the selected node's input and output items. **`F`** reruns from the selected node, reusing earlier outputs. **`c`** cancels the run (confirm).
-- **Branches** show as indented rows under the node that split (`├─ true`, `└─ else`). Skipped branches are dim with the reason.
+- **Branches** show as indented rows under the node that split (`├─ true`, `└─ else`), never as top-level rows: in the drawing, `hand-back` sits under `scope` on its `else` branch. Skipped branches are dim with the reason.
+- **Retries** are new attempts (§4). The node's row shows the current attempt (`try 2`, with `░` while it waits out its backoff). Each failed attempt stays `failed` as its own sub-row under it (`└ try 1 ✗` with its code), and `enter` on that sub-row shows its cause.
 - **Live:** the popup follows the run. When it finishes, the title turns green or red and the result line (`draft PR #1293`) appears at the bottom.
 
 **Log.** `L` inside a run shows its log in the same popup:
@@ -207,7 +220,7 @@ The editor is the TUI face of the same edit operations the CLI exposes (§17.8, 
 | Rule | In practice |
 |---|---|
 | **Files are the truth.** | Every editor action is a change to the pipeline YAML, or to the layout sidecar for positions (§7.6). There is no hidden editor-only state. View preferences (zoom, pane widths, the minimap, the last selection) are saved in `tui-state.json` and never change behavior. Pinned samples (§18.7.12) are files too. |
-| **The buffer is YAML.** | The editor holds the pipeline as a YAML document (the `yaml.v3` node tree), not as a separate model. The graph, the inspector, lint and the layout are all derived from it on every change. That's what keeps comments, key order and formatting intact, and what makes the YAML pane (`Y`) and the graph two views of one thing. |
+| **The buffer is YAML.** | The editor holds the pipeline as a YAML document (the `go.yaml.in/yaml/v4` node tree), not as a separate model. Edits are applied as text splices on the file, so lines an edit doesn't touch keep their exact bytes (§27.2). The graph, the inspector, lint and the layout are all derived from it on every change. That's what keeps comments, key order and formatting intact, and what makes the YAML pane (`Y`) and the graph two views of one thing. |
 | **One edit, one undo step.** | Each action (add, connect, rename, a quick fix, a field edit) is one entry on the undo stack, with the description shown in the status line (`undo: connect check.true → judge`). |
 | **Hands-off.** | The palette has no approval, question or "wait for a person" parts, and lint refuses any that a plugin offers (`M3206`). Where a person is needed, the editor offers a `handoff`, which ends the branch (§10.3). |
 | **Same operations as the CLI.** | The TUI and `mill node`, `mill edge`, `mill wrap`, `mill lint --fix` call the same package (`internal/pipeline/edit`). A change you can make with a key you can make with a command, and both produce the same YAML. |
@@ -225,7 +238,7 @@ The editor is the TUI face of the same edit operations the CLI exposes (§17.8, 
 #### 18.7.2 Screen
 
 ```
- ≋ best-of-3.mill.yaml                                                             ≈ $1.94 per run · no budget  ·  ✗ 3  ! 1
+ ≋ best-of-3.mill.yaml                                                             ≈ $1.94 per run · no budget  ·  ✗ 2  ! 2
 ┌ cards ────────────────────────────────────────────────────────────────────────────────┐┌ ⊢ gate · assert ────────────────┐
 │                                                                                       ││ WITH                            │
 │ ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   · ││ that*       ${{ nodes.judge.ite…│
@@ -257,13 +270,13 @@ The editor is the TUI face of the same edit operations the CLI exposes (§17.8, 
 │ ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   · ││                                 │
 │                                                                                       ││                                 │
 └───────────────────────────────────────────────────────────────────────────────────────┘└─────────────────────────────────┘
- NORMAL  best-of-3 · 7 nodes · 6 edges   3 lint errors · ]e walks through them, ga fixes the one selected   gate  cards 5,0
+ NORMAL  best-of-3 · 7 nodes · 6 edges   2 lint errors · ]e walks through them, ga fixes the one selected   gate  cards 5,0
  a add · c connect · enter inspect · ga fix · ? more
 ```
 
 | Area | What it shows |
 |---|---|
-| **Header** | The file, `[+]` when the buffer differs from the file on disk, then on the right the estimated cost per run against the budget (§18.7.12) and the lint summary (`✗ 3  ! 1`, or `✓ lint`). During a dry run the right side shows its progress instead. |
+| **Header** | The file, `[+]` when the buffer differs from the file on disk, then on the right the estimated cost per run against the budget (§18.7.12) and the lint summary (`✗ 2  ! 2`, or `✓ lint`). During a dry run the right side shows its progress instead. |
 | **Canvas** | The graph (§18.7.3). Scrolls to keep the selection visible; `zh zj zk zl` pan by a quarter screen. |
 | **Right pane** | One of three, never more: the **inspector** for the selected node (§18.7.10), the **pipeline panel** (`gp`, §18.7.11), or the **YAML pane** (`Y`, §18.7.13). |
 | **Bottom panel** | Opens over the lower part of the canvas when asked for: **problems** (`!`), **items** (`gi`), **references** (`gr`). One at a time, eight rows. |
@@ -316,8 +329,8 @@ The editor is the TUI face of the same edit operations the CLI exposes (§17.8, 
 | Edge | Drawn as | Comes from |
 |---|---|---|
 | Data | `──▶` solid | `in:`, explicit `edges:`, or inferred from a `${{ nodes.x… }}` reference (§7.4) |
-| Inferred | `──▶` solid; marked `⋯` in the inspector's `in` row and in the status line when focused | A reference, when the node has no `in:`. Removing it means removing the reference (§18.7.7). |
-| Ordering | `┄┄▷` dotted | `needs:`, or a reference to a node that isn't already upstream of a node with an explicit `in:` |
+| Inferred | `──▶` solid; marked `⋯` in the inspector's `in` row and in the status line when focused | The node's **primary upstream** (§7.4), when it has no `in:`: of the nodes it references, the one every other referenced node is upstream of. Its other references draw as ordering edges. When the references run in parallel there's no primary upstream, no data edge is drawn, and lint reports `M3021` with `in:` fixes. Removing an inferred edge means removing the reference or writing an explicit `in:` (§18.7.7). |
+| Ordering | `┄┄▷` dotted | `needs:`, or a reference to a node that isn't already upstream through the node's input (explicit `in:` or primary upstream, §7.4) |
 | From a trigger | `──▶` dim | Implicit: every entry node starts when the run starts |
 | Branch | `─ false ─▶` | A named port; the label sits on the first straight run of the edge |
 
@@ -366,7 +379,7 @@ Focus is on the **canvas**, the **right pane** or the **bottom panel**. `enter` 
 **The palette.** `a` opens a searchable palette over the canvas:
 
 ```
- ≋ best-of-3.mill.yaml                                                             ≈ $1.94 per run · no budget  ·  ✗ 3  ! 1
+ ≋ best-of-3.mill.yaml                                                             ≈ $1.94 per run · no budget  ·  ✗ 2  ! 2
 ┌ cards ────────────────────────────────────────────────────────────────────────────────┐┌ ◭ judge · agent.judge ──────────┐
 │                                                                                       ││ WITH                            │
 │ ·┌ a insert after judge ────────────────────────────────────────────────────────────┐ ││ rubric*     @prompts/rubric.md  │
@@ -397,7 +410,7 @@ Focus is on the **canvas**, the **right pane** or the **bottom panel**. `enter` 
 │  └─ type search · tab category · enter insert · esc close ──────────────────────────┘ ││                                 │
 │ ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   · ││                                 │
    ⋮
- INSERT  best-of-3 · 7 nodes · 6 edges   3 lint errors · ]e walks through them, ga fixes the one selected  judge  cards 4,0
+ INSERT  best-of-3 · 7 nodes · 6 edges   2 lint errors · ]e walks through them, ga fixes the one selected  judge  cards 4,0
  type search · tab category · enter insert · esc close
 ```
 
@@ -453,7 +466,7 @@ New nodes get an id from the part (`gh.pr` → `pr`, then `pr-2`), the part's re
 `c` starts a connection from the selected node. If it has more than one output port and none is focused, a **port picker** opens next to the node:
 
 ```
- ≋ best-of-3.mill.yaml                                                             ≈ $1.94 per run · no budget  ·  ✗ 3  ! 1
+ ≋ best-of-3.mill.yaml                                                             ≈ $1.94 per run · no budget  ·  ✗ 2  ! 2
 ┌ cards ────────────────────────────────────────────────────────────────────────────────┐┌ ⊨ check · check ────────────────┐
 │                                                                                       ││ WITH                            │
 │ ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   · ││ sh*         make check          │
@@ -463,14 +476,14 @@ New nodes get an id from the part (`gh.pr` → `pr`, then `pr-2`), the part's re
 │ └───────────────┘│  ·  └───────────────┘· │                                │─────────┘││ uses        check               │
 │  └───────────────┘                        └─ j/k · enter · esc ────────────┘          ││ in          fanout              │
    ⋮
- NORMAL  best-of-3 · 7 nodes · 6 edges   3 lint errors · ]e walks through them, ga fixes the one selected  check  cards 3,0
+ NORMAL  best-of-3 · 7 nodes · 6 edges   2 lint errors · ]e walks through them, ga fixes the one selected  check  cards 3,0
  j/k choose · enter ok · esc cancel
 ```
 
 After `2` (the unconnected `false` port), `CONNECT` mode with `judge` as the first target; `hjkl` moves the target:
 
 ```
- ≋ best-of-3.mill.yaml                                                             ≈ $1.94 per run · no budget  ·  ✗ 3  ! 1
+ ≋ best-of-3.mill.yaml                                                             ≈ $1.94 per run · no budget  ·  ✗ 2  ! 2
 ┌ cards ────────────────────────────────────────────────────────────────────────────────┐┌ ⊨ check · check ────────────────┐
 │                                                                                       ││ WITH                            │
 │ ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   · ││ sh*         make check          │
@@ -493,7 +506,8 @@ After `2` (the unconnected `false` port), `CONNECT` mode with `judge` as the fir
 
 | Connection | YAML change |
 |---|---|
-| `a.out → b`, `b` has no `in` | `in: a` on `b` |
+| `a.out → b`, `b` has no `in` and no inferred input | `in: a` on `b` |
+| `a.out → b`, `b`'s input is inferred from `x` | `in: [x, a]`, so the inferred input isn't lost |
 | `a.out → b`, `b` already has `in: x` | `in: [x, a]` (items from both) |
 | `a.<port> → b` | `in: a.<port>` (or added to the list) |
 | ordering `a ┄▷ b` | `needs: [a]` on `b` |
@@ -560,7 +574,7 @@ Lint runs on every change, as you type.
 - **Where problems show.** A badge in the node's title (`✗` red, `!` amber); the card's border takes the same color; problem edges too. The header counts them. The inspector lists the selected node's problems with their fixes. `!` opens the problems panel:
 
 ```
- ≋ best-of-3.mill.yaml                                                             ≈ $1.94 per run · no budget  ·  ✗ 3  ! 1
+ ≋ best-of-3.mill.yaml                                                             ≈ $1.94 per run · no budget  ·  ✗ 2  ! 2
 ┌ cards ────────────────────────────────────────────────────────────────────────────────┐┌ ⊢ gate · assert ────────────────┐
 │                                                                                       ││ WITH                            │
 │ ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   · ││ that*       ${{ nodes.judge.ite…│
@@ -574,14 +588,14 @@ Lint runs on every change, as you type.
 ┌ problems · 4 ─────────────────────────────────────────────────────────────────────────┐│ ✗ M3014 with.that uses judge.s… │
 │ ✗ M3014  gate       with.that uses judge.scroe; judge.ou…                ga use score ││   ga use score (+1)             │
 │ ✗ M3204  pr         gh.pr is destructive and isn't in po…     ga allow gh.pr (policy) ││ TEST                            │
-│ ✗ M3201  pipeline   this pipeline runs agents but has no…   ga add the medium budget… ││ in   1 item · no sample         │
+│ ! M3201  pipeline   this pipeline runs agents but has no…   ga add the medium budget… ││ in   1 item · no sample         │
 │ ! M3030  check      check.false isn't connected · items …   ga add a handoff on false ││ out  –                          │
 │                                                                                       ││ est  ≈ 2s                       │
 │                                                                                       ││                                 │
 │                                                                                       ││                                 │
 │                                                                                       ││                                 │
 └───────────────────────────────────────────────────────────────────────────────────────┘└─────────────────────────────────┘
- NORMAL PROBLEMS  best-of-3 · 7 nodes · 6 edges   3 lint errors · ]e walks through them, ga fixes the one s gate  cards 5,0
+ NORMAL PROBLEMS  best-of-3 · 7 nodes · 6 edges   2 lint errors · ]e walks through them, ga fixes the one s gate  cards 5,0
  j/k move · enter go · ga fix · gA fix all safe · esc close
 ```
 
@@ -595,7 +609,7 @@ Lint runs on every change, as you type.
 
 **Safe and policy fixes.** A fix is safe when it only completes what you already wrote (a typo with one close match, a missing `max_iters`, a budget preset, declaring a secret you reference). A fix that **widens what the pipeline may do** (adding a part to `policy.allow_destructive`, allowing a runner) is never part of `gA` or `mill lint --fix`: you apply it one at a time with `ga`, and the status line says what it allows.
 
-**Saving with problems.** `:w` refuses while there are errors (`M2203 3 lint errors, not saved · :w! saves anyway`). `:w!` saves; a pipeline saved with lint errors keeps its triggers disarmed and can't be run until lint passes, and the board shows `lint errors · e to fix` as its text. Warnings never block.
+**Saving with problems.** `:w` refuses while there are errors (`M2203 2 lint errors, not saved · :w! saves anyway`). `:w!` saves; a pipeline saved with lint errors keeps its triggers disarmed and can't be run until lint passes, and the board shows `lint errors · e to fix` as its text. Warnings never block.
 
 **Checks.**
 
@@ -609,9 +623,10 @@ Lint runs on every change, as you type.
 | `M3013` | error | Unknown input `inputs.<name>` | Declare the input |
 | `M3014` | error · warning | Unknown field on a node's output: error when the producer declares `output`, warning when it doesn't | Closest field · add the field to the producer's `output` |
 | `M3020` | error | Cycle outside a loop | Remove the closing edge · wrap the cycle in a loop |
-| `M3021` | error | Unreachable: only fed by a handoff, a `fail`, or a port that never emits | Reconnect to the nearest upstream |
+| `M3021` | error | Ambiguous input: the node has no `in:` and the nodes it references run in parallel, so there's no primary upstream (§7.4) | `in: [a, b]` (items from both) · `in: <one of them>` · insert a `merge` |
 | `M3022` | warning | Orphan: no inputs and nothing references it, so it runs at the start of every run | Connect after the nearest node · delete |
 | `M3023` | warning | A data part's result is used by nothing and isn't in `outputs` | Add to `outputs` |
+| `M3024` | error | Unreachable: only fed by a handoff, a `fail`, or a port that never emits | Reconnect to the nearest upstream |
 | `M3030` | warning | Branch port not connected (`false`, `else`, `case.*`, `default`, `exhausted`, `error`): items there are dropped | Add a handoff · connect to an existing node · add the port to `discard` |
 | `M3031` | error | Edge out of a `handoff` or `fail` | Move the edge to the handoff's upstream |
 | `M3032` | warning | `merge` with fewer than two inputs | Replace with a direct edge |
@@ -625,7 +640,7 @@ Lint runs on every change, as you type.
 | `M3110` | warning | Fields of an agent's result are used, but the agent declares no `output` | Declare `output` from the fields used |
 | `M3111` | error | Agent prompt empty | Focus `prompt` |
 | `M3112` | warning | Agent in `each` mode with no `concurrency` and no `budget.max_agents` | Set `concurrency: 2` |
-| `M3201` | error | The pipeline runs agents but has no `budget` | Add the medium budget (§18.8) |
+| `M3201` | error · warning | The pipeline runs agents but has no `budget`: error when it has any automatic trigger (anything but `manual`), warning when it only runs by hand | Add the medium budget (§18.8) |
 | `M3202` | warning | `budget.max_agents` is lower than a fanout's width, so candidates run one after another | Raise `max_agents` |
 | `M3203` | error | Runner not allowed by `policy.allowed_runners` | Use an allowed runner · allow it (policy fix) |
 | `M3204` | error | Destructive part not in `policy.allow_destructive`, including a handoff's `to` part | Allow it (policy fix) |
@@ -638,6 +653,7 @@ Lint runs on every change, as you type.
 | `M9201` | error | Secret used but not declared | Declare it |
 | `M9202` | warning | Secret declared but not set on this machine | `help: mill secrets set <NAME>` |
 | `M9203` | hint | Secret declared but never used | Remove it |
+| `M9208` | warning | A pinned sample (§18.7.12) looks like it holds a secret (a registered secret value, or a known token format such as `ghp_`, `sk-`, `xoxb-`) | Open the sample (`:sample edit`) · unpin it |
 
 `mill lint` runs the same checks with the same codes; `mill lint --fix` applies the safe fixes and `mill lint --fix --code M3204 --node pr` applies one fix explicitly (§17.1).
 
@@ -648,7 +664,7 @@ The inspector is a form generated from the part's schema (§9.3: the manifest's 
 The selected node is `gate`, with its expression being edited and completion open:
 
 ```
- ≋ best-of-3.mill.yaml                                                             ≈ $1.94 per run · no budget  ·  ✗ 3  ! 1
+ ≋ best-of-3.mill.yaml                                                             ≈ $1.94 per run · no budget  ·  ✗ 2  ! 2
 ┌ cards ────────────────────────────────────────────────────────────────────────────────┐┌ ⊢ gate · assert ────────────────┐
 │                                                                                       ││ WITH                            │
 │ ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·  ┌ ${{ ─────────────────────────────┐│ that*       }} && ${{ nodes.ju  │
@@ -721,10 +737,10 @@ The selected node is `gate`, with its expression being edited and completion ope
 
 | Key | Action |
 |---|---|
-| `R` | **Dry run** the buffer (saved or not) with `--dry-run`: destructive parts report what they would have done (§17.10). Node states paint on the graph as they change, edges count their items, and the header shows progress. The run is a normal run in the store (`best-of-3#3 · dry run`). Editing during a dry run is allowed; the painted states are then marked `stale`. `R` refuses while there are lint errors and says which. |
+| `R` | **Dry run** the buffer (saved or not) with `--dry-run`: `sh` and `exec` run unless marked `destructive`, agents return stubs that match their `output`, and destructive parts report what they would have done (§17.10). Node states paint on the graph as they change, edges count their items, and the header shows progress. The run is a normal run in the store (`best-of-3#3 · dry run`). Editing during a dry run is allowed; the painted states are then marked `stale`. `R` refuses while there are lint errors and says which. |
 | `.` | **Run this node alone** against its input: the pinned sample, else the last dry run's recorded input (`mill node run`, the same thing as `mill replay` for a node). Agent nodes ask first, with the estimate: `run judge alone? ≈ 60K tk · $0.30 · y/n`. The output appears in the items panel. |
 | `gi` | **Items panel** for the selected node (input and output) or the focused edge: one item per row as JSON; `enter` expands one; `y` copies it. |
-| `m` | **Pin** the items on the selected node's input as its sample. Samples live in `.mill/samples/<pipeline>/<node>.jsonl` (the trigger's event in `_event.json`), are plain files you can edit and commit, and are what previews and `.` use. `:sample edit` opens the file; `m` again unpins. |
+| `m` | **Pin** the items on the selected node's input as its sample. Samples live in `.mill/samples/<pipeline>/<node>.jsonl` (the trigger's event in `_event.json`), are plain files you can edit and are committed with the pipeline, and are what previews and `.` use. Pinning goes through the redactor, and lint warns when a sample still looks like it holds a secret (`M9208`). `:sample edit` opens the file; `m` again unpins. |
 | `ze` | Show estimates on the cards |
 
 A dry run in progress, after `gA` and `ga` cleaned up lint (states paint the borders: blue working, green done, grey skipped):
@@ -839,7 +855,7 @@ A dry run in progress, after `gA` and `ga` cleaned up lint (states paint the bor
 
 Every command edits through the daemon with the file's hash, keeps comments and formatting, lints, and refuses to save errors without `--force` (§17.8).
 
-**Implementation.** `internal/pipeline/edit` holds every operation (add, insert, connect, rename, wrap, extract, the quick fixes) as functions over the `yaml.v3` node tree, tested once and used by the CLI and the TUI. `internal/pipeline/layout` computes slots and routes edges into a cell grid shared by the editor, the run popup and `mill render`. `internal/surface/tui/editor` is the Bubble Tea model: canvas, right pane, panels, palette and the key map from `keymap.bind` (§18.13). The browser prototype in `mockups/v2/index.html` follows these keys; the screens in this section are its output.
+**Implementation.** `internal/pipeline/edit` holds every operation (add, insert, connect, rename, wrap, extract, the quick fixes) as functions over the YAML node tree, applied as text splices by `internal/pipeline/yamledit`, tested once and used by the CLI, the daemon's `EditPipeline` and the TUI. `internal/pipeline/layout` computes slots and routes edges into a cell grid shared by the editor, the run popup and `mill render`. `internal/surface/tui/editor` is the Bubble Tea model: canvas, right pane, panels, palette and the key map from `keymap.bind` (§18.13). The browser prototype in `mockups/v2/index.html` follows these keys; the screens in this section are its output.
 
 ### 18.8 Wizards
 
@@ -1041,7 +1057,7 @@ Only a bare `mill` shows it. Subcommands, pipes, `--json` and anything not attac
   [ WARN ] plugins.verify      · 8 plugins · lock ok · notion: auth expired (M6202)
   [  OK  ] agents.probe        · claude · codex · gemini · ollama
   [  OK  ] keymap.bind         · board + editor + wizard bindings ready
-  [  OK  ] socket.resolve      · /run/user/501/mill/milld.sock
+  [  OK  ] socket.resolve      · ~/.cache/mill/milld.sock
   [  OK  ] daemon              · already running · pid 48213
   [  OK  ] client.dial         · connected · 2ms
   [  OK  ] handshake           · 接続 · mill-tui · milld 0.5.0
@@ -1083,7 +1099,7 @@ The bracket characters are always grey; only the word inside is colored.
 | 2 | `paths.ensure` | Config and state folders exist and are private (0700) (§20) | `config + state dirs ok` | FAIL can't create or tighten them |
 | 3 | `tty.probe` | Size, color depth and locale | `124x34 · truecolor · en_US.UTF-8` | WARN non-UTF-8 locale (ASCII fallback) |
 | 4 | `config.load` | Loads `init.lua` and `settings.lua` (§19) | the files loaded | SKIP no `init.lua` yet (defaults) · WARN a Lua error such as `M8001` (defaults, shown under the board's header) |
-| 5 | `project.trust` | Finds `.mill/` above the current folder and checks trust (§22) | `~/code/app · trusted` | SKIP no project here · WARN not trusted, loaded data-only (`M9101`) |
+| 5 | `project.trust` | Finds `.mill/` above the current folder and checks trust (§22) | `~/code/app · trusted` | SKIP no project here · WARN not trusted: config loaded data-only, pipelines disarmed (`M9101` · `mill trust .`) |
 | 6 | `theme.apply` | The color scheme | its name | SKIP default |
 | 7 | `audio.init` | Opens the audio device with the soundset, volume and voice settings | `soundset=millrace · vol=0.60 · voice=true` | SKIP muted, `off`, quiet hours or no audio device |
 | 8 | `audio.load` | Decodes the soundset into memory | `millrace · 起動準備` | SKIP muted |
@@ -1091,7 +1107,7 @@ The bracket characters are always grey; only the word inside is colored.
 | 10 | `plugins.verify` | Installed plugins match `mill.lock`; MCP servers reachable | `8 plugins · lock ok` | SKIP none installed · WARN a changed plugin is disabled (`M5301`), an MCP server needs a login (`M6202`) |
 | 11 | `agents.probe` | Agent CLIs from the registry on `PATH` (§11) | the agents found | WARN a pipeline uses an agent that isn't installed (`M6101`) |
 | 12 | `keymap.bind` | Default keys plus overrides from Lua | `board + editor + wizard bindings ready` | WARN a binding in `init.lua` is invalid (ignored) |
-| 13 | `socket.resolve` | The daemon socket path (§20) | the path | FAIL no path can be resolved |
+| 13 | `socket.resolve` | The daemon socket path (§20): `$XDG_RUNTIME_DIR/mill/milld.sock` on Linux, else `~/.cache/mill/milld.sock` (always on macOS), or `MILL_SOCKET` | the path | FAIL no path can be resolved, or it's longer than the OS allows (`M7002`) |
 | 14 | `daemon` | `milld` answers on the socket; starts it if not | `already running · pid 48213` or `started · pid 48213 · 38ms` | FAIL `milld` missing or exits during startup |
 | 15 | `client.dial` | Connects to the socket | `connected · 2ms` | FAIL the socket disappeared |
 | 16 | `handshake` | `Hello`, versions, the first `Snapshot` (§16) | `接続 · mill-tui · milld 0.5.0` | FAIL version or protocol mismatch (`M7003`) |
@@ -1127,7 +1143,7 @@ The splash only reports. It never fixes, installs or asks anything; that's `mill
   [ WARN ] plugins.verify      · 8 plugins · lock ok · notion: auth expired (M6202)
   [  OK  ] agents.probe        · claude · codex · gemini · ollama
   [  OK  ] keymap.bind         · board + editor + wizard bindings ready
-  [  OK  ] socket.resolve      · /run/user/501/mill/milld.sock
+  [  OK  ] socket.resolve      · ~/.cache/mill/milld.sock
   [  ..  ] daemon              · starting milld ⠹
 ```
 
@@ -1153,7 +1169,7 @@ The splash only reports. It never fixes, installs or asks anything; that's `mill
   [ WARN ] plugins.verify      · 8 plugins · lock ok · notion: auth expired (M6202)
   [  OK  ] agents.probe        · claude · codex · gemini · ollama
   [  OK  ] keymap.bind         · board + editor + wizard bindings ready
-  [  OK  ] socket.resolve      · /run/user/501/mill/milld.sock
+  [  OK  ] socket.resolve      · ~/.cache/mill/milld.sock
   [ FAIL ] daemon              · milld not found
 
   cause: error[M7004]: exec: "milld": executable file not found in $PATH
@@ -1171,7 +1187,7 @@ The splash only reports. It never fixes, installs or asks anything; that's `mill
 |---|---|---|
 | `paths.ensure` | `M2001` | check that you can write to `~/.config/mill` and `~/.local/state/mill` |
 | `parts.load` | `M0002` | mill's built-in parts are corrupt · reinstall or rebuild mill |
-| `socket.resolve` | `M7002` | set `XDG_RUNTIME_DIR` or `MILL_SOCKET`, or make sure `HOME` is set |
+| `socket.resolve` | `M7002` | make sure `HOME` is set, or set `MILL_SOCKET` to a shorter path (sockets are limited to about 104 bytes on macOS) |
 | `daemon` | `M7004` | make sure `milld` is on PATH or installed next to mill |
 | `client.dial` | `M7001` | the daemon socket disappeared · try `mill daemon start` |
 | `handshake` | `M7003` | version mismatch · `mill daemon restart`, or build mill and milld at the same version |
@@ -1196,7 +1212,7 @@ The splash only reports. It never fixes, installs or asks anything; that's `mill
   [ SKIP ] plugins.verify      · no plugins yet
   [  OK  ] agents.probe        · claude · codex found on PATH
   [  OK  ] keymap.bind         · board + editor + wizard bindings ready
-  [  OK  ] socket.resolve      · /run/user/501/mill/milld.sock
+  [  OK  ] socket.resolve      · ~/.cache/mill/milld.sock
   [  OK  ] daemon              · started · pid 48213 · 38ms
   [  OK  ] client.dial         · connected · 1ms
   [  OK  ] handshake           · 接続 · mill-tui · milld 0.5.0

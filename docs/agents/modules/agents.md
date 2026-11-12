@@ -1,8 +1,8 @@
 # agents
 
-**Path:** `internal/catalog/agents`  
+**Path:** `internal/agents` + `agents/detect` (backend layout, accepted 2026-11-11)  
 **Status:** planned · first built in M0 (hard-coded entries), M1 (registry and merge)  
-**Backend plan path:** `internal/agents` + `agents/detect`  
+**Spec v2 path (superseded):** `internal/catalog/agents`  
 **Depends on:** luaapi (entries from `mill.agent`)  
 **Depended on by:** builtin (`agent*`), runner (pty)
 

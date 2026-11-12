@@ -1,8 +1,8 @@
 # cmd
 
-**Path:** `cmd/mill`, `cmd/milld`  
+**Path:** `cmd/mill`, `cmd/milld` (milld calls `daemon/boot.Run`) (backend layout, accepted 2026-11-11)  
 **Status:** planned · first built in M0 (`cmd/mill`), M2 (`cmd/milld`)  
-**Backend plan path:** `cmd/mill`, `cmd/milld` (milld calls `daemon/boot.Run`)  
+**Spec v2 path (superseded):** `cmd/mill`, `cmd/milld`  
 **Depends on:** cli, server, config, everything wired at boot  
 **Depended on by:** none
 

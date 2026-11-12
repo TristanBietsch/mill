@@ -1,8 +1,8 @@
 # client
 
-**Path:** `internal/wire/client`  
+**Path:** `internal/wire/client` (backend layout, accepted 2026-11-11)  
 **Status:** planned · first built in M2  
-**Backend plan path:** same  
+**Spec v2 path:** same  
 **Depends on:** protocol  
 **Depended on by:** cli, tui
 

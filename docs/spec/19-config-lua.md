@@ -131,7 +131,7 @@ Hook events: `daemon_started`, `config_reloaded`, `run_added`, `run_updated`, `n
 ### 19.5 Execution model and safety
 
 - **Your config is trusted**, the same way an editor config is. `init.lua` and your `lua/` modules get the standard library, with `os.execute` and `io.popen` available.
-- **Project config is not trusted by default.** A cloned repo's `.mill/mill.lua` is first evaluated in a data-only sandbox: it can declare plugins, agents, settings and defaults, but hooks, commands, inline parts and anything touching `os`, `io` or the network are ignored and listed as "needs trust". `mill trust .` reviews and approves it (recorded by hash, like pipelines; §22).
+- **Project config is not trusted by default.** A cloned repo's `.mill/mill.lua` is first evaluated in a data-only sandbox: it can declare plugins, agents, settings and defaults, but hooks, commands, inline parts and anything touching `os`, `io` or the network are ignored and listed as "needs trust". `mill trust .` reviews and approves it (recorded by hash, like pipelines; §22). The same command arms the project's pipelines, which stay disarmed until then.
 - The config phase must finish within 2 seconds. Hooks run on their own Lua state in `milld` with a per-call time limit. A hook that errors or times out is logged and skipped; it never fails a run or stops the daemon.
 - Lua parts run in separate sandboxed Lua states, one per plugin, and only get the API their manifest's permissions allow.
 
@@ -149,6 +149,9 @@ One registry defines every setting: id, type, default, section, help text and va
 | `keep_workspaces` | `on_failure` | `never`, `on_failure`, `always` |
 | `retention` | `30d` | How long finished runs are kept |
 | `trusted_dirs` | empty | Folders where agents' folder-trust dialogs may be answered automatically (refuses `/`, home, relative paths and `..`) |
+| `env.passthrough` | `PATH HOME USER LOGNAME SHELL LANG LC_* TERM TZ TMPDIR SSH_AUTH_SOCK XDG_* GIT_* EDITOR` (+ Windows essentials) | Variables from `milld`'s environment that steps see (§12.1). Everything else is dropped |
+| `agents.extract` | same agent, cheapest priced model | Agent and model for the extraction pass (§11.3), or `off` |
+| `shutdown.drain_timeout` | `10m` | How long `mill daemon stop --drain` waits for live node-runs (§15.7) |
 | `plugins.sandbox` | `none` | `container` runs executable parts inside the container runner, with their declared permissions enforced |
 | `plugins.registry` | official | Registry URL, or a list for private registries |
 | `plugins.auto_update` | `off` | `off`, `patch` or `minor`. Never adds permissions on its own (§18.9) |

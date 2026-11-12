@@ -6,7 +6,7 @@ mill is at the spec stage. There is no `go.mod` or `Makefile` yet. Everything be
 
 ## Prerequisites
 
-- Go at the version `go.mod` pins (the backend plan proposes Go 1.27, open decision D28).
+- Go 1.27 (`go.mod` pins `go 1.27` with `toolchain go1.27.4`; backend decision D28).
 - `make`, a POSIX shell and `git`. Lint and vulnerability tools run through `go run` at pinned versions, so there is nothing else to install.
 - `CGO_ENABLED=0` everywhere. A change that needs cgo needs a decision first.
 
@@ -62,3 +62,7 @@ Before you open a PR:
 Every PR gets an independent review before merge: a separate reviewer (person or agent) that did not write the change. Do not review your own PR and merge it.
 
 Report security issues privately as described in [SECURITY.md](SECURITY.md), not in a PR.
+
+## License
+
+mill is MIT licensed ([LICENSE](LICENSE)). By contributing you agree that your contribution is licensed under the same terms. Code copied from rex keeps a header naming the rex commit and path it came from ([spec §27.1](docs/spec/27-tech-stack.md#271-language-go)).

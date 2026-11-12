@@ -14,7 +14,7 @@ These decide arguments. When a design choice is unclear, the principle higher on
 | 8 | **No vendor lock-in.** | Agents are described declaratively: command, arguments, how they take a prompt, how state and output are detected. No vendor HTTP APIs or SDKs are required. |
 | 9 | **Headless first.** | Every TUI action has a CLI equivalent. The TUI is one client among many. CI, cron and SSH sessions get the same power. |
 | 10 | **Optional never blocks core.** | Summaries, notifications, sounds, telemetry and the hosted relay can fail without affecting a run. Headless and SSH environments degrade silently. |
-| 11 | **Faithful replay.** | Raw output of every step is captured as-is. Views (states, summaries, items) are derived from it, so any run can be inspected or replayed exactly. |
+| 11 | **Faithful replay.** | Raw output of every step is captured as-is, minus registered secret values (§21). Views (states, summaries, items) are derived from it, so any run can be inspected or replayed exactly. |
 | 12 | **Additive evolution.** | Wire messages, parts protocol and file format are versioned. New optional fields and new message types don't bump the version, and readers ignore unknown fields. Changing a meaning requires a version bump. |
 | 13 | **Errors are interface.** | Every error says what happened, where, and the exact next command, with a stable code (`mill explain M3012`). Same shape in the CLI, TUI, JSON and protocol (§29). |
 | 14 | **Safe by default.** | Steps that change code run in isolated workspaces. Trust is explicit. Dangerous paths are refused. Secrets never touch logs. Listeners bind to localhost. |

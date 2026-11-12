@@ -12,7 +12,7 @@ mill — Machine Intelligence Logistics Layer
 >
 > **Companion:** built to be used alongside [rex](https://github.com/TristanBietsch/rex), the terminal board for agent sessions you work with directly. rex handles the work that needs a person; mill runs the work that needs no one. mill doesn't depend on rex, though, and works with anything (§23.6).
 >
-> **Status:** specification draft, **v2**. v2 keeps everything the engine does and redesigns the surface around rex's design rules: one board, one line per pipeline, everything readable at a glance (§18.1). No code yet. When this spec and the eventual source disagree, the source wins, and this document gets fixed.
+> **Status:** specification draft, **v2.1** (v2 plus the decisions of 2026-11-11, below). v2 keeps everything the engine does and redesigns the surface around rex's design rules: one board, one line per pipeline, everything readable at a glance (§18.1). No code yet. When this spec and the eventual source disagree, the source wins, and this document gets fixed.
 
 ---
 
@@ -35,6 +35,20 @@ The engine is the same; the surface is much smaller. The goal is a mill as simpl
 | A blank screen until the board loaded | **Boot splash:** a clone of rex's bootloader with mill's own steps, `[  OK  ]`/`[ WARN ]`/`[ SKIP ]`/`[ FAIL ]` rows, and a cause and fix when boot fails (§18.13) |
 
 Everything else (engine, parts and plugins, Lua config, agents, triggers, piping, errors, security, sound, Go) carries over from v1 unchanged except where it referred to the old screens.
+
+## v2.1 (2026-11-11): decisions applied
+
+The open decisions in the backend and editor plans were decided, and the backend plan's spec issues S1–S31 were applied. The record is in `docs/agents/DECISIONS.md` (ADR-024 to ADR-044).
+
+- **Name and distribution:** `mill` stays; repo and module `github.com/TristanBietsch/mill`, Homebrew tap `tristanbietsch/tap/mill`, MIT license, Go 1.27, Windows tier 2 in v0 (§27.1).
+- **Edges:** every reference orders; the input is the primary upstream; no primary upstream is lint `M3021`. Unreachable moved to `M3024` (§7.4, §18.7.3, §18.7.9).
+- **Trust:** a fresh clone's pipelines are disarmed until `mill trust .` (§22, §13, §18.3).
+- **Parts:** built-ins win; `PATH` executables and MCP tools only fill gaps (§9.4). Registry v0.5 is a GitHub index with SHA-256 hashes; signatures later (§9.6, §9.11).
+- **Execution:** retries are new attempts, with a default policy (§4, §15.3); allowlisted step environment (§12.1); dry runs run `sh`/`exec` unless `destructive: true` and stub agents (§17.10); `max_wall` counts active time; budget stops exit 9 (§15.5, §17.2); `mill daemon stop` is a crash, `--drain` waits (§15.7).
+- **Storage and protocol:** global artifact store (§6.3), redaction is the only change before persistence (§5.4), AF_UNIX socket everywhere with a `~/.cache/mill/milld.sock` fallback (§16, §20), new intents (§16.3), YAML v4 with text-splice edits (§27.2), backend package layout (§27.4).
+- **Board and run popup:** crashed and budget-cancelled pipelines sit in FAILED; user-cancelled and untrusted ones in READY (§4, §18.2, §18.3); conditional columns sit between the text and the runs strip (§18.3); the board shows the mode name at the left of the help bar (§18.4); branches and failed attempts are indented sub-rows (§18.6).
+- **Editor:** loop YAML is `with.body` + `until` + `max_iters` with `out` and `exhausted` (§10.3); `M3201` is an error only with an automatic trigger (§18.7.9); `:w!` saves broken pipelines disarmed; samples are committed and checked for secrets (`M9208`, §18.7.12).
+- **Open questions** 3, 9, 10 and 12 are resolved (§30).
 
 ## Contents
 

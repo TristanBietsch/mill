@@ -11,7 +11,7 @@ Secrets broker and redaction, sandboxing of CEL and Lua, plugin trust, the socke
 3. **Hold.** Values live in the run actor's memory as `secrets.Value` (a byte slice wrapper whose `String`, `GoString`, `MarshalJSON`, `Format` all print `•••`). They are zeroed best-effort when the run ends. They're never written to disk by mill.
 4. **Grant.** Per node-run, the grant is the set of `secrets.X` handles appearing in that node's `with`, `env`, or `secrets:` list. A part receives only its grant.
 5. **Deliver.**
-   - Exec processes: only through environment variables (`env: { GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} }`). Never argv (lint M9203 + runtime argv scan).
+   - Exec processes: only through environment variables (`env: { GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} }`). Never argv (lint M9207 + runtime argv scan).
    - In-process built-ins: `OpenRequest.Secrets.Reveal(name)`.
    - Executable parts: `Open.secrets` over the pipe (not visible in `ps`).
    - Lua parts: `ctx.secret(name)` returns the value only inside the part's state; `tostring` of a handle elsewhere gives `•••`.
@@ -41,7 +41,7 @@ Secrets broker and redaction, sandboxing of CEL and Lua, plugin trust, the socke
 - **Matcher:** Aho–Corasick over all patterns (own implementation, ~200 lines, fuzzed), replacing each match with `•••`.
 - **Streams:** log writers wrap the redactor in a streaming mode that holds back `maxPatternLen − 1` bytes between writes, so a secret split across two `read()` chunks is still caught. Flushed on close.
 - **Where it runs:** process stdout/stderr before logs are written; every item before it's appended; every event before append; every client event (the bus encodes from already-redacted events); error messages and `stderr_tail`; argv in `NodeRunStarting`; text artifacts produced by mill (transcripts, diffs).
-- **Step-produced artifacts:** text files (≤ 50 MiB, valid UTF-8) collected from `MILL_ARTIFACTS` are redacted on the way into the CAS and get `redacted: true` in their `FileRef` if anything changed. Binary files are scanned; if a pattern is found the node fails M9205 rather than storing a secret (open decision D13).
+- **Step-produced artifacts:** text files (≤ 50 MiB, valid UTF-8) collected from `MILL_ARTIFACTS` are redacted on the way into the CAS and get `redacted: true` in their `FileRef` if anything changed. Binary files are scanned; if a pattern is found the node fails M9205 rather than storing a secret (decision D13, default accepted; spec §21).
 
 **Spec conflict resolved.** Invariant 5 says raw output is stored as-is; invariant 9 says secret values never appear in logs or artifacts. They can't both hold literally. The rule we implement: **redaction is the only transformation applied before persistence**. "Raw" means "byte-faithful except that registered secret values are replaced". Faithful replay therefore never reproduces a secret, which is the safer reading.
 
@@ -80,13 +80,13 @@ All profiles run with `L.SetContext(ctx)` so deadlines interrupt loops. gopher-l
 | `.mill/pipelines/` in a project not yet trusted (e.g. freshly cloned) | **untrusted**: listed with a `needs trust` badge, triggers never armed, manual `mill run` refused M9101 with `help: mill trust .` | `mill trust .` reviews and records `{path, sha256}` for config and every pipeline |
 | imported/downloaded pipelines | untrusted until `mill trust <file>` | trust recorded by bundle hash; any change requires trust again |
 
-This tightens spec §22 ("pipelines in your own repo are trusted"): mill can't tell "your" repo from a cloned one, and a cloned repo with an `fswatch` or `cron` trigger would otherwise start running code as soon as milld sees it. Open decision D18.
+This tightens spec §22 ("pipelines in your own repo are trusted"): mill can't tell "your" repo from a cloned one, and a cloned repo with an `fswatch` or `cron` trigger would otherwise start running code as soon as milld sees it. Decision D18 (user, 2026-11-11), applied in spec §22.
 
 Trust records: `~/.local/share/mill/trust.json` (`[{kind, path, sha256, at}]`), written atomically.
 
 ## 5. Plugins
 
-- **Resolution never shadows silently.** Built-ins, user plugins, project plugins and inline parts resolve per spec §9.4, but `mill-part-<name>` executables on `PATH` and MCP tools **only fill ids that aren't already taken**; overriding a built-in requires an explicit alias or `override = true` in config. Spec §9.4 says later sources override earlier ones, which lets any binary on `PATH` named `mill-part-sh` replace `sh`. Open decision D19.
+- **Resolution never shadows silently.** Built-ins, user plugins, project plugins and inline parts resolve per spec §9.4, but `mill-part-<name>` executables on `PATH` and MCP tools **only fill ids that aren't already taken**; overriding a built-in requires an explicit alias or `override = true` in config. Spec §9.4 says later sources override earlier ones, which lets any binary on `PATH` named `mill-part-sh` replace `sh`. Decision D19 (user, 2026-11-11), applied in spec §9.4.
 - **Lockfile** (`mill.lock`; the spec doesn't fix a format, JSON keeps it boring and diffable with sorted keys):
 
 ```json
@@ -119,7 +119,7 @@ Trust records: `~/.local/share/mill/trust.json` (`[{kind, path, sha256, at}]`), 
 | # | Asset / boundary | Threat | Mitigation | Residual |
 |---|---|---|---|---|
 | T1 | User's machine via a cloned repo | Malicious `.mill/` pipelines or `mill.lua` auto-run (triggers, hooks) | Untrusted projects: data-only Lua, no armed triggers, manual runs refused until `mill trust .` (§4) | User trusts without reading |
-| T2 | Secrets in transit to steps | Leak via `ps`/argv | Env/protocol only; lint + runtime argv scan (M9203) | Child process may itself put it on argv |
+| T2 | Secrets in transit to steps | Leak via `ps`/argv | Env/protocol only; lint + runtime argv scan (M9207) | Child process may itself put it on argv |
 | T3 | Secrets at rest | Secrets in logs/items/events/artifacts | Broker-registered redaction before every persist; binary artifacts with secrets refused | Transformed secrets; unregistered secrets |
 | T4 | Local socket | Another local user drives milld | `0600` + `0700` dir + peer uid check | Same-uid malware (out of scope) |
 | T5 | Gateway | Forged webhooks, replay, DoS | Per-trigger HMAC/token, delivery dedupe, body/rate limits, localhost default | Misconfigured public bind |

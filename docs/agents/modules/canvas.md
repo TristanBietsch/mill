@@ -1,8 +1,8 @@
 # canvas
 
-**Path:** `internal/surface/tui/canvas`  
+**Path:** `internal/surface/tui/canvas`; layout math in `pipeline/layout` (backend layout, accepted 2026-11-11)  
 **Status:** planned · first built in v0.3  
-**Backend plan path:** `internal/surface/tui/canvas`; layout math in `pipeline/layout`  
+**Spec v2 path (superseded):** `internal/surface/tui/canvas`  
 **Depends on:** pipeline (layout)  
 **Depended on by:** tui; `mill render` shares the layout engine
 

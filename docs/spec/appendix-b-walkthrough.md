@@ -4,7 +4,7 @@ The whole loop: open mill, make a pipeline, have an agent use it, and get the re
 
 ### B.1 Install and load
 
-1. Install: `go install github.com/<org>/mill/cmd/mill@latest` and `…/cmd/milld@latest` (or `brew install mill`).
+1. Install: `brew install tristanbietsch/tap/mill` (both binaries), or `go install github.com/TristanBietsch/mill/cmd/mill@latest` and `…/cmd/milld@latest`.
 2. Run `mill setup` once (§18.8). It finds your agents, picks a soundset, adds shell completion and the `≋` prompt, installs starter plugins (and `mill/rex` if rex is there), and starts the daemon.
 3. Run `mill`. You hear "mill", and the board opens: failed, running and ready pipelines, one line each. `?` shows every key.
 

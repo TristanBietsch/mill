@@ -9,7 +9,7 @@ Related: [architecture.md](architecture.md) for where each library is used, [ope
 | Item | Choice | Notes |
 |---|---|---|
 | Go | `go 1.27` with `toolchain go1.27.4` | Current stable (go1.27.4). rex pins `go 1.26.11`; mill starts on 1.27 because there's no legacy and 1.27 is what `govulncheck` will expect next. Raise the patch floor promptly when a stdlib advisory lands (rex did this for GO-2026-6859). |
-| Module path | `github.com/tristanbietsch/mill` | Same owner as rex. Spec §30 item 12 (name check) still applies before the first public tag. |
+| Module path | `github.com/TristanBietsch/mill` | Public repo of the same name, same owner as rex. Name check resolved (spec §30 item 12): the name stays `mill`; Homebrew ships from the own tap `tristanbietsch/tap/mill` because core Homebrew has an unrelated Scala `mill`. |
 | CGO | `CGO_ENABLED=0` for every target, enforced in CI | Possible now that both hard cases are pure Go: `modernc.org/sqlite` and `oto/v3` ≥ 3.5 (Linux no longer needs cgo or ALSA headers at build time; it `dlopen`s `libasound.so.2` at runtime and degrades to silence without it). rex's CI still installs `libasound2-dev` because it's on oto 3.4.0; mill skips that. |
 | Targets | `darwin/arm64`, `darwin/amd64`, `linux/amd64`, `linux/arm64`, `windows/amd64`, `windows/arm64` | All six built in CI. Test tiers per OS in [testing.md](testing.md). |
 | Std features relied on | `os.Root` (traversal-safe file access, Go 1.24+), `log/slog`, `iter`, `context.AfterFunc`, `slices`/`maps`, `testing/synctest` (fake-time tests, stable since Go 1.25) | `os.Root` is the backbone of path safety for `file.*` parts and artifact materialization ([security.md](security.md)). |
@@ -68,13 +68,13 @@ Grouped by area. "Where" names the package from [architecture.md](architecture.m
 |---|---|---|---|---|---|---|
 | OS keychain | `github.com/zalando/go-keyring` | v0.2.8 | MIT | `secrets/keychain` | macOS via `/usr/bin/security`, Linux via Secret Service (godbus), Windows via wincred, all CGO-free. **Check before use:** how macOS `Set` passes the value (argv vs stdin). If it's argv, `mill secrets set` must use `security -i` with the command on stdin instead; reading is fine. | `99designs/keyring` (bigger, file backends we don't need). |
 | age files | `filippo.io/age` | v1.3.2 | BSD-3 | `secrets/agefile` | The headless-server backend (spec §21). | sops (too broad). |
-| Signatures | deferred | | | `plugins` | Not needed until the registry (M9). Candidates: `github.com/sigstore/sigstore-go` v1.4.0 (Apache-2.0, keyless) or `aead.dev/minisign` v0.3.0 (MIT, offline). Spec §30 item 10. | |
+| Signatures | deferred | | | `plugins` | Not needed until the hosted registry (D27 decided: GitHub index + lockfile hashes in v0.5, Sigstore keyless later). Candidates were: `github.com/sigstore/sigstore-go` v1.4.0 (Apache-2.0, keyless) or `aead.dev/minisign` v0.3.0 (MIT, offline). Spec §30 item 10. | |
 
 ### Surface (client side, listed so the module is complete)
 
 | Area | Module | Version | License | Notes |
 |---|---|---|---|---|
-| TUI | `charm.land/bubbletea/v2` | v2.1.1 | MIT | rex is on v1.3.10 (maintenance only). mill starts on v2; the splash and board are ported, not copied verbatim. Open decision D2. |
+| TUI | `charm.land/bubbletea/v2` | v2.1.1 | MIT | rex is on v1.3.10 (maintenance only). mill starts on v2; the splash and board are ported, not copied verbatim. Decision D2 (default accepted). |
 | Styling | `charm.land/lipgloss/v2` | v2.1.0 | MIT | |
 | Widgets | `charm.land/bubbles/v2` | v2.2.1 | MIT | |
 | Width | `github.com/rivo/uniseg` | v0.4.7 | MIT | East-asian width for the 18-cell splash column, as in rex. |
@@ -105,7 +105,7 @@ Tools run through `go run <pkg>@<version>` from the `Makefile`, exactly like rex
 | CI | GitHub Actions: Linux runs `make check`; macOS runs `vet test-race lint vuln`; Windows runs `vet test` plus a smoke (`mill run examples/hello --local`, then daemon start, run, stop). `CGO_ENABLED=0` set at workflow level. Separate `fuzz.yml` (nightly, 5 min per target) and `stress.yml` (nightly, `-count=50 -race` on engine and store). | Copy `ci.yml`, `fuzz.yml`, `stress.yml`; drop the ALSA step. |
 | Coverage floors | `tools/coverage/baseline.txt` + `check.sh` | Copy as is. |
 | Bench budgets | `bench/budgets.txt` + `check_budgets.sh` | Copy; scenarios in [testing.md](testing.md) §7. |
-| Release | GoReleaser v2: six targets, `CGO_ENABLED=0`, `-trimpath`, `-ldflags "-s -w -X …/internal/version.Version={{.Version}}"`, checksums, SBOM (syft via goreleaser), GitHub release, Homebrew tap, Scoop bucket, `.deb`/`.rpm` via nfpm. Archives contain both `mill` and `milld`. Signing: cosign keyless on the checksum file in the release workflow (GitHub OIDC). | rex has no GoReleaser yet (install.sh/install.ps1); mill adds it. Keep an `install.sh` equivalent only as "download and verify checksum", never `curl \| sh` in docs. |
+| Release | GoReleaser v2: six targets, `CGO_ENABLED=0`, `-trimpath`, `-ldflags "-s -w -X …/internal/version.Version={{.Version}}"`, checksums, SBOM (syft via goreleaser), GitHub release, Homebrew tap `tristanbietsch/tap` (formula `mill`), Scoop bucket, `.deb`/`.rpm` via nfpm. Archives contain both `mill` and `milld`. Signing: cosign keyless on the checksum file in the release workflow (GitHub OIDC). | rex has no GoReleaser yet (install.sh/install.ps1); mill adds it. Keep an `install.sh` equivalent only as "download and verify checksum", never `curl \| sh` in docs. |
 | Version | `internal/version.Version` (ldflags), `wire.ProtocolVersion`, `partproto.Version`, `pipeline.FormatVersion` are four separate constants. | Same separation rex documents in DECISIONS.md ("daemon version string v1"). |
 
 ## 5. Note on lossless YAML edits

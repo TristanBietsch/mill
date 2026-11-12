@@ -1,8 +1,8 @@
 # protocol
 
-**Path:** `internal/wire/protocol`  
+**Path:** `internal/wire/jsonl` (envelope + codec, copied from rex) and `internal/wire/protocol` (payloads) (backend layout, accepted 2026-11-11)  
 **Status:** planned · first built in M2  
-**Backend plan path:** `internal/wire/jsonl` (envelope + codec, copied from rex) and `internal/wire/protocol` (payloads)  
+**Spec v2 path (superseded):** `internal/wire/protocol`  
 **Depends on:** the errors package  
 **Depended on by:** client, server, parthost, cli, tui
 

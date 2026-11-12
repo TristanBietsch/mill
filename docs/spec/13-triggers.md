@@ -17,6 +17,10 @@ Triggers are parts with the `trigger` capability. A pipeline can have several.
 
 **Concurrency policy** (per pipeline, `on.concurrency`): `queue` (default), `skip` (drop new events while one is running), `replace` (cancel the running one), or `parallel: N`. Each event can carry a `dedupe` key; duplicate keys within `dedupe_window` are dropped.
 
+**State.** Trigger state that has to survive restarts (last fire for `catch_up`, seen keys for `dedupe`, queued fires) lives in `~/.local/share/mill/triggers/<pipeline>/<trigger>.json` (§20).
+
+**Trust.** Triggers are only armed for trusted pipelines. A project you haven't trusted, such as a fresh clone, has its pipelines listed with their triggers off until `mill trust .` (§22). Until mill has its own cron (v0.4), OS cron calling `mill run --local` is the way to schedule a pipeline.
+
 
 ---
 

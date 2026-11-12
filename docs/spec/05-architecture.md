@@ -50,7 +50,7 @@ flowchart LR
 | Two binaries over a local socket | The TUI can exit without stopping runs. Multiple clients. Scriptable. A crash in a client never takes down a run. |
 | JSONL wire format | Debuggable with `socat` and `jq`. Language-agnostic. The same envelope is used for the daemon protocol and the parts protocol. |
 | Parts are processes, not in-process plugins | Any language, crash isolation, independent upgrades, easy sandboxing. In-process speed only matters for the few hot built-ins. |
-| Built-ins use the public parts protocol | Keeps the protocol honest and complete. Any built-in can be replaced by a user part with the same id. |
+| Built-ins use the public parts protocol | Keeps the protocol honest and complete. Built-ins run in-process behind the same interface, and a loopback conformance suite proves they behave the same over the wire (`milld part serve <id>` runs one over stdio). Replacing a built-in takes an explicit override (§9.4). |
 | Event-sourced run log | Faithful replay, crash recovery, audit trail. The index can always be rebuilt. |
 | YAML pipelines + layout sidecar | Logic diffs stay clean. Moving a box on the canvas doesn't touch the pipeline file. |
 | CEL for expressions | Safe (no side effects, always terminates), typed, fast, widely known. |
@@ -67,7 +67,7 @@ flowchart LR
 2. A connection receives no broadcast events until its `Hello` completes.
 3. Binary data on the wire is base64-encoded.
 4. Run logs are append-only. Nothing rewrites history; corrections are new events.
-5. Raw step output is stored as-is. Classification and display use sanitized copies.
+5. Raw step output is stored byte for byte, except that registered secret values are replaced with `•••` (§21). Redaction is the only transformation before anything is persisted. Classification and display use sanitized copies.
 6. A node-run in a terminal state never changes state again.
 7. Concurrency slots are acquired before a node-run starts and released when it reaches a terminal state, whatever the path.
 8. Cancel and delete share one teardown path: kill the process group, drain output for a bounded time, release resources. No transient `failed` state appears during teardown.

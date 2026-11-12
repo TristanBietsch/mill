@@ -1,8 +1,8 @@
 # sound
 
-**Path:** `internal/surface/sound`  
+**Path:** `internal/surface/sound` (backend layout, accepted 2026-11-11)  
 **Status:** planned · first built in v0.2  
-**Backend plan path:** same (synth and silent `Player` copied from rex)  
+**Spec v2 path:** same (synth and silent `Player` copied from rex)  
 **Depends on:** settings  
 **Depended on by:** tui
 

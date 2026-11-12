@@ -1,8 +1,8 @@
 # config
 
-**Path:** `internal/config`  
+**Path:** `internal/config` + `config/settings` (backend layout, accepted 2026-11-11)  
 **Status:** planned · first built in M1  
-**Backend plan path:** `internal/config` + `config/settings`  
+**Spec v2 path (superseded):** `internal/config`  
 **Depends on:** luaapi, settings (registry), paths  
 **Depended on by:** server, cli, tui
 

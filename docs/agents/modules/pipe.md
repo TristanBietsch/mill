@@ -1,8 +1,8 @@
 # pipe
 
-**Path:** `internal/surface/pipe`  
+**Path:** `internal/pipeline/pipe` (backend plan moves it: the daemon compiles pipe expressions) (backend layout, accepted 2026-11-11)  
 **Status:** planned · first built in v0.1  
-**Backend plan path:** `internal/pipeline/pipe` (backend plan moves it: the daemon compiles pipe expressions)  
+**Spec v2 path (superseded):** `internal/surface/pipe`  
 **Depends on:** pipeline  
 **Depended on by:** cli, tui (`λ` prompt), server (`Compile` intent)
 

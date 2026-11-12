@@ -65,5 +65,5 @@ See [../../CONTRIBUTING.md](../../CONTRIBUTING.md): Conventional Commits, signed
 ## Known gaps
 
 - No code. Module docs describe planned packages.
-- The package layout is not final (spec §27.4 vs backend plan architecture §2).
-- Spec issues S1–S31 in the backend plan are recommendations, not yet applied.
+- Module doc file names still use the spec v2 package names; paths inside them follow the accepted backend layout.
+- The mockup (`mockups/v2/`) lags spec v2.1 in a few places (its footer still says "provisional"; `M3201` shows as an error on manual pipelines).

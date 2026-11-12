@@ -1,8 +1,8 @@
 # parthost
 
-**Path:** `internal/parthost`  
+**Path:** `internal/parthost` + `internal/partproto` (message types, transports, conformance suite) (backend layout, accepted 2026-11-11)  
 **Status:** planned · first built in M0 (in-process only), v0.5 (external parts)  
-**Backend plan path:** `internal/parthost` + `internal/partproto` (message types, transports, conformance suite)  
+**Spec v2 path (superseded):** `internal/parthost`  
 **Depends on:** protocol, luaapi, plugins  
 **Depended on by:** sched, server (`PartCall`)
 

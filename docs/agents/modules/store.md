@@ -1,8 +1,8 @@
 # store
 
-**Path:** `internal/daemon/store`  
+**Path:** `internal/store` + `store/cas`, `store/index`, `store/lock` (out of `daemon/` so `--local` can use it) (backend layout, accepted 2026-11-11)  
 **Status:** planned · first built in M0 (run dir), M1 (event log), M2 (index)  
-**Backend plan path:** `internal/store` + `store/cas`, `store/index`, `store/lock` (out of `daemon/` so `--local` can use it)  
+**Spec v2 path (superseded):** `internal/daemon/store`  
 **Depends on:** protocol types, secrets (redactor), paths  
 **Depended on by:** sched, server, cli (read-only `--store`)
 

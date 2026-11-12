@@ -46,7 +46,7 @@ The agent or person who currently edits a file. Files with another owner are rea
 
 ## primary upstream
 
-Backend plan rule for edge inference: the node a step takes its items from when it references several nodes. Other references only order. Ambiguity is lint error `M3021` (backend D9, spec issue S7).
+The edge-inference rule (spec §7.4): the node a step takes its items from when it references several nodes. Other references only order. Ambiguity is lint error `M3021` (backend D9, spec issue S7; spec §7.4).
 
 ## reducer
 
@@ -58,7 +58,7 @@ The one goroutine per live run that is the only writer of that run's event log (
 
 ## S-number
 
-A spec issue found by the backend plan (S1–S31): contradiction, under-specified, or over-scoped. A recommendation until the user accepts it and the spec is edited.
+A spec issue found by the backend plan (S1–S31): contradiction, under-specified, or over-scoped. All 31 were accepted and applied in spec v2.1 (2026-11-11); the backend plan's table says where.
 
 ## slot
 

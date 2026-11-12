@@ -2,7 +2,7 @@
 
 mill is a terminal-native, unattended pipeline engine for agents, code and automations. Two binaries: `mill` (CLI and TUI) and `milld` (daemon). They talk JSONL over a local socket.
 
-Status: spec stage. No code yet.
+Status: spec stage (v2.1, decisions applied 2026-11-11). No code yet. Repo: [github.com/TristanBietsch/mill](https://github.com/TristanBietsch/mill), MIT ([LICENSE](../LICENSE)).
 
 ## Authority
 
@@ -19,11 +19,18 @@ When code and spec disagree, the code wins and the spec gets fixed in the same P
 
 | Audience | Start here |
 |----------|------------|
-| First-time reader | [README](../README.md), then [spec summary](spec/01-summary.md) |
+| First-time reader | [README](../README.md), then [design.md](design.md) and [tech.md](tech.md), then [spec summary](spec/01-summary.md) |
 | Coding agent | [agents/HANDOFF.md](agents/HANDOFF.md) |
 | Contributor | [CONTRIBUTING](../CONTRIBUTING.md), [STRUCTURE.md](STRUCTURE.md), [agents/](agents/README.md) |
 | Implementer of an area | [plans/](plans/README.md), then the spec section |
 | Security reviewer | [SECURITY](../SECURITY.md), [spec §22](spec/22-security.md) |
+
+## Overviews
+
+| Document | Purpose |
+|----------|---------|
+| [design.md](design.md) | Product and UX on one page: what mill is, hands-off, board, run popup, editor |
+| [tech.md](tech.md) | Tech on one page: Go 1.27, key libraries, two binaries, storage, protocols |
 
 ## Spec
 
@@ -31,7 +38,7 @@ The spec is split into one file per section under [spec/](spec/index.md). Start 
 
 | File | Section |
 |------|---------|
-| [spec/index.md](spec/index.md) | Title, status, what changed in v2, contents |
+| [spec/index.md](spec/index.md) | Title, status, what changed in v2 and v2.1, contents |
 | [01-summary.md](spec/01-summary.md) | What mill is |
 | [02-principles.md](spec/02-principles.md) | The 16 principles that decide arguments |
 | [03-goals.md](spec/03-goals.md) | Goals and non-goals |
@@ -96,8 +103,8 @@ No files yet. Planned in [spec §27.4](spec/27-tech-stack.md#274-repository-layo
 | Document | Purpose |
 |----------|---------|
 | [plans/README.md](plans/README.md) | Naming, numbering, plan format, index of plans |
-| [plans/backend/00-overview.md](plans/backend/00-overview.md) | Backend and tech-stack plan: engine, storage, protocols, milestones M0–M11 |
-| [plans/editor.md](plans/editor.md) | TUI pipeline editor plan |
+| [plans/backend/00-overview.md](plans/backend/00-overview.md) | Backend and tech-stack plan: engine, storage, protocols, milestones M0–M11 (decisions decided 2026-11-11) |
+| [plans/editor.md](plans/editor.md) | TUI pipeline editor plan (decisions decided 2026-11-11) |
 
 ## Agent docs
 
@@ -106,6 +113,7 @@ No files yet. Planned in [spec §27.4](spec/27-tech-stack.md#274-repository-layo
 | [agents/HANDOFF.md](agents/HANDOFF.md) | Start here: state, gate, open work |
 | [agents/README.md](agents/README.md) | Module map, where to start per task |
 | [agents/AGENTS.md](agents/AGENTS.md) | Authority, safe vs careful edits, never-do list |
+| [agents/DECISIONS.md](agents/DECISIONS.md) | Decision log (ADRs), including the 2026-11-11 decisions |
 
 ## Layout and design
 
@@ -113,4 +121,4 @@ No files yet. Planned in [spec §27.4](spec/27-tech-stack.md#274-repository-layo
 |----------|---------|
 | [STRUCTURE.md](STRUCTURE.md) | Where each kind of doc and code goes |
 | [agents/ARCHITECTURE.md](agents/ARCHITECTURE.md) | Processes and package boundaries |
-| [`mockups/`](../mockups/) | HTML mockups of the TUI (v1). Visual reference only; the spec wins on behavior |
+| [`mockups/`](../mockups/) | HTML mockups of the TUI (`v2/index.html` is current, v1 is frozen). Visual reference only; the spec wins on behavior |

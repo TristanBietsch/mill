@@ -5,7 +5,7 @@ All built-ins use the public parts protocol (§9.3) and can be replaced.
 ### 10.1 Execution
 | Part | What it does |
 |---|---|
-| `sh` | Run a shell command. stdin = input items (per `io`), stdout = output items. Non-zero exit fails the node unless `ok_codes` includes it. |
+| `sh` | Run a shell command. stdin = input items (per `io`), stdout = output items. Non-zero exit fails the node unless `ok_codes` includes it. Unix runs `/bin/sh -c`; `shell: bash` (or any argv prefix) changes it. On Windows it uses `sh.exe` from Git for Windows, and fails with a clear error suggesting `exec` or `shell: pwsh` when that's missing. |
 | `exec` | Like `sh` but with an argv list and no shell. Safer for templated arguments. |
 | `check` | Run a command as a pass/fail test. Output: `passed`, `exit_code`, captured output as an artifact. Routes to `true`/`false` ports. |
 | `lua` | Sandboxed Lua transform over items. |
@@ -28,7 +28,7 @@ All built-ins use the public parts protocol (§9.3) and can be replaced.
 |---|---|
 | `if` | Route each item to `true` or `false`. |
 | `switch` | Route by expression to `case.<name>` ports, with `default`. |
-| `loop` | Re-run a subgraph (its `body`) until a condition holds or `max_iters` is reached. The last try's output leaves on `out` when `until` held, or on `exhausted` when it didn't. |
+| `loop` | Re-run its body until a condition holds or `max_iters` is reached. The body is a list of node ids in the same pipeline (`with.body`); `until` and `max_iters` (required) sit next to it. The last try's output leaves on `out` when `until` held, or on `exhausted` when it didn't. |
 | `assert` | Check an expression on each item. `else: fail` (default) fails the node and shows the expression and its values in the error; `else: route` sends the item to the `else` port; `else: drop` discards it. |
 | `handoff` | Pass work to a person or another tool through any part (`gh.comment`, `mcp:slack/send_message`, `linear.issue.create`, an external session manager…), record where it went as the node's output, and end that branch. mill never waits for the answer. |
 | `wait` | Sleep, or wait until a given time. |

@@ -1,8 +1,8 @@
 # cli
 
-**Path:** `internal/surface/cli`  
+**Path:** `internal/surface/cli` + `surface/cli/core` (output kit from rex) + `surface/cli/local` (the `--local` entry) (backend layout, accepted 2026-11-11)  
 **Status:** planned · first built in M0 (`mill run`), M1 (`--local`, lint, explain), M2/M5 (full CLI)  
-**Backend plan path:** `internal/surface/cli` + `surface/cli/core` (output kit from rex) + `surface/cli/local` (the `--local` entry)  
+**Spec v2 path (superseded):** `internal/surface/cli`  
 **Depends on:** wire/client, pipeline, the errors package; `engine`/`store` only from the `--local` entry  
 **Depended on by:** cmd
 

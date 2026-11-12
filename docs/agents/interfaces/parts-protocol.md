@@ -4,9 +4,9 @@ Contract summary of the protocol between `milld` and a part. Reference: **[spec 
 
 ## Transport
 
-An executable part is started by `milld` with stdin and stdout connected. Same envelope as the daemon protocol: one JSON object per line, `{v, kind, type, id, data}`. Stderr is captured as the part's log. Lua and WASM parts implement the same lifecycle through function calls.
+An executable part is started by `milld` with stdin and stdout connected. Same envelope as the daemon protocol: one JSON object per line, `{v, kind, type, id, ctx, data}`. Stderr is captured as the part's log. Lua and WASM parts implement the same lifecycle through function calls.
 
-Spec gaps the backend plan fills (backend S10): `kind` is `Intent` (milld → part) and `Event` (part → milld); an optional envelope field `ctx` carries the context id for long-lived parts that handle many contexts.
+`kind` is `Intent` (milld → part) and `Event` (part → milld); the optional field `ctx` carries the context id for long-lived parts that handle many contexts (backend S10, applied in spec §9.3).
 
 ## Lifecycle
 
@@ -42,7 +42,7 @@ Other messages: `Resume` (with last checkpoint, for `resumable` parts after a re
 
 ## Resolution order
 
-Built-ins → user-scope plugins → project-scope plugins → inline `mill.part` → `mill-part-<name>` on `PATH` → MCP tools as `mcp:<server>/<tool>`. Spec says later overrides earlier; the backend plan proposes that `PATH` and MCP only fill unused ids (backend S5, D19). See [§9.4](../../spec/09-parts-and-plugins.md#94-resolution-order).
+Built-ins → user-scope plugins → project-scope plugins → inline `mill.part` → `mill-part-<name>` on `PATH` → MCP tools as `mcp:<server>/<tool>`. Built-ins win: `PATH` executables and MCP tools only fill unused ids; overriding needs an explicit plugin or `mill.part` with `override = true` (backend S5, D19; applied in spec v2.1). See [§9.4](../../spec/09-parts-and-plugins.md#94-resolution-order).
 
 ## Versioning
 

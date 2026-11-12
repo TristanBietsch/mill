@@ -1,8 +1,8 @@
 # workspace
 
-**Path:** `internal/daemon/workspace`  
+**Path:** `internal/workspace` (backend layout, accepted 2026-11-11)  
 **Status:** planned · first built in M1 (temp), M3 (git worktrees)  
-**Backend plan path:** `internal/workspace`  
+**Spec v2 path (superseded):** `internal/daemon/workspace`  
 **Depends on:** paths  
 **Depended on by:** runner, builtin (`git.*`)
 

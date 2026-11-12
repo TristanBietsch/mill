@@ -4,23 +4,23 @@ Re-sequences spec §28 into milestones that each end in something runnable, star
 
 Sizes are focused working days for one developer working with coding agents; "S" ≤ 3 d, "M" 4–8 d, "L" 9–15 d.
 
-The three dogfood targets from spec §26, and when each first runs for real:
+The three dogfood targets from spec §26, in the order decided on 2026-11-11 (spec §28): `nightly-vuln-sweep` first, then `morning-brief`, then `issue-to-pr`. Until mill has its own cron (M4), the OS crontab calls `mill run --local`.
 
 | Target | First real run | How it's triggered then | Full form |
 |---|---|---|---|
-| `morning-brief` | end of M0 (lite: `sh` + `curl` + headless agent → markdown file) | OS cron calling `mill run --local` | M4: mill cron, RSS via `http`+`parse`, calendar via MCP, Slack via MCP |
-| `nightly-vuln-sweep` | end of M3 | OS cron calling `mill run --local` | M4: mill cron with `catch_up: last` |
-| `issue-to-pr` | end of M3 | `mill run issue-to-pr --input issue=@issue.json` (from `gh issue view --json`) | M4: `poll` trigger on `gh issue list --label agent`; M7: GitHub webhook via gateway |
+| `nightly-vuln-sweep` | **end of M0** (lite: `sh` runs `govulncheck -json ./...` and `npm audit --json` → headless agent triages the findings → `sh` writes a markdown report) | OS cron calling `mill run` (M0 has no daemon, so no `--local` flag is needed) | M3: `if` found → `agent.loop` fix in a worktree until `go test ./...` → draft `gh.pr`; M4: mill cron with `catch_up: last` |
+| `morning-brief` | end of M1 (lite: `sh` + `curl` + headless agent → markdown file) | OS cron calling `mill run --local` | M4: mill cron, RSS via `http`+`parse`, calendar via MCP, Slack via MCP |
+| `issue-to-pr` | ~M4 | `poll` trigger on `gh issue list --label agent` (manual `--input issue=@issue.json` works from M3) | M7: GitHub webhook via gateway |
 
 ## Overview
 
 | # | Name | Spec phase | Size | Ends with |
 |---|---|---|---|---|
-| M0 | Weekend prototype | §28 prototype | S (2–3 d) | `mill run file.mill.yaml` runs sh + headless agent in topological order, JSONL between steps |
+| M0 | Weekend prototype | §28 prototype | S (2–3 d) | `mill run file.mill.yaml` runs sh + headless agent in topological order, JSONL between steps; `nightly-vuln-sweep-lite` runs from OS cron |
 | M1 | Engine core, local mode | v0 (part) | L | `mill run --local` with the real engine: batch/each, retries, budgets, cancel, event log, items, errors, config |
 | M2 | Daemon | v0 (rest) | L | `milld` + socket + autostart + recovery + index; CLI `run/runs/logs/wait/items/rerun/cancel/status/watch` |
-| M3 | Code pipelines | v0 parts + v0.1 bits | L | `issue-to-pr` and `nightly-vuln-sweep` run against real repos via OS cron / manual input |
-| M4 | Triggers and MCP client | v0.4 (part) + v0.5 (MCP client) | M–L | `morning-brief` and `nightly-vuln-sweep` run on mill's own cron for a week |
+| M3 | Code pipelines | v0 parts + v0.1 bits | L | `nightly-vuln-sweep` full form runs nightly via OS cron; `issue-to-pr` passes on a sandbox repo |
+| M4 | Triggers and MCP client | v0.4 (part) + v0.5 (MCP client) | M–L | `morning-brief` and `nightly-vuln-sweep` run on mill's own cron for a week; `issue-to-pr` dogfoods on `poll` |
 | M5 | CLI completeness and pipe | v0.1 | M | every §17 command except plugin/import/export; pipe expressions; YAML editing; `render`/`show` |
 | M6 | Backend for the TUI | v0.2–0.3 support | M | PTY runner + attach repaint, stats, board snapshot fields, EditPipeline, lint-on-save |
 | M7 | Gateway, webhooks, fswatch, git hooks, stream mode | v0.4 (rest) | M | GitHub webhook starts `issue-to-pr` |
@@ -49,9 +49,9 @@ TUI work (spec v0.2–v0.3) runs in parallel from M5 on, against the M2 protocol
 
 **Exit criteria:**
 1. `examples/hello.mill.yaml` (two `sh` nodes) runs and `mill run hello.mill.yaml --json | jq .greeting` works.
-2. `morning-brief-lite`: `sh` (curl two RSS feeds) → `agent claude/haiku` "summarize" → `sh` append to `~/notes/brief.md`. Runs from the user's crontab.
+2. `nightly-vuln-sweep-lite`: `sh` (`govulncheck -json ./...`, `npm audit --json` on a sandbox repo) → `agent claude/haiku` "triage these findings: what's real, what to fix first" → `sh` writes `~/notes/vuln-<date>.md`. Runs nightly from the user's crontab. This is the first dogfood pipeline.
 3. A three-node pipeline with `item` per line through `jq` (`io: plain`) shows the pipe ergonomics.
-4. Notes file `docs/plans/backend/m0-findings.md` (format, item model, ergonomics) feeding open decisions D9–D10.
+4. Notes file `docs/plans/backend/m0-findings.md` (format, item model, ergonomics, what the vuln sweep needed that M0 lacked), checked against decisions D9–D10.
 
 ## M1 — Engine core, local mode
 
@@ -71,7 +71,8 @@ TUI work (spec v0.2–v0.3) runs in parallel from M5 on, against the M2 protocol
 **Packages:** `core errs clock paths mlog expr schema pipeline pipeline/ir engine engine/sched engine/budget engine/retry store store/cas store/lock runner runner/proc runner/local agents secrets secrets/redact config config/settings luaapi partproto parthost parts/builtin/* surface/cli surface/cli/core testutil`.
 
 **Exit criteria:**
-1. Example suite (`hello`, `each-fanout`, `retry-rate-limit`, `budget-stop`, `cancel`) passes on Linux, macOS, Windows (`--local`).
+1. Example suite (`hello`, `each-fanout`, `retry-rate-limit`, `budget-stop`, `cancel`) passes on Linux, macOS, Windows (`--local`; Windows is tier 2, D7).
+5. `nightly-vuln-sweep-lite` moves to `mill run --local` in the crontab; `morning-brief-lite` (`sh` curl two RSS feeds → `agent claude/haiku` "summarize" → `sh` append to `~/notes/brief.md`) joins it.
 2. `mill run x --local --budget-tokens 1k` exits 9 with M4101; Ctrl-C leaves no child processes (checked by the test with `@echo:spawn-child`).
 3. Invariants 4–9 tests green; engine coverage ≥ 85 %.
 4. Benchmarks B1–B7, B11 recorded as baselines.
@@ -99,13 +100,13 @@ TUI work (spec v0.2–v0.3) runs in parallel from M5 on, against the M2 protocol
 **Scope:**
 - Workspace manager: git worktrees, temp dirs, cleanup policies, retry snapshot/reset, diff artifacts, path safety with `os.Root`.
 - Parts: `git.worktree`, `git.diff`, `git.commit`, `git.push`, `gh.pr`, `gh.issue`, `gh.comment` (via `gh` CLI), `handoff`, `agent.loop`, `agent.review`, `agent.extract`, `file.read|write|append|glob`, `template`, `merge`.
-- Secrets: broker with `keychain` backend, `mill secrets set|ls|rm|test`, redaction everywhere, M9203 argv checks.
+- Secrets: broker with `keychain` backend, `mill secrets set|ls|rm|test`, redaction everywhere, M9207 argv checks.
 - Policy: `allow_destructive` lint, `--dry-run` for destructive parts.
 - Project trust: `mill trust`, untrusted projects data-only.
 
 **Exit criteria:**
-1. `issue-to-pr` (spec §7.5 minus webhook and Slack) opens a draft PR on a sandbox repo from `--input issue=@issue.json`; out-of-scope plans produce an issue comment.
-2. `nightly-vuln-sweep` (`govulncheck` → `if` → `agent.loop` until `go test ./...` → `gh.pr`) runs nightly from the user's crontab for a week with no manual intervention.
+1. `nightly-vuln-sweep` full form (`govulncheck` → `if` → `agent.loop` until `go test ./...` → `gh.pr`) runs nightly from the user's crontab for a week with no manual intervention.
+2. `issue-to-pr` (spec §7.5 minus webhook and Slack) opens a draft PR on a sandbox repo from `--input issue=@issue.json` in an integration test; out-of-scope plans produce an issue comment. Its first real dogfood run waits for M4.
 3. `TestSecrets_NotOnDisk` and crash-point exploration green for both examples.
 
 ## M4 — Triggers and MCP client
@@ -120,7 +121,7 @@ TUI work (spec v0.2–v0.3) runs in parallel from M5 on, against the M2 protocol
 **Exit criteria:**
 1. `morning-brief` full form (cron 07:30 weekdays, RSS + calendar MCP + Slack MCP) runs a week; missed runs during sleep follow `catch_up: last`.
 2. `nightly-vuln-sweep` moved from crontab to mill cron.
-3. `issue-to-pr` on a `poll` trigger (`gh issue list --label agent --json number,title,body` every 10 min, dedupe by number).
+3. `issue-to-pr` starts dogfooding on a `poll` trigger (`gh issue list --label agent --json number,title,body` every 10 min, dedupe by number).
 
 ## M5 — CLI completeness and pipe
 

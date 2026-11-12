@@ -1,8 +1,8 @@
 # tui-settings
 
-**Path:** `internal/surface/tui/settings`  
+**Path:** `internal/surface/tui/settings` (backend layout, accepted 2026-11-11)  
 **Status:** planned · first built in v0.2  
-**Backend plan path:** same  
+**Spec v2 path:** same  
 **Depends on:** settings (registry)  
 **Depended on by:** tui
 

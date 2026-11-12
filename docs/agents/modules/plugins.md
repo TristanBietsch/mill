@@ -1,8 +1,8 @@
 # plugins
 
-**Path:** `internal/plugins`  
+**Path:** `internal/plugins` (backend layout, accepted 2026-11-11)  
 **Status:** planned · first built in v0.5 (M9)  
-**Backend plan path:** same  
+**Spec v2 path:** same  
 **Depends on:** luaapi (data-only manifest), paths  
 **Depended on by:** parthost, cli
 

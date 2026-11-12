@@ -1,20 +1,21 @@
 # Modules overview
 
-Every planned package, from [spec §27.4](../../spec/27-tech-stack.md#274-repository-layout). **Status of all: planned.** No code exists.
+Every planned package, in the backend plan's layout ([../../plans/backend/architecture.md](../../plans/backend/architecture.md) §2), accepted 2026-11-11 and mirrored in [spec §27.4](../../spec/27-tech-stack.md#274-repository-layout). **Status of all: planned.** No code exists.
 
-Each module doc has the same fields: path, status and first milestone, the backend plan's path for it, dependencies, purpose, what it owns, invariants, spec links. When code lands, the doc is rewritten from source in rex's module-doc shape.
+Each module doc has the same fields: path (backend layout), status and first milestone, the spec v2 path it replaces, dependencies, purpose, what it owns, invariants, spec links. When code lands, the doc is rewritten from source in rex's module-doc shape.
 
 ## Map
 
 | Layer | Modules |
 |-------|---------|
 | Entrypoints | [cmd](cmd.md) |
-| Surface | [cli](cli.md), [tui](tui.md), [canvas](canvas.md), [tui-settings](tui-settings.md), [sound](sound.md), [pipe](pipe.md) |
+| Surface | [cli](cli.md), [tui](tui.md), [canvas](canvas.md), [tui-settings](tui-settings.md), [sound](sound.md) |
 | Wire | [protocol](protocol.md), [client](client.md) |
-| Daemon | [server](server.md), [sched](sched.md), [store](store.md), [runner](runner.md), [trigger](trigger.md), [workspace](workspace.md), [secrets](secrets.md) |
+| Execution (library, used by `milld` and `--local`) | [sched](sched.md) (`engine`), [store](store.md), [runner](runner.md), [trigger](trigger.md), [workspace](workspace.md), [secrets](secrets.md) |
+| Daemon | [server](server.md) |
 | Config and Lua | [config](config.md), [luaapi](luaapi.md), [settings](settings.md) |
 | Parts | [plugins](plugins.md), [parthost](parthost.md), [builtin](builtin.md), [agents](agents.md) |
-| Language | [pipeline](pipeline.md), [expr](expr.md) |
+| Language | [pipeline](pipeline.md), [pipe](pipe.md) (`pipeline/pipe`), [expr](expr.md) |
 | Outside `internal/` | [sdk](sdk.md), [examples](examples.md) |
 
 Official plugins (`plugins/` at the repo root: github, slack, linear, rex …) are normal plugins and get a doc each when they exist.
@@ -33,9 +34,9 @@ cmd (milld) → server → sched → parthost → builtin → (runner, workspace
 
 Lower layers never import higher ones; built-ins never import the scheduler or store. Full rules: [../ARCHITECTURE.md](../ARCHITECTURE.md#package-boundaries).
 
-## What the backend plan changes
+## What the backend layout changed
 
-[../../plans/backend/architecture.md](../../plans/backend/architecture.md) §2 refines this layout. Pending the user's accept; until then the spec's paths above are the contract.
+[../../plans/backend/architecture.md](../../plans/backend/architecture.md) §2 refined the spec v2 layout; the user accepted it on 2026-11-11 (ADR-044), and spec §27.4 now shows it. The changes from v2:
 
 | Change | Reason given |
 |--------|--------------|
@@ -52,4 +53,4 @@ Lower layers never import higher ones; built-ins never import the scheduler or s
 | New: `daemonctl`, `daemon/boot`, `daemon/status`, `gateway`, `surface/mcpserver`, `testutil` | Daemon start/find, wiring, prompt status file, HTTP front door, `mill mcp serve`, test helpers |
 | New: `third_party/vt10x` | rex's terminal emulator fork for PTY screens |
 
-If the user accepts the backend layout, rename the module docs to match and add docs for the new packages.
+Module doc file names still follow the v2 names (`sched.md` covers `engine`, `protocol.md` covers `wire/jsonl` and `wire/protocol`). Rename them and add docs for the new packages (`core`, `errs`, `partproto`, `schema`, `daemonctl`, `gateway` …) when their code lands.

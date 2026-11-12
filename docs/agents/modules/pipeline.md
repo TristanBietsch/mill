@@ -1,8 +1,8 @@
 # pipeline
 
-**Path:** `internal/pipeline`  
+**Path:** `internal/pipeline` + `pipeline/ir`, `pipeline/pipe`, `pipeline/yamledit`, `pipeline/layout` (backend layout, accepted 2026-11-11)  
 **Status:** planned · first built in M0 (subset), M1 (lint), M5 (YAML edits), v0.3 (layout)  
-**Backend plan path:** `internal/pipeline` + `pipeline/ir`, `pipeline/pipe`, `pipeline/yamledit`, `pipeline/layout`  
+**Spec v2 path (superseded):** `internal/pipeline`  
 **Depends on:** expr, the errors package  
 **Depended on by:** sched, server, cli, tui
 

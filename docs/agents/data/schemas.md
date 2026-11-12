@@ -33,7 +33,7 @@ Every line on the daemon socket and every part's stdio ([spec §16.1](../../spec
 | `kind` | string | `Intent` or `Event` |
 | `type` | string | Message name |
 | `id` | string | Optional correlation id |
-| `ctx` | string | Parts protocol only, proposed (backend S10): context id |
+| `ctx` | string | Parts protocol only (spec §9.3): context id |
 | `data` | object | Payload |
 
 ## Error object
@@ -76,7 +76,7 @@ Never in the log: secret values, item payloads (in `items/`), raw output (in `lo
 
 `~/.local/share/mill/runs/<run-id>/` ([spec §20](../../spec/20-paths.md#20-files-and-paths)): `run.json` (derived snapshot), `events.jsonl`, `items/<node>/<n>.jsonl`, `logs/<node-run>.log` (raw output), `transcripts/`. The backend plan adds `run.lock`, `pipeline/` (frozen copy), `inputs.json`, `event.json`, split `.out.log`/`.err.log`/`.part.log`, and `scratch/` (storage.md §1).
 
-Run id: 32 lowercase hex characters, random (backend D6, open). Run number: per-pipeline integer from 1, shown as `pipeline#42`.
+Run id: 32 lowercase hex characters, random (backend D6, decided). Run number: per-pipeline integer from 1, shown as `pipeline#42`.
 
 ## Pipeline file (`*.mill.yaml`)
 
@@ -110,8 +110,8 @@ outputs:
 | executable hashes | Hash of every executable it ships |
 | dependencies | Resolved `requires` |
 
-Runs record which lock entry they used. `mill plugin sync --frozen` fails on any drift. File encoding is not specified; the backend plan proposes JSON with sorted keys (backend S26).
+Runs record which lock entry they used. `mill plugin sync --frozen` fails on any drift. Encoding: JSON with sorted keys (backend S26, spec §9.11).
 
 ## Trust records
 
-`mill trust` records approved files by hash ([spec §22](../../spec/22-security.md#22-security-and-trust)). Format not specified; the backend plan proposes JSON with sorted keys (backend S26).
+`mill trust` records approved files by hash ([spec §22](../../spec/22-security.md#22-security-and-trust)). Stored in `~/.local/share/mill/trust.json`, JSON with sorted keys: `{kind, path, sha256, at}` per record (backend S26, spec §20).

@@ -4,11 +4,11 @@
 
 Read this file next. For directory layout and "where does new code go?", see [`../STRUCTURE.md`](../STRUCTURE.md).
 
-mill is a Go pipeline engine: `mill` (CLI, TUI, pipe expressions) talks to `milld` (daemon) over newline-delimited JSON on a local socket; `milld` runs pipelines made of parts that speak the same envelope over stdio. **No code exists yet.** Every module below is planned, from [spec §27.4](../spec/27-tech-stack.md#274-repository-layout).
+mill is a Go pipeline engine: `mill` (CLI, TUI, pipe expressions) talks to `milld` (daemon) over newline-delimited JSON on a local socket; `milld` runs pipelines made of parts that speak the same envelope over stdio. **No code exists yet.** Every module below is planned, in the accepted backend layout ([spec §27.4](../spec/27-tech-stack.md#274-repository-layout)).
 
 ## Modules
 
-All status: **planned**. Paths are the spec's; the backend plan proposes some moves ([modules/overview.md](modules/overview.md)).
+All status: **planned**. Paths follow the backend plan's layout, accepted 2026-11-11 ([modules/overview.md](modules/overview.md)).
 
 | Module | Path | Description |
 |--------|------|-------------|
@@ -18,25 +18,25 @@ All status: **planned**. Paths are the spec's; the backend plan proposes some mo
 | [canvas](modules/canvas.md) | `internal/surface/tui/canvas` | Cell-grid graph renderer |
 | [tui-settings](modules/tui-settings.md) | `internal/surface/tui/settings` | Settings page from the registry |
 | [sound](modules/sound.md) | `internal/surface/sound` | Soundsets, mixer, silent fallback |
-| [pipe](modules/pipe.md) | `internal/surface/pipe` | Pipe-expression parser |
-| [protocol](modules/protocol.md) | `internal/wire/protocol` | Envelope, intents, events, codec |
+| [pipe](modules/pipe.md) | `internal/pipeline/pipe` | Pipe-expression parser |
+| [protocol](modules/protocol.md) | `internal/wire/jsonl`, `internal/wire/protocol` | Envelope and codec; intents and events |
 | [client](modules/client.md) | `internal/wire/client` | Dial, handshake, request/ack |
 | [server](modules/server.md) | `internal/daemon/server` | Intent handlers, per-connection queues |
-| [sched](modules/sched.md) | `internal/daemon/sched` | Ready queue, slots, budgets |
-| [store](modules/store.md) | `internal/daemon/store` | Event log, items, artifacts, index |
-| [runner](modules/runner.md) | `internal/daemon/runner` | local, pty, container, ssh, remote, external |
-| [trigger](modules/trigger.md) | `internal/daemon/trigger` | Trigger host, dedupe, concurrency policy |
-| [workspace](modules/workspace.md) | `internal/daemon/workspace` | Worktrees, temp dirs, cleanup, path safety |
-| [secrets](modules/secrets.md) | `internal/daemon/secrets` | Broker, redactor |
+| [sched](modules/sched.md) | `internal/engine` (+ `engine/sched`, `budget`, `retry`, `cache`) | Run actor, ready queue, slots, budgets |
+| [store](modules/store.md) | `internal/store` | Event log, items, artifacts, index |
+| [runner](modules/runner.md) | `internal/runner` | local, pty, container, ssh, remote, external |
+| [trigger](modules/trigger.md) | `internal/trigger` | Trigger host, dedupe, concurrency policy |
+| [workspace](modules/workspace.md) | `internal/workspace` | Worktrees, temp dirs, cleanup, path safety |
+| [secrets](modules/secrets.md) | `internal/secrets` | Broker, redactor |
 | [config](modules/config.md) | `internal/config` | Lua loader, layers, reload |
 | [luaapi](modules/luaapi.md) | `internal/luaapi` | `mill.*` API, sandboxes, LuaLS types |
 | [plugins](modules/plugins.md) | `internal/plugins` | Resolver, installer, lockfile, import/export |
-| [parthost](modules/parthost.md) | `internal/parthost` | Part processes, Lua part host, routing |
+| [parthost](modules/parthost.md) | `internal/parthost`, `internal/partproto` | Part processes, Lua part host, routing; protocol types and conformance suite |
 | [builtin](modules/builtin.md) | `internal/parts/builtin` | Built-in parts |
 | [pipeline](modules/pipeline.md) | `internal/pipeline` | Parse, lint, edges, compile, YAML edits, layout |
 | [expr](modules/expr.md) | `internal/expr` | CEL environment and helpers |
-| [settings](modules/settings.md) | `internal/catalog/settings` | Settings registry |
-| [agents](modules/agents.md) | `internal/catalog/agents` | Agent registry and merge |
+| [settings](modules/settings.md) | `internal/config/settings` | Settings registry |
+| [agents](modules/agents.md) | `internal/agents` | Agent registry and merge |
 | [sdk](modules/sdk.md) | `sdk/{go,ts,python}` | Parts SDKs |
 | [examples](modules/examples.md) | `examples/` | Example pipelines, end-to-end suite |
 

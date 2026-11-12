@@ -76,7 +76,7 @@ The spec (§7.4) says a reference creates an edge `a.out → b.in`. Taken litera
    - A node that references nothing and has no `in` is a source: it gets the run's input items (from `--stdin` / trigger) if it's the first source in file order, otherwise no items.
 3. `needs:` adds order edges only.
 4. Ports: `in: scope` means `scope.out`; `in: scope.else` names a port. Branching parts (`if`, `switch`, `assert` with `else: route`, `on_error: route`) emit on named ports; a node fed only by a port that received zero items and whose producer finished is `skipped` (§4).
-5. Cycles: any cycle in data or order edges is M3020. Loops are expressed with `agent.loop` (single node) or `loop`/`pipeline` with a sub-pipeline body (§11), so the graph is always a DAG.
+5. Cycles: any cycle in data or order edges is M3020. Loops are expressed with `agent.loop` (single node), `pipeline` (a sub-pipeline), or `loop` with a `with.body` list of node ids (§11); the compiler treats a loop's body as one unit, so the graph is always a DAG.
 
 `mill show --graph` prints both edge kinds so the inference is never invisible.
 
@@ -167,7 +167,7 @@ Ledger per run, folded from events: `tokens_in`, `tokens_out`, `cost_micro_usd`,
 
 Overshoot is bounded by what's in flight: an agent call that's already running finishes its current turn before `Cancel` lands. `Open.budget` passes remaining tokens so parts that can cap themselves (an agent with `--max-tokens`) do.
 
-`max_wall` counts time the run is live **while an engine is running it** (`wall_active`), not calendar time: a laptop that sleeps overnight doesn't cancel every run on wake. Open decision D16.
+`max_wall` counts time the run is live **while an engine is running it** (`wall_active`), not calendar time: a laptop that sleeps overnight doesn't cancel every run on wake. Decision D16 (default accepted, spec §15.5).
 
 ## 7. Retries and backoff
 
@@ -180,7 +180,7 @@ retry: { max: 3, backoff: "exp(2s, x2, max 5m)", on: [exit:1, class:transient, c
 - `rate_limited` with `retry_after`: delay = max(backoff, retry_after).
 - Matchers: `exit:N`, `class:C`, `code:Mxxxx` or plugin code. A `Fail` matches if any matcher matches.
 - **Default policy** (when the node and `defaults.retry` set nothing): `{max: 2, on: [class:transient, class:rate_limited], backoff: "exp(2s, x2, max 5m)"}`, applied only if the part is `idempotent` **or** the failure says `retryable: true`. Non-idempotent parts that fail without `retryable` are never retried by default (they may have had side effects).
-- Workspace on retry: for node-runs with a git workspace, the worker snapshots the worktree before the attempt (`git stash create` + recorded tree sha, or a commit on a hidden ref `refs/mill/snap/<nr>`) and resets to it before the next attempt, unless `retry.keep_workspace: true`. A retried agent starts clean instead of on top of a half-finished edit. Open decision D11.
+- Workspace on retry: for node-runs with a git workspace, the worker snapshots the worktree before the attempt (`git stash create` + recorded tree sha, or a commit on a hidden ref `refs/mill/snap/<nr>`) and resets to it before the next attempt, unless `retry.keep_workspace: true`. A retried agent starts clean instead of on top of a half-finished edit. Decision D11 (default accepted, spec §15.3).
 - `max` counts attempts after the first. `mill run`'s `RetryNode` intent creates a manual attempt that doesn't count against `max`.
 
 ## 8. Cache
@@ -247,7 +247,7 @@ Determinism requirement for this to work: the reducer is pure (no clock reads, n
 
 **`agent.loop`.** One node-run. Internally: run agent → run `until` check in the same workspace through the same runner → if it fails, append the failure tail to the next prompt → repeat up to `max_iters`. Each iteration is recorded as `LoopIteration{n, check_exit, usage}` events so the run popup can show `loop 2/3`. Output: last agent result plus `iterations`, `passed`. Budget is checked between iterations.
 
-**`loop` part (generic, M8).** `with: { body: <pipeline name or inline nodes>, until: ${{ … }}, max_iters: N, carry: ${{ … }} }`. Each iteration is a child run of the body; `until` is evaluated over the iteration's outputs; `carry` maps outputs to the next iteration's inputs. Bounded by `max_iters` and `budget.max_nodes`. This keeps the main graph a DAG and gives each iteration its own visible run.
+**`loop` part (generic, M8).** Shape decided 2026-11-11 (editor decision 4, spec §10.3): `with: { body: [patch, test], until: ${{ … }}, max_iters: N }`, where `body` lists node ids in the same pipeline. The first body node reads `in: <loop>.body`; downstream reads `<loop>` (port `out`, the last try when `until` held) or `<loop>.exhausted` (the last try when `max_iters` ran out). `loop.iter`, `loop.max` and `loop.prev` are available in body expressions. The compiler contracts the body into the loop node for the outer DAG; each iteration creates a fresh set of node-runs for the body nodes (`<node>@iter<n>`), recorded with `LoopIteration` events, and `until` is evaluated after the last body node finishes. Bounded by `max_iters` and `budget.max_nodes`. (This replaces the earlier sub-pipeline-body proposal in S30; a sub-pipeline can still be looped by putting a `pipeline` node in the body.)
 
 **`agent.fanout`** expands to N node-runs internally (one per agent/model/seed) with N workspaces; it's a part, not a graph rewrite, so the graph stays as written. Its output is N items, one per candidate, each carrying its `ws`.
 

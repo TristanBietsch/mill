@@ -2,7 +2,7 @@
 
 Choices already made in the spec, as a log an agent can check before undoing something. Each entry: date, status, context, decision, consequences, source.
 
-All entries below were recorded on 2026-11-11 from spec v2. Status `accepted` means the spec states it as decided. Open choices are not here: they live in [../plans/backend/open-decisions.md](../plans/backend/open-decisions.md) and [spec §30](../spec/30-open-questions.md#30-open-questions). To add a decision: append the next number, never renumber; to reverse one, add a new entry that supersedes it and mark the old one `superseded by ADR-NNN`.
+ADR-001 to ADR-023 were recorded on 2026-11-11 from spec v2. ADR-024 to ADR-044 record the decisions the user (and, for ADR-044, the main session acting for the user) made the same day on the backend and editor plans' open decisions; they are applied in spec v2.1. Status `accepted` means the spec states it as decided. Questions still open live in [spec §30](../spec/30-open-questions.md#30-open-questions). To add a decision: append the next number, never renumber; to reverse one, add a new entry that supersedes it and mark the old one `superseded by ADR-NNN`.
 
 ## ADR-001: Hands-off runs
 
@@ -25,7 +25,7 @@ All entries below were recorded on 2026-11-11 from spec v2. Status `accepted` me
 - **Date:** 2026-11-11 · **Status:** accepted
 - **Context:** A daemon supervising many processes, streams and timers; static binaries for three OSes; CEL, Lua and a TUI ecosystem.
 - **Decision:** Go, `CGO_ENABLED=0`, one module, two binaries. Libraries: Bubble Tea and Lip Gloss, `cel-go`, `gopher-lua`, a YAML node API, pure-Go SQLite, `creack/pty` and ConPTY, `fsnotify`, the official Go MCP SDK, `oto`.
-- **Consequences:** The canvas needs its own cell-grid component inside Bubble Tea. Exact library versions are a backend plan matter (open decisions D2–D4, D28).
+- **Consequences:** The canvas needs its own cell-grid component inside Bubble Tea. Exact library versions are a backend plan matter (decisions D2–D4, D28; see [ADR-027](#adr-027-go-127) and [ADR-044](#adr-044-accepted-plan-defaults)).
 - **Source:** [spec §27.1](../spec/27-tech-stack.md#271-language-go), [§27.2](../spec/27-tech-stack.md#272-libraries).
 
 ## ADR-004: Boring formats
@@ -54,7 +54,7 @@ All entries below were recorded on 2026-11-11 from spec v2. Status `accepted` me
 
 ## ADR-007: Built-ins use the public parts protocol
 
-- **Date:** 2026-11-11 · **Status:** accepted
+- **Date:** 2026-11-11 · **Status:** accepted · amended by [ADR-041](#adr-041-built-in-part-ids-win)
 - **Context:** A protocol that built-ins bypass goes incomplete.
 - **Decision:** Built-in parts get no private internals. Any built-in can be replaced by a user part with the same id.
 - **Consequences:** If a built-in needs a capability, the protocol grows it. The backend plan runs built-ins in-process behind the same interface, proven equal by a conformance suite (open decision D12).
@@ -62,7 +62,7 @@ All entries below were recorded on 2026-11-11 from spec v2. Status `accepted` me
 
 ## ADR-008: Event-sourced run log; files are the truth
 
-- **Date:** 2026-11-11 · **Status:** accepted
+- **Date:** 2026-11-11 · **Status:** accepted · amended by [ADR-044](#adr-044-accepted-plan-defaults) (redaction before persistence, S1)
 - **Context:** Faithful replay, crash recovery and an audit trail.
 - **Decision:** Each run has an append-only `events.jsonl`. Nothing rewrites history; corrections are new events. Raw step output is stored as-is. The SQLite index is a cache rebuilt from files (`mill doctor --reindex`).
 - **Consequences:** State is a fold over events. Deleting `index.db` loses nothing. Any run can be inspected or replayed exactly.
@@ -110,7 +110,7 @@ All entries below were recorded on 2026-11-11 from spec v2. Status `accepted` me
 
 ## ADR-014: Crash, don't guess
 
-- **Date:** 2026-11-11 · **Status:** accepted
+- **Date:** 2026-11-11 · **Status:** accepted · amended by [ADR-042](#adr-042-daemon-stop-is-a-crash)
 - **Context:** After a daemon restart, a step that was live may have had side effects.
 - **Decision:** On startup `milld` replays unfinished runs. Queued nodes re-queue; `resumable` parts get `Resume`; `idempotent` parts re-run; anything else becomes `crashed` and the run fails with `M4301`, keeping finished outputs. Terminal agents always become `crashed`.
 - **Consequences:** mill never silently repeats a push, a post or a payment. The user continues with `mill rerun <run> --from <node>`.
@@ -142,7 +142,7 @@ All entries below were recorded on 2026-11-11 from spec v2. Status `accepted` me
 
 ## ADR-018: Safe by default
 
-- **Date:** 2026-11-11 · **Status:** accepted
+- **Date:** 2026-11-11 · **Status:** accepted · amended by [ADR-029](#adr-029-fresh-clones-are-disarmed) and [ADR-036](#adr-036-dry-run-semantics)
 - **Context:** mill runs agents and commands unattended, sometimes from code it did not write.
 - **Decision:** Code-changing nodes run in isolated workspaces. Destructive capabilities need `policy.allow_destructive`. Pipelines, plugins and project config from elsewhere need explicit trust, recorded by hash. Dangerous paths are refused. Listeners bind to localhost.
 - **Consequences:** `mill lint` fails pipelines that use unlisted destructive parts. `--dry-run` skips destructive parts.
@@ -187,3 +187,176 @@ All entries below were recorded on 2026-11-11 from spec v2. Status `accepted` me
 - **Decision:** Everything works without the hosted layer. Relay, remote runners, run viewer, registry and shared history only add reach. Optional pieces (sound, notifications, summaries, telemetry) fail silently without affecting a run. Telemetry is never on by default.
 - **Consequences:** No core feature may need a network service.
 - **Source:** [spec §25](../spec/25-hosted.md#25-optional-hosted-layer), principles 10 and 15.
+
+## ADR-024: Name `mill`, own Homebrew tap
+
+- **Date:** 2026-11-11 · **Status:** accepted
+- **Context:** Spec §30 Q12 asked for a name check. Core Homebrew already has a `mill` formula (a Scala build tool).
+- **Decision:** The name stays `mill` (binaries `mill` and `milld`). It's distributed through its own tap: `brew install tristanbietsch/tap/mill`. Module path `github.com/TristanBietsch/mill`.
+- **Consequences:** GoReleaser publishes to the `tristanbietsch/tap` tap. §30 Q12 is resolved.
+- **Source:** User decision 1. [spec §27.1](../spec/27-tech-stack.md#271-language-go), [§30](../spec/30-open-questions.md#30-open-questions).
+
+## ADR-025: Public repo on GitHub
+
+- **Date:** 2026-11-11 · **Status:** accepted
+- **Context:** The repo, default branch and remote were unconfirmed.
+- **Decision:** mill lives at `github.com/TristanBietsch/mill`, public. All mill work is committed there.
+- **Consequences:** Module path and repo name match. Links and docs use that URL.
+- **Source:** User decision 2. [spec §27.1](../spec/27-tech-stack.md#271-language-go).
+
+## ADR-026: Copy and diverge from rex
+
+- **Date:** 2026-11-11 · **Status:** accepted
+- **Context:** rex already has the codec, socket server, daemon autostart, PTY console, Lua dispatcher, CLI kit, test helpers and CI that mill needs (backend D1).
+- **Decision:** Copy those files into mill and let them diverge. Each copied file starts with a header naming the rex source commit and path. A shared module is reconsidered after M5 (v0.1).
+- **Consequences:** Fast start, no coupled release trains; fixes are ported by hand, tracked through the headers.
+- **Source:** User decision 3, backend D1. [tech-stack §6](../plans/backend/tech-stack.md#6-what-mill-reuses-from-rex), [spec §27.1](../spec/27-tech-stack.md#271-language-go).
+
+## ADR-027: Go 1.27
+
+- **Date:** 2026-11-11 · **Status:** accepted
+- **Context:** Go version floor (backend D28).
+- **Decision:** `go 1.27` with `toolchain go1.27.4`; `CGO_ENABLED=0`.
+- **Consequences:** mill and rex use different toolchains (rex is on 1.26.x). The patch floor is raised for security fixes.
+- **Source:** User decision 4, backend D28. [spec §27.1](../spec/27-tech-stack.md#271-language-go).
+
+## ADR-028: Primary upstream edge rule
+
+- **Date:** 2026-11-11 · **Status:** accepted
+- **Context:** Spec §7.4 made every reference a data edge, so `pr` in §7.5 would receive both `plan` and `review` items (backend S7, D9; editor decision 1).
+- **Decision:** Every reference orders. A node's input is `in:`, else explicit `edges:`, else the primary upstream: the referenced node every other referenced node is upstream of. No primary upstream is lint error `M3021` (ambiguous input), with `in:` and `merge` fixes. "Unreachable" moves from `M3021` to `M3024`.
+- **Consequences:** The editor draws inferred edges by the same rule the compiler uses.
+- **Source:** User decision 5. [spec §7.4](../spec/07-pipeline-format.md#74-edge-inference), [§18.7.3](../spec/18-tui.md#1873-how-the-graph-is-drawn), [§18.7.9](../spec/18-tui.md#1879-lint).
+
+## ADR-029: Fresh clones are disarmed
+
+- **Date:** 2026-11-11 · **Status:** accepted
+- **Context:** mill can't tell your repo from a cloned one; a clone with a cron or fswatch trigger would start running code as soon as `milld` saw it (backend S4, D18).
+- **Decision:** A project's pipelines are untrusted until `mill trust .`: listed, triggers never armed, manual runs refused with `M9101`. The board shows `◌ not trusted · triggers off · mill trust .` in READY.
+- **Consequences:** One `mill trust .` per project. User-dir pipelines stay trusted.
+- **Source:** User decision 6. [spec §22](../spec/22-security.md#22-security-and-trust), [§13](../spec/13-triggers.md#13-triggers), [§4](../spec/04-concepts.md#pipeline-status-on-the-board).
+
+## ADR-030: Windows is tier 2 in v0
+
+- **Date:** 2026-11-11 · **Status:** accepted
+- **Context:** Windows support level for v0 (backend D7).
+- **Decision:** Windows builds and runs unit, integration and `--local` smoke tests in CI from M1. PTY (terminal agents) and the container runner are best-effort until M11.
+- **Consequences:** Windows doesn't rot, and ConPTY quirks don't gate every milestone.
+- **Source:** User decision 7. [spec §27.1](../spec/27-tech-stack.md#271-language-go), [§28](../spec/28-roadmap.md#28-roadmap).
+
+## ADR-031: Step environment by allowlist
+
+- **Date:** 2026-11-11 · **Status:** accepted
+- **Context:** `milld` may be started from a shell full of unrelated tokens (backend D30).
+- **Decision:** Steps get `milld`'s environment filtered by `env.passthrough`, then pipeline `env`, then node `env`, then mill's own `MILL_*` variables. Node `env` is the only way a secret reaches an `sh`/`exec` process.
+- **Consequences:** "Works like my shell" needs the variable added to `env.passthrough`.
+- **Source:** User decision 8. [spec §12.1](../spec/12-runners.md#121-environment), [§19.6](../spec/19-config-lua.md#196-settings-registry).
+
+## ADR-032: Loop YAML shape
+
+- **Date:** 2026-11-11 · **Status:** accepted
+- **Context:** The generic loop needed a syntax for its body (editor decision 4, backend S30).
+- **Decision:** `uses: loop` with `with.body: [ids]`, `until` and required `max_iters`; the first body node reads `<loop>.body`; ports `out` (until held) and `exhausted` (ran out). The body is nodes in the same pipeline, not a sub-pipeline.
+- **Consequences:** Overrides S30's sub-pipeline-body proposal; backend engine §11 updated. `agent.loop` covers the single-agent case before M8.
+- **Source:** User decision 9. [spec §10.3](../spec/10-builtin-parts.md#103-control-flow).
+
+## ADR-033: Agent pipelines without a budget
+
+- **Date:** 2026-11-11 · **Status:** accepted
+- **Context:** Editor decision 7: should `M3201` (agents, no `budget`) always be an error?
+- **Decision:** Error when the pipeline has any automatic trigger (anything but `manual`); warning when it only runs by hand.
+- **Consequences:** Differs from the editor plan's default (always error). Manual pipelines like best-of-3 save without a budget, with a warning.
+- **Source:** User decision 10. [spec §18.7.9](../spec/18-tui.md#1879-lint).
+
+## ADR-034: Saving with lint errors
+
+- **Date:** 2026-11-11 · **Status:** accepted
+- **Context:** Editor decision 8.
+- **Decision:** `:w` refuses while there are errors (`M2203`); `:w!` saves, and a pipeline saved with errors keeps its triggers disarmed and can't run until lint passes. CLI edits need `--force`.
+- **Consequences:** A broken pipeline never runs unattended. The board shows `lint errors · e to fix`.
+- **Source:** User decision 11. [spec §18.7.9](../spec/18-tui.md#1879-lint).
+
+## ADR-035: Pinned samples are committed files
+
+- **Date:** 2026-11-11 · **Status:** accepted
+- **Context:** Editor decision 12: where pinned samples live.
+- **Decision:** `.mill/samples/<pipeline>/<node>.jsonl`, committed with the pipeline. Pinning goes through the redactor, and lint warns (`M9208`) when a sample looks like it holds a secret.
+- **Consequences:** Samples are repeatable fixtures that travel with the repo.
+- **Source:** User decision 12. [spec §18.7.12](../spec/18-tui.md#18712-testing-while-you-build), [§18.7.9](../spec/18-tui.md#1879-lint).
+
+## ADR-036: Dry run semantics
+
+- **Date:** 2026-11-11 · **Status:** accepted
+- **Context:** `sh`/`exec` can do anything but aren't flagged destructive (backend S22, D17).
+- **Decision:** In `--dry-run`, `sh` and `exec` run for real unless the node sets `destructive: true`. Agent nodes are stubbed (a stub item matching `output`, nothing spent). `git.push`, `gh.*` and other destructive parts report what they would do.
+- **Consequences:** Dry runs still build and test; nothing pushes, posts or spends tokens. Goes further than D17's default by also stubbing agents.
+- **Source:** User decision 13. [spec §17.10](../spec/17-cli.md#1710-no-daemon---local), [§7.3](../spec/07-pipeline-format.md#73-node-keys), [§22](../spec/22-security.md#22-security-and-trust).
+
+## ADR-037: Default retry policy
+
+- **Date:** 2026-11-11 · **Status:** accepted
+- **Context:** Unattended runs hit rate limits (backend D23).
+- **Decision:** Without a `retry`, a node gets 2 retries on `transient` and `rate_limited`, with exponential backoff, only for idempotent parts or failures marked retryable. Each retry is a new attempt; the failed one stays `failed`.
+- **Consequences:** Rate limits don't fail nightly runs; side-effecting steps aren't re-run on a guess.
+- **Source:** User decision 14. [spec §15.3](../spec/15-execution.md#153-retries), [§4](../spec/04-concepts.md#states).
+
+## ADR-038: MIT license
+
+- **Date:** 2026-11-11 · **Status:** accepted
+- **Context:** Backend D29 proposed Apache-2.0.
+- **Decision:** mill is MIT licensed, `Copyright (c) 2026 Tristan Bietsch`. `LICENSE` at the repo root.
+- **Consequences:** README and CONTRIBUTING state it; contributions are under the same terms.
+- **Source:** User decision 15 (differs from the default). [LICENSE](../../LICENSE), [spec §25](../spec/25-hosted.md#25-optional-hosted-layer).
+
+## ADR-039: One-page design and tech overviews
+
+- **Date:** 2026-11-11 · **Status:** accepted
+- **Context:** `docs/design.md` and `docs/tech.md` existed and were empty.
+- **Decision:** `design.md` is a one-page product and UX overview; `tech.md` a one-page stack overview. Both link into the spec and plans instead of copying them.
+- **Consequences:** Listed in `docs/index.md` and `docs/STRUCTURE.md`.
+- **Source:** User decision 16. [../design.md](../design.md), [../tech.md](../tech.md).
+
+## ADR-040: Dogfood order
+
+- **Date:** 2026-11-11 · **Status:** accepted
+- **Context:** Which pipeline mill runs for real first (backend S28).
+- **Decision:** `nightly-vuln-sweep` at the end of M0, from OS cron until mill has its own cron; then `morning-brief` (M1); then `issue-to-pr` (~M4, poll trigger).
+- **Consequences:** M0's exit criteria and the milestone dogfood table changed.
+- **Source:** User decision 17. [milestones](../plans/backend/milestones.md), [spec §28](../spec/28-roadmap.md#28-roadmap).
+
+## ADR-041: Built-in part ids win
+
+- **Date:** 2026-11-11 · **Status:** accepted
+- **Context:** Spec §9.4 let any later source override an id, so a stray `mill-part-sh` on `PATH` could replace `sh` (backend S5, D19).
+- **Decision:** Built-ins win. `PATH` executables and MCP tools only fill ids nobody else provides. Overriding an existing id needs an explicit plugin or `mill.part` with `override = true`.
+- **Consequences:** Amends ADR-007: a built-in is still replaceable, but only on purpose.
+- **Source:** User decision 18. [spec §9.4](../spec/09-parts-and-plugins.md#94-resolution-order).
+
+## ADR-042: Daemon stop is a crash
+
+- **Date:** 2026-11-11 · **Status:** accepted
+- **Context:** Child processes can't outlive the daemon's pipes (backend S24, D26).
+- **Decision:** `mill daemon stop` and `restart` with live runs use crash semantics: no drain, recovery rules apply on the next start. `--drain` waits for live node-runs up to 10 minutes (`shutdown.drain_timeout`).
+- **Consequences:** One path for every way the daemon goes away. Amends ADR-014 by applying it to stops.
+- **Source:** User decision 19. [spec §15.7](../spec/15-execution.md#157-daemon-restarts-and-crash-recovery).
+
+## ADR-043: Registry and signing in v0.5
+
+- **Date:** 2026-11-11 · **Status:** accepted
+- **Context:** Spec §30 Q9 and Q10 (backend D27).
+- **Decision:** v0.5's registry is a curated GitHub index repo plus `gh:` sources; the lockfile records SHA-256 hashes. Signatures (Sigstore, keyless) come with the hosted registry.
+- **Consequences:** No service to run before v0.5; integrity from hashes until then.
+- **Source:** User decision 20. [spec §9.6](../spec/09-parts-and-plugins.md#96-installing-plugins), [§9.11](../spec/09-parts-and-plugins.md#911-lockfile), [§22](../spec/22-security.md#22-security-and-trust).
+
+## ADR-044: Accepted plan defaults
+
+- **Date:** 2026-11-11 · **Status:** accepted
+- **Context:** The backend plan's 30 decisions and 31 spec issues, the editor plan's 30 decisions, and the mockup↔spec mismatches needed answers. The user decided ADR-024 to ADR-043; the main session, acting for the user, accepted everything else.
+- **Decision:** Accepted as the plans stated them:
+  - **Backend decisions (defaults):** D2 Bubble Tea v2 · D3 `go.yaml.in/yaml/v4` + text-splice edits · D4 `modernc.org/sqlite` · D5 stdlib `flag` + rex output kit · D6 128-bit random hex run ids · D8 Git for Windows `sh.exe` · D10 `stream` mode deferred to M7 · D11 reset the workspace before a retry · D12 built-ins in-process with a conformance suite · D13 redact text artifacts, fail binary ones (`M9205`) · D14 global artifact store · D15 fsync on state changes, 100 ms group commit · D16 `max_wall` counts active time · D20 socket `$XDG_RUNTIME_DIR/mill/milld.sock`, else `~/.cache/mill/milld.sock` · D21 honor `XDG_*` on macOS, add `MILL_STATE_DIR` · D22 AF_UNIX on Windows too · D24 `fail_fast: true` · D25 extraction on the same agent's cheapest priced model.
+  - **Spec issues S1–S31:** every recommendation, applied in spec v2.1 (the backend plan's table lists where). S30's sub-pipeline loop body is replaced by ADR-032.
+  - **Editor decisions:** the defaults for 2, 3, 5, 6, 9, 10, 11 and 13–30.
+  - **Package layout:** the backend plan's (architecture §2), now spec §27.4.
+  - **Mockup↔spec:** crashed (`↯`) and budget-cancelled (`⊗`) in FAILED and counted as failed; user-cancelled (`⊗` dim) and untrusted (`◌`) in READY; branch rows indented under the node that split; retries as new attempts with the failed one as its own sub-row; `M3021` ambiguous input, `M3024` unreachable; mode name at the left of the board's help bar; conditional columns between text and runs; socket fallback `~/.cache/mill/milld.sock`.
+- **Consequences:** Spec v2.1 states all of these. The plans mark each item decided. Code clash fixed on the way: the backend plan's argv-secret check moves from `M9203` (taken by "secret declared but never used") to `M9207`.
+- **Source:** [open-decisions.md](../plans/backend/open-decisions.md), [00-overview.md](../plans/backend/00-overview.md#spec-issues), [editor.md](../plans/editor.md) §5, [spec index](../spec/index.md).

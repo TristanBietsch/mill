@@ -1,8 +1,8 @@
 # luaapi
 
-**Path:** `internal/luaapi`  
+**Path:** `internal/luaapi` (backend layout, accepted 2026-11-11)  
 **Status:** planned · first built in M1 (config phase), v0.5 (Lua parts)  
-**Backend plan path:** same (dispatcher copied from rex)  
+**Spec v2 path:** same (dispatcher copied from rex)  
 **Depends on:** gopher-lua  
 **Depended on by:** config, parthost, plugins
 

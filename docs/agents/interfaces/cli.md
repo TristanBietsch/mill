@@ -55,7 +55,7 @@ Full synopsis: [spec §17.1](../../spec/17-cli.md#171-commands).
 | 8 | Reserved |
 | 9 | Budget exceeded |
 
-Derived from the error class ([§29.6](../../spec/29-errors.md#296-error-classes)). Known spec issues: `mill status` exit 1 wording (backend S3) and budget → 9 vs `cancelled` → 1 (backend S9).
+Derived from the error class ([§29.6](../../spec/29-errors.md#296-error-classes)) and, for runs, the state plus reason: `cancelled` with reason `budget` → 9, other `cancelled` → 1. `mill status` exits 1 when any pipeline's latest run is `failed` or `crashed` (backend S3, S9; applied in spec v2.1).
 
 ## Selectors
 
@@ -65,4 +65,4 @@ Full id · `pipeline#42` · `pipeline#last` · short hex id (4+ digits, prefix) 
 
 - `mill status` is for prompts and scripts: one line, fast. `mill prompt` reads a status file and never touches the socket.
 - `mill attach` is view-only; `Ctrl+]` leaves.
-- Plan decision: no CLI framework; rex's output kit and stdlib `flag` (backend D5, open).
+- No CLI framework: rex's output kit and stdlib `flag` (backend D5, decided 2026-11-11).

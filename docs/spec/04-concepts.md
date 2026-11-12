@@ -35,15 +35,36 @@ Run and node-run states share one vocabulary:
 | `pending` | | ✓ | Not ready yet (waiting on inputs) |
 | `queued` | ✓ | ✓ | Ready, waiting for capacity |
 | `working` | ✓ | ✓ | Executing |
-| `retrying` | | ✓ | Failed with a retryable error (rate limit, network, timeout) and waiting out its backoff before the next attempt |
+| `retrying` | ✓ | ✓ | The **next** attempt after one that failed with a retryable error (rate limit, network, timeout), waiting out its backoff. The failed attempt stays `failed`. A run is `retrying` while one of its node-runs is. |
 | `done` | ✓ | ✓ | Finished successfully |
 | `failed` | ✓ | ✓ | Finished with an error |
 | `skipped` | | ✓ | On a branch that wasn't taken, or `when` was false |
 | `cached` | | ✓ | Output reused from the cache; not executed |
-| `cancelled` | ✓ | ✓ | Stopped by a person, a policy or a budget |
+| `cancelled` | ✓ | ✓ | Stopped by a person, a policy or a budget. The reason is recorded: `user`, `policy` or `budget` |
 | `crashed` | ✓ | ✓ | The daemon died while it was live, and it couldn't be resumed or safely re-run (§15.7) |
 
-`done`, `failed`, `skipped`, `cached`, `cancelled` and `crashed` are terminal; nothing moves a node-run out of a terminal state, only a *new* node-run (a retry) can follow it.
+`done`, `failed`, `skipped`, `cached`, `cancelled` and `crashed` are terminal; nothing moves a node-run out of a terminal state.
+
+**Retries are new attempts.** A retry is a new node-run of the same node (`try 2`). When attempt 1 fails with a retryable error, it ends `failed` and stays that way; attempt 2 is created in `retrying`, waits out the backoff, then goes `queued` → `working` like any node-run. The run popup shows each attempt as its own sub-row (§18.6).
+
+**Run ids.** A run id is 128 random bits written as 32 lowercase hex characters. Runs are ordered by start time, not by id. People use `pipeline#number` or a short prefix (§17.3).
+
+### Pipeline status on the board
+
+The board places each pipeline by its latest run, or by a status that stops it from running (§18.2):
+
+| Latest run or status | Glyph | Section | Counted in the header as |
+|---|---|---|---|
+| `failed` | `✗` | FAILED | failed |
+| `crashed` | `↯` | FAILED | failed |
+| `cancelled`, reason `budget` | `⊗` (red) | FAILED | failed |
+| `working`, `queued` | spinner | RUNNING | running |
+| `retrying` | `↻` | RUNNING | running |
+| `done` | `✓` | READY | ok today |
+| `cancelled` by a person or a policy | `⊗` (dim) | READY | |
+| never run | `○` | READY | |
+| disabled (triggers off by hand) | `⊘` | READY | |
+| not trusted (§22) | `◌` | READY | |
 
 
 ---

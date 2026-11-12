@@ -1,6 +1,6 @@
 ## 16. Daemon wire protocol
 
-Newline-delimited JSON over a local socket (Unix domain socket; named pipe on Windows). Optionally the same messages over WebSocket through the gateway.
+Newline-delimited JSON over a local Unix domain socket, on macOS, Linux and Windows alike (Windows 10 1803 and later support AF_UNIX). The socket file is `0600` in a `0700` directory, and the daemon checks the peer's user id and drops other users. The path is in §20. Optionally the same messages go over WebSocket through the gateway.
 
 ### 16.1 Envelope
 
@@ -24,28 +24,41 @@ Maximum line length 16 MiB. `[]byte` fields are base64. Unknown fields are ignor
 
 | Intent | Payload | Reply |
 |---|---|---|
-| `Hello` | `client`, `client_version` | `Snapshot` |
+| `Hello` | `client`, `client_version`, `features` | `Snapshot` |
 | `ListPipelines` | `scope` | `Pipelines` |
 | `GetPipeline` | `name` | `Pipeline` (source, compiled graph, lint results) |
-| `SavePipeline` | `name`, `source`, `layout`, `base_hash` | `Ack` with new hash; `Error` `conflict` if `base_hash` is stale |
+| `SavePipeline` | `name`, `source`, `layout`, `base_hash`, `force` | `Ack` with new hash; `Error` `conflict` if `base_hash` is stale; `Error` `lint_failed` unless `force` |
+| `EditPipeline` | `name`, `base_hash`, `ops` (node add/set/rm/mv, edge add/rm) | `Ack` with new hash and diff. CLI and TUI edits share this one implementation |
 | `Lint` | `source` or `name` | `LintResult` |
 | `Compile` | `pipe` (pipe expression) | `Pipeline` |
-| `StartRun` | `pipeline` or `source`, `inputs`, `items`, `budget`, `labels`, `detach`, `dry_run` | `Ack` with `run_id`, `number` |
+| `StartRun` | `pipeline` or `source`, `inputs`, `items`, `input_stream`, `budget`, `labels`, `priority`, `detach`, `dry_run` | `Ack` with `run_id`, `number` |
+| `RunInput` | `run_id`, `items` (batches up to 1 MiB) | `Ack`; the client sends the next batch after it. Streams stdin larger than one line when `input_stream` is set |
+| `RunInputEnd` | `run_id` | `Ack` |
 | `RunNode` | `pipeline` or `source`, `node`, `items` (or `from_run`), `dry_run` | `Ack` with `run_id`; the node's items follow as `ItemEmitted` |
 | `Estimate` | `pipeline` or `source` | `Estimate`: per node and total, low and high cost, tokens, time |
 | `CancelRun` | `run_id`, `reason` | `Ack` |
 | `DeleteRun` | `run_id` | `Ack` |
 | `RerunFrom` | `run_id`, `node` (optional) | `Ack` with new `run_id` |
 | `RetryNode` | `run_id`, `node_run_id` | `Ack` |
-| `Subscribe` | `run_id`, optional `node_run_id`, `replay`, `repaint` (view-only; there is no input intent) | `Ack` after replay |
+| `Subscribe` | `run_id` (empty for the whole board), optional `node_run_id`, `from_seq`, `replay`, `repaint` (view-only; there is no input intent) | `Ack` after replay |
+| `Unsubscribe` | `run_id`, `node_run_id` | `Ack` |
 | `Resize` | `node_run_id`, `cols`, `rows` | `Ack` |
 | `ListRuns` | filters, `limit`, `cursor` | `Runs` |
 | `GetRun` | `run_id` | `Run` |
 | `GetItems` | `run_id`, `node`, `port`, `limit`, `cursor` | `Items` |
+| `GetLogs` | `run_id`, `node_run_id`, `from_line`, `tail`, `raw` | `Logs` (so `mill logs` needs no file access) |
 | `SetTrigger` | `pipeline`, `trigger`, `enabled` | `Ack` |
+| `ListTriggers` | `pipeline` | `Triggers`: armed, next fire, last fire, errors |
+| `FireTrigger` | `pipeline`, `trigger`, `event` | `Ack` with `run_id` (`mill trigger fire`) |
 | `PartCall` | `part`, `method`, `data` (for part-specific UI, e.g. listing Slack channels) | part-defined |
+| `ListParts` | `kind` | `Parts`: id, source, version, health (`mill part ls`) |
+| `Stats` | `since`, `group_by` | `Stats` (`mill stats`, `:stats`) |
+| `CacheList`, `CacheClear` | filters | `Cache` / `Ack` with the count removed |
+| `Prune` | `older`, `dry_run` | `Pruned` |
 | `Reload` | none | `Ack` once pipelines, parts and registries are reloaded |
-| `Shutdown` | none | `Ack` (best effort) |
+| `Shutdown` | `drain` | `Ack` (best effort). Without `drain`, live node-runs are treated as crashed on the next start (§15.7) |
+
+Commands that only touch local files (`config`, `secrets set`, `trust`, `lint` of a file) stay in the CLI and have no intent.
 
 ### 16.4 Events
 

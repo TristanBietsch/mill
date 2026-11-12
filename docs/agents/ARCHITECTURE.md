@@ -31,19 +31,19 @@ Agent-oriented summary of [spec §5](../spec/05-architecture.md#5-architecture).
 
 ## Components (inside `milld`)
 
-| Component | Owns | Planned package (spec §27.4) |
+| Component | Owns | Planned package (spec §27.4, backend layout) |
 |-----------|------|------------------------------|
 | Server | Socket, handshake, intent handlers, per-connection ordered queues | `daemon/server` |
-| Pipeline loader | Parse, lint, compile `*.mill.yaml` and pipe expressions; watch and reload | `pipeline`, `surface/pipe` |
-| Scheduler | Ready queue, concurrency caps, budgets, when a node-run starts | `daemon/sched` |
+| Pipeline loader | Parse, lint, compile `*.mill.yaml` and pipe expressions; watch and reload | `pipeline`, `pipeline/pipe` |
+| Scheduler | Ready queue, concurrency caps, budgets, when a node-run starts | `engine`, `engine/sched` |
 | Part host | Start, pool, health-check, stop parts; route messages | `parthost` |
-| Runner layer | Process groups, PTYs, containers, SSH sessions | `daemon/runner` |
-| Trigger host | Trigger parts → new runs, with dedupe, debounce, concurrency policy | `daemon/trigger` |
-| Run store | Event log, items, artifacts, rebuildable SQLite index | `daemon/store` |
-| Workspace manager | Worktrees, temp dirs, volumes, path safety | `daemon/workspace` |
-| Secrets broker | Resolve by reference, inject where declared, register for redaction | `daemon/secrets` |
+| Runner layer | Process groups, PTYs, containers, SSH sessions | `runner` |
+| Trigger host | Trigger parts → new runs, with dedupe, debounce, concurrency policy | `trigger` |
+| Run store | Event log, items, artifacts, rebuildable SQLite index | `store` |
+| Workspace manager | Worktrees, temp dirs, volumes, path safety | `workspace` |
+| Secrets broker | Resolve by reference, inject where declared, register for redaction | `secrets` |
 | Expression engine | CEL `${{ }}`, sandboxed Lua transforms | `expr`, `luaapi` |
-| Gateway (optional) | HTTP/WebSocket: webhooks, remote API | not in §27.4 (backend plan: `gateway`) |
+| Gateway (optional) | HTTP/WebSocket: webhooks, remote API | `gateway` |
 
 ## Main flow: a run, trigger to result
 
@@ -57,7 +57,7 @@ Agent-oriented summary of [spec §5](../spec/05-architecture.md#5-architecture).
 
 ## Package boundaries
 
-Rules that hold whichever layout wins (spec §27.4 or [backend plan §2–3](../plans/backend/architecture.md)):
+Rules from the accepted layout ([backend plan §2–3](../plans/backend/architecture.md), spec §27.4):
 
 1. Lower layers never import higher ones. Base types and errors → language (pipeline, expr, protocol) → services (store, runner, secrets, config) → execution (scheduler, part host, built-ins, triggers) → hosts (daemon server, gateway) → surface (CLI, TUI).
 2. The scheduler and engine see parts only through the parts interface. Built-ins are registered by the part host, never imported by the engine.
@@ -65,7 +65,7 @@ Rules that hold whichever layout wins (spec §27.4 or [backend plan §2–3](../
 4. The TUI never reads run directories; it goes through the daemon. The CLI may read run files read-only (`mill runs --store`, `mill logs` with the daemon down).
 5. Only the daemon boot code and the `--local` entry construct an engine.
 
-The backend plan moves `sched`, `store`, `runner`, `trigger`, `workspace` and `secrets` out of `daemon/` so `--local` can use them without the daemon. That change is pending the user's accept ([HANDOFF.md](HANDOFF.md) §6).
+`engine`, `store`, `runner`, `trigger`, `workspace` and `secrets` live outside `daemon/` so `--local` can use them without the daemon (accepted 2026-11-11, ADR-044).
 
 ## Invariants
 

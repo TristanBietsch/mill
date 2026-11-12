@@ -101,11 +101,11 @@ Codes are `M` plus four digits, grouped by area. A code is never reused or renum
 | `M0xxx` | Internal: a bug in mill | `M0001` unexpected internal error |
 | `M1xxx` | CLI, selectors, arguments | `M1201` pipeline not found · `M1203` ambiguous run selector · `M1301` unknown flag |
 | `M2xxx` | Files and pipelines | `M2101` YAML parse error · `M2201` conflicting edit (file changed since you loaded it) · `M2203` lint errors, not saved |
-| `M3xxx` | Lint and expressions | `M3012` unknown node in expression · `M3020` cycle outside a loop · `M3030` branch port not connected · `M3101` CEL type mismatch · `M3204` destructive part not allowed · `M3206` waits for a person. The full list is in §18.7.9. |
+| `M3xxx` | Lint and expressions | `M3012` unknown node in expression · `M3020` cycle outside a loop · `M3021` ambiguous input · `M3024` unreachable node · `M3030` branch port not connected · `M3101` CEL type mismatch · `M3204` destructive part not allowed · `M3206` waits for a person. The full list is in §18.7.9. |
 | `M4xxx` | Runs and scheduling | `M4101` budget exceeded · `M4201` node timed out · `M4301` crashed during daemon restart |
 | `M5xxx` | Parts and plugins | `M5101` plugin not found · `M5102` version conflict · `M5201` part failed · `M5301` checksum mismatch |
 | `M6xxx` | Agents | `M6101` agent CLI not installed · `M6201` rate limited · `M6202` auth expired · `M6301` output didn't match schema · `M6304` agent asked for input |
-| `M7xxx` | Daemon and protocol | `M7001` daemon unreachable · `M7003` daemon older than client · `M7101` line too long |
+| `M7xxx` | Daemon and protocol | `M7001` daemon unreachable · `M7002` socket path can't be resolved or is too long · `M7003` daemon older than client · `M7101` line too long |
 | `M8xxx` | Lua config | `M8001` Lua syntax error · `M8004` unknown setting · `M8101` hook error |
 | `M9xxx` | Security, trust, secrets | `M9101` pipeline not trusted · `M9201` secret not declared · `M9202` secret missing · `M9301` path refused |
 
@@ -156,7 +156,7 @@ Every error has a **class**. Retry policies, exit codes and the TUI all key off 
 | `auth` | Expired or invalid credentials | no | 1 |
 | `timeout` | A node or `mill wait` ran out of time | node: per policy · `wait`: no | 7 |
 | `budget` | Tokens, money, time or node limits hit | no | 9 |
-| `cancelled` | Stopped by a person or a policy | no | 1 |
+| `cancelled` | Stopped by a person or a policy (a budget stop is class `budget`) | no | 1 |
 | `agent` | Agent-specific: context too long, refused the task, malformed output | per node policy | 1 |
 | `internal` | A bug in mill | no | 1 |
 
@@ -190,7 +190,7 @@ So a pipeline can say `retry: { on: [class:rate_limited] }` and have it work for
 | Situation | What mill says and does |
 |---|---|
 | Daemon not running | Starts it automatically. If that fails: `M7001 daemon unreachable at <socket>`, the reason, and `help: mill daemon logs`. |
-| Client and daemon versions differ | `M7003 daemon is older than this client (0.4.2 < 0.5.0)` · `help: mill daemon restart` (runs keep their state across the restart) |
+| Client and daemon versions differ | `M7003 daemon is older than this client (0.4.2 < 0.5.0)` · `help: mill daemon restart --drain` (waits for live node-runs; a plain restart treats them as crashed, §15.7) |
 | Ambiguous run selector | `M1203` lists every match with its short id, pipeline and start time. |
 | Pipeline edited elsewhere | `M2201 issue-to-pr changed since you loaded it` · TUI offers to reload, diff or overwrite. |
 | Agent asks a question mid-task | Fails the node with `M6304`, quoting the question · `help: add an auto_answer rule, or make the prompt answer it up front`. |

@@ -1,8 +1,8 @@
 # server
 
-**Path:** `internal/daemon/server`  
+**Path:** `internal/daemon/server` + `daemon/boot` + `daemon/status` (backend layout, accepted 2026-11-11)  
 **Status:** planned · first built in M2  
-**Backend plan path:** `internal/daemon/server` + `daemon/boot` + `daemon/status`  
+**Spec v2 path (superseded):** `internal/daemon/server`  
 **Depends on:** protocol, sched, store, pipeline, parthost, trigger, config  
 **Depended on by:** cmd (milld)
 

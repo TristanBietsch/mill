@@ -41,9 +41,9 @@ Every process gets a clean, explicit environment:
 - Base: the daemon's environment filtered by `env.passthrough` (default: `PATH HOME USER LOGNAME SHELL LANG LC_* TERM TZ TMPDIR SSH_AUTH_SOCK XDG_* GIT_* EDITOR`, plus Windows essentials `SYSTEMROOT COMSPEC PATHEXT USERPROFILE APPDATA LOCALAPPDATA TEMP TMP`). Rationale: milld may have been started from a shell with unrelated tokens in it; those shouldn't leak into every step by accident.
 - Pipeline `env`, then node `env` (templated; may reference `secrets.*` handles, which is the **only** way a secret reaches an exec process).
 - mill variables: `MILL_RUN_ID`, `MILL_RUN_NUMBER`, `MILL_PIPELINE`, `MILL_NODE_ID`, `MILL_NODE_RUN_ID`, `MILL_ATTEMPT`, `MILL_ITEM_INDEX`, `MILL_WORKSPACE`, `MILL_ARTIFACTS`, `MILL_SCRATCH`, `MILL_OUTPUT` (agents), `MILL_DRY_RUN=1` when dry.
-- Argv never contains a secret value: lint rejects `secrets.*` in argv/`run` positions (M9203); at runtime the redactor scans the final argv and refuses to start if a registered secret appears (M9203, defense in depth).
+- Argv never contains a secret value: lint rejects `secrets.*` in argv/`run` positions (M9207); at runtime the redactor scans the final argv and refuses to start if a registered secret appears (M9207, defense in depth). (Was M9203, which spec §18.7.9 uses for "secret declared but never used".)
 
-`sh` part: Unix runs `/bin/sh -c <run>`; `shell: bash` (or any argv prefix) overrides. Windows: looks for `sh.exe` from Git for Windows (`%ProgramFiles%\Git\bin\sh.exe`, then PATH), else fails M6101-style with "install Git for Windows or use `exec`/`shell: pwsh`". Open decision D8.
+`sh` part: Unix runs `/bin/sh -c <run>`; `shell: bash` (or any argv prefix) overrides. Windows: looks for `sh.exe` from Git for Windows (`%ProgramFiles%\Git\bin\sh.exe`, then PATH), else fails M6101-style with "install Git for Windows or use `exec`/`shell: pwsh`". Decision D8 (default accepted).
 
 ## 4. PTY runner and terminal-only agents
 
@@ -151,4 +151,4 @@ Concurrency: `git worktree add` on one repo takes `.git/worktrees` locks; the wo
 
 ## 9. Dry run
 
-`--dry-run` (spec §17.10, §22): parts with `flags.destructive` don't execute; instead their `Open` gets `context.dry_run: true` and built-ins report what they would do (`would open draft PR "fix: …" on acme/app`) as their output item with `dry_run: true`. Non-destructive parts run normally. `sh`/`exec` are not flagged destructive by default but run in workspaces; a node can set `destructive: true` to make dry runs skip it (then its output is `{dry_run: true, would_run: "<argv redacted>"}`). Open decision D17.
+`--dry-run` (spec §17.10, §22): parts with `flags.destructive` don't execute; instead their `Open` gets `context.dry_run: true` and built-ins report what they would do (`would open draft PR "fix: …" on acme/app`) as their output item with `dry_run: true`. `sh`/`exec` are not flagged destructive by default and run for real (in workspaces); a node can set `destructive: true` to make dry runs skip it (then its output is `{dry_run: true, would_run: "<argv redacted>"}`). **Agent nodes are stubbed:** the agent CLI isn't started; the node emits one item shaped by its `output` schema (empty strings, zeros, first enum value) with `dry_run: true`, and records no usage. `git.push`, `gh.*` and other destructive parts report what they would do. Other non-destructive parts run normally. Decision D17 (user, 2026-11-11; spec §17.10).

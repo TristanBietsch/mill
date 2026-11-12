@@ -10,7 +10,9 @@ It is built to sit next to [rex](https://github.com/tristanbietsch/rex): rex hol
 
 ## Status
 
-**Specification stage. No code yet.** The spec and an HTML mockup exist. The next milestone is the weekend prototype: a single `mill run` that parses YAML, runs `sh` and headless `agent` nodes in topological order, and pipes JSONL between them ([roadmap](docs/spec/28-roadmap.md#28-roadmap)).
+**Specification stage. No code yet.** The spec (v2.1, with the open decisions settled) and an HTML mockup exist. The next milestone is the weekend prototype: a single `mill run` that parses YAML, runs `sh` and headless `agent` nodes in topological order, and pipes JSONL between them. Its first real job is a nightly vulnerability sweep run from cron ([roadmap](docs/spec/28-roadmap.md#28-roadmap)).
+
+Source: [github.com/TristanBietsch/mill](https://github.com/TristanBietsch/mill). Once released it installs with `brew install tristanbietsch/tap/mill` (Homebrew's own `mill` formula is an unrelated Scala build tool).
 
 ## What it will look like
 
@@ -26,8 +28,13 @@ mill status    # ≋ 1 failed · 1 retrying · 1 working · 14 done today · $6.
 
 - [docs/agents/HANDOFF.md](docs/agents/HANDOFF.md): AI agents start here (current state, open work)
 - [docs/index.md](docs/index.md): documentation map
+- [docs/design.md](docs/design.md) and [docs/tech.md](docs/tech.md): product and tech overviews on one page each
 - [docs/spec/index.md](docs/spec/index.md): the specification
 - [docs/plans/README.md](docs/plans/README.md): plans and how they are written
 - [CONTRIBUTING.md](CONTRIBUTING.md): gate, commits, pull requests
 
 Until code exists, the spec is the reference. Once code exists, Go source wins when docs disagree with behavior, and the spec gets fixed.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

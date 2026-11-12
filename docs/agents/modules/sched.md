@@ -1,8 +1,8 @@
 # sched
 
-**Path:** `internal/daemon/sched`  
+**Path:** `internal/engine` (run actor, reducer) + `engine/sched`, `engine/budget`, `engine/retry`, `engine/cache` (backend layout, accepted 2026-11-11)  
 **Status:** planned · first built in M0 (sequential), M1 (real scheduler)  
-**Backend plan path:** `internal/engine` (run actor, reducer) + `engine/sched`, `engine/budget`, `engine/retry`, `engine/cache`  
+**Spec v2 path (superseded):** `internal/daemon/sched`  
 **Depends on:** pipeline, store, parthost (via the part interface), expr, clock  
 **Depended on by:** server, `--local` entry
 

@@ -21,11 +21,11 @@ The full item envelope (as parts see it):
 |---|---|---|
 | `batch` (default) | One invocation receives all upstream items and emits any number. | Summaries, merges, sorting, "do this once" steps. |
 | `each` | One node-run per item, in parallel up to `concurrency`. | Agent per issue, HTTP call per record. |
-| `stream` | One long-lived invocation. Items flow in and out as they arrive, with backpressure. | Log tailers, chat bots, high-volume filters. |
+| `stream` | One long-lived invocation. Items flow in and out as they arrive, with backpressure. Arrives in v0.4 with the gateway, where its replay, caching and crash recovery are specified; v0 has `batch` and `each`. | Log tailers, chat bots, high-volume filters. |
 
 ### 6.3 Artifacts
 
-Files a node produces (a diff, a report, an image, a build output) are stored once by SHA-256 under the run's artifact store. Items reference them. Downstream nodes get a read-only local path. Artifacts larger than a configured limit can live on a pluggable artifact backend (local disk by default; S3-compatible as a part).
+Files a node produces (a diff, a report, an image, a build output) are stored once by SHA-256 in one global content-addressed store (`~/.local/share/mill/artifacts/`, §20). Each run records references to the artifacts it produced or used, so identical files are stored once and reruns and the cache are cheap. A mark-and-sweep GC removes artifacts no kept run references (`retention`, §19.6). Items reference artifacts by hash. Downstream nodes get a read-only local path. Artifacts larger than a configured limit can live on a pluggable artifact backend (local disk by default; S3-compatible as a part).
 
 ### 6.4 Workspaces
 

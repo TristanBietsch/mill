@@ -34,7 +34,7 @@ Every agent node runs without a person. mill never waits for someone to answer a
 In order of preference:
 1. **Headless JSON**: the agent's own structured output mode.
 2. **Output file**: mill sets `MILL_OUTPUT` to a path and appends to the prompt: *"When you're finished, write your result as JSON matching this schema to $MILL_OUTPUT."* The schema is the node's `output`.
-3. **Extraction pass**: if the file is missing or invalid, `agent.extract` reads the transcript tail and produces the JSON.
+3. **Extraction pass**: if the file is missing or invalid, `agent.extract` reads the transcript tail and produces the JSON. It runs on the same agent with its cheapest priced model, and its cost counts toward the run's budget. The `agents.extract` setting picks another agent and model, or `off` to skip this step (§19.6).
 4. **Validation**: if the node declares `output`, the result is validated. On failure, retry once with the validation error appended, then fail.
 
 Every agent node also gets: `MILL_RUN_ID`, `MILL_NODE_ID`, `MILL_WORKSPACE`, `MILL_ARTIFACTS` (a directory whose files are registered as artifacts at the end).

@@ -34,10 +34,10 @@ mill watch [<run>|--all] [--json]      # line-per-event live view, no screen con
 mill prompt [--format f]               # tiny status segment for PS1 / tmux / starship
 
 mill run <pipeline> [--input k=v]... [--stdin] [--each] [--text]
-                    [--wait|--detach] [--budget-tokens n] [--json]
+                    [--wait|--detach] [--budget-tokens n] [--priority n] [--json]
                     [--local] [--dry-run]
 mill runs [--pipeline p] [--state s] [--since 24h] [--store dir] [--json]
-mill status [--json]                   # one-line summary; exit 1 if anything needs input
+mill status [--json]                   # one-line summary; exit 1 if any pipeline's latest run failed or crashed
 mill logs <run>[/<node>] [-f] [-n lines] [--raw]
 mill items <run>/<node> [--port p] [--json]
 mill wait <run> [--until state] [--timeout d]
@@ -55,7 +55,7 @@ mill plugin new | dev | test | pack | publish
 mill part ls | info <part>              # capabilities from all plugins
 mill import <src> [--scope s] [--map-agent a=b] [--dry-run]
 mill export <pipeline> [--dir|--gist|--to n8n|mermaid|gha] [--parametrize]
-mill trust <file|dir> | mill lua-types
+mill trust <file|dir> | mill lua-types # mill trust . arms a fresh clone's pipelines
 mill agent ls | test <id> [--model m]  # check an agent CLI works
 mill mcp ls                            # configured MCP servers and their tools
 mill mcp serve                         # run mill as an MCP server (stdio)
@@ -63,7 +63,7 @@ mill mcp serve                         # run mill as an MCP server (stdio)
 mill secrets set | ls | rm | test
 mill cache ls | clear
 mill config list | get | set | reset | edit
-mill daemon start | stop | status | restart | logs [-f]
+mill daemon start | stop [--drain] | status | restart [--drain] | logs [-f]   # stop: live node-runs crash (§15.7)
 mill import n8n <file> | mill export <pipeline> --to n8n|mermaid|gha
 mill stats [--since 30d] [--json] | mill digest [--date d]
 mill setup | doctor | update | uninstall
@@ -77,7 +77,7 @@ Exit codes follow the error class (§29.6), so scripts can branch on them withou
 | Code | Meaning |
 |---|---|
 | 0 | Success |
-| 1 | Generic error, or the run failed; `mill status` when anything needs input; `mill doctor` when a check fails |
+| 1 | Generic error, or the run failed, crashed or was cancelled (except for a budget); `mill status` when any pipeline's latest run is `failed` or `crashed`; `mill doctor` when a check fails |
 | 2 | Selector not found |
 | 3 | Ambiguous selector |
 | 4 | Daemon unreachable |
@@ -85,13 +85,15 @@ Exit codes follow the error class (§29.6), so scripts can branch on them withou
 | 6 | Operation refused (policy, trust, confirmation required in a non-interactive shell) |
 | 7 | Timed out (`mill wait`, `--timeout`) |
 | 8 | Reserved |
-| 9 | Budget exceeded |
+| 9 | Budget exceeded: the run ended `cancelled` with reason `budget` |
+
+A run's exit code comes from its state **and** its reason: `cancelled` with reason `budget` is 9, any other `cancelled` is 1.
 
 ### 17.3 Selectors
 
 | Form | Example | Rule |
 |---|---|---|
-| Full id | `0b9e…` | Exact match |
+| Full id | `0b9e…` (32 hex characters) | Exact match |
 | Pipeline and number | `issue-to-pr#42` | Run 42 of that pipeline |
 | Latest | `issue-to-pr#last` | Most recent run |
 | Short id | `0b9e` | Four or more hex digits, prefix match |
@@ -155,7 +157,7 @@ inbox-triage#913    ⠋ working     2/4     3K       $0.01   12s ago    12s
 morning-brief#63    ✓ done        5/5     40K      $0.08   4h ago     48s
 ```
 
-**`mill status`**: one line, fast, made for prompts and scripts. Exits 1 if any pipeline's latest run failed.
+**`mill status`**: one line, fast, made for prompts and scripts. Exits 1 if any pipeline's latest run failed or crashed.
 ```
 ≋ 1 failed · 1 retrying · 1 working · 14 done today · $6.20 today
 ```
@@ -226,7 +228,13 @@ There are no approve or reply commands. Runs never wait on a person (§2).
 
 - Supported: every node part, runner, budget, cache and the full stdin/stdout piping.
 - Not supported: triggers (it's a one-shot run) and watching from another terminal.
-- `--dry-run` runs everything except destructive parts, which report what they would have done instead. It's the way to test a pipeline change in CI before it can push, post or open anything.
+- `--dry-run` runs the pipeline without side effects outside its workspaces:
+  - `sh` and `exec` steps run for real (they build, test and check in workspaces), unless the node sets `destructive: true` (§7.3); then they report the command they would have run.
+  - Agent nodes don't start the agent: they emit a stub item that matches their `output` schema, marked `dry_run: true`, so downstream expressions still evaluate. Nothing is spent.
+  - `git.push`, `gh.*` and every other destructive part don't execute; they report what they would have done (`would open draft PR "fix: …" on acme/app`).
+  - Steps see `MILL_DRY_RUN=1`.
+
+  It's the way to test a pipeline change in CI before it can push, post or open anything.
 
 This is the mode for CI jobs, containers and cron entries on machines that shouldn't run a daemon.
 

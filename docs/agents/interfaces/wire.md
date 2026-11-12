@@ -4,7 +4,7 @@ Contract summary of the daemon protocol (client ↔ `milld`). Reference: **[spec
 
 ## Transport
 
-Newline-delimited JSON over a local socket. Spec says Unix domain socket, named pipe on Windows; the backend plan proposes AF_UNIX everywhere (backend S6, D22). Optionally the same messages over WebSocket through the gateway.
+Newline-delimited JSON over a local Unix domain socket, AF_UNIX on every OS including Windows (backend S6, D22; spec §16). Path: `$XDG_RUNTIME_DIR/mill/milld.sock` on Linux, else `~/.cache/mill/milld.sock`. Optionally the same messages over WebSocket through the gateway.
 
 ## Envelope
 
@@ -30,7 +30,7 @@ Max line 16 MiB. Bytes are base64. Unknown fields ignored; unknown intent types 
 
 There is no input intent. Clients never type into a node (hands-off, [ADR-022](../DECISIONS.md#adr-022-view-only-attach)).
 
-The backend plan adds intents the CLI needs (trigger fire/list, stats, cache, prune, part list, logs, streamed stdin, node/edge edits; backend S13). Not accepted yet.
+Spec v2.1 adds the intents the CLI needs (trigger fire/list, stats, cache, prune, part list, logs, streamed stdin, node/edge edits; backend S13, spec §16.3).
 
 ## Events
 

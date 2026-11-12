@@ -1,6 +1,6 @@
 # Handoff: start here
 
-For the next coding agent on mill. Read this first, then follow the onboarding order. Last updated 2026-11-11, at the spec stage (no code).
+For the next coding agent on mill. Read this first, then follow the onboarding order. Last updated 2026-11-11, at the spec stage (no code), after the decisions were applied (spec v2.1).
 
 ## 1. Onboarding order
 
@@ -19,12 +19,15 @@ The spec is split: one file per section in `docs/spec/` (start at [../spec/index
 
 | Thing | State |
 |-------|-------|
-| Spec | v2 draft, one file, being split into `docs/spec/NN-*.md` (see §5) |
-| Mockups | HTML mockup of the TUI in `mockups/v1/` |
-| Backend plan | Written: [../plans/backend/00-overview.md](../plans/backend/00-overview.md), milestones M0–M11, 30 open decisions |
-| Editor plan | In progress: [../plans/editor.md](../plans/editor.md) |
+| Spec | **v2.1**, split into `docs/spec/NN-*.md` (start at [../spec/index.md](../spec/index.md)). The 2026-11-11 decisions are applied; see "v2.1" in the spec index |
+| Decisions | All open decisions are decided: backend D1–D30, editor 1–30, spec issues S1–S31 applied. Recorded as ADR-024 to ADR-044 in [DECISIONS.md](DECISIONS.md) |
+| Mockups | `mockups/v2/index.html` is the current TUI prototype; v1 is frozen. v2 lags v2.1 in two spots (footer says "provisional"; `M3201` on manual pipelines shows as an error) |
+| Backend plan | Accepted: [../plans/backend/00-overview.md](../plans/backend/00-overview.md), milestones M0–M11 |
+| Editor plan | Accepted: [../plans/editor.md](../plans/editor.md), phases E0–E7 |
+| Overviews | [../design.md](../design.md) (product) and [../tech.md](../tech.md) (stack), one page each |
 | Code | None. No `go.mod`, `Makefile`, CI or `examples/` |
-| Git | Not checked: confirm the repo, default branch and remote with the user before your first commit |
+| Git | Repo `github.com/TristanBietsch/mill` (public), branch `main`, remote `origin`. All mill work is committed there |
+| License | MIT ([../../LICENSE](../../LICENSE)) |
 | `TODO.md` | The user's list. Do not tick or edit lines unless asked |
 
 ## 3. The gate
@@ -54,26 +57,33 @@ If several worktrees lint at once, golangci-lint can fail on its lock. rex's fix
 | Work | Owner | Status | Rule for you |
 |------|-------|--------|--------------|
 | Spec split into `docs/spec/*.md` | done | 2026-11-11 | Edit the section files; `spec.md` is a pointer |
-| Editor plan `docs/plans/editor.md` | written | decisions open | Read only; its open decisions need the user |
-| Backend plan `docs/plans/backend/` | another agent | written, decisions open | Read only; its open decisions need the user |
-| Mockups `mockups/` | another agent | v2 sync to spec in progress | Read only; v1 is frozen |
+| Decisions applied to spec (v2.1) | done | 2026-11-11 | The spec is the contract again; plans follow it |
+| Editor plan `docs/plans/editor.md` | accepted | decisions decided | Follow it for editor work (E0–E7) |
+| Backend plan `docs/plans/backend/` | accepted | decisions decided | Follow it for backend work (M0–M11) |
+| Mockups `mockups/` | another agent | v2 current, small lag behind v2.1 | Read only; v1 is frozen |
 
-Known spec issues are listed in the backend plan's [Spec issues](../plans/backend/00-overview.md#spec-issues) (S1–S31) with recommendations. They are not applied to the spec until the user accepts them.
-
-## 6. Next milestone: the weekend prototype
+## 6. Next milestone: M0, the weekend prototype
 
 From [spec §28](../spec/28-roadmap.md#28-roadmap), detailed as M0 in [../plans/backend/milestones.md](../plans/backend/milestones.md):
 
 - No daemon. A single `mill run <file.mill.yaml> [--input k=v]... [--stdin]`.
-- Parse a YAML subset (`mill`, `name`, `inputs`, `nodes` with `uses`, `with`, `in`, `outputs`), infer edges, topological sort, run nodes in order.
+- Parse a YAML subset (`mill`, `name`, `inputs`, `nodes` with `uses`, `with`, `in`, `outputs`), infer edges (every reference orders; input from `in:` or the primary upstream, spec §7.4), topological sort, run nodes in order.
 - Parts: `sh` (`io: plain|text`), headless `agent` (`claude`, `codex`, `echo`), `stdout`.
 - `${{ }}` CEL for `inputs`, `item`, `items`, `nodes.x.item(s)`.
 - JSONL items between steps; a run dir with `events.jsonl`, `items/`, `logs/`.
 - Outputs as JSONL on stdout, progress on stderr, exit 0 or 1.
 
-Done when `mill run hello.mill.yaml --json | jq .greeting` works and a `morning-brief-lite` pipeline runs from cron. M0 writes small versions of the real packages (`pipeline`, `expr`, `engine`, `store`), not throwaway code.
+**Done when** `mill run hello.mill.yaml --json | jq .greeting` works and the first dogfood pipeline, **`nightly-vuln-sweep`** (lite: `sh` scanners → headless agent triage → markdown report), runs nightly from the user's OS crontab. `morning-brief` follows in M1, `issue-to-pr` around M4. M0 writes small versions of the real packages (`pipeline`, `expr`, `engine`, `store`), not throwaway code.
 
-Before starting M0, confirm with the user: the package layout (spec §27.4 vs backend plan architecture §2), the Go version (D28), and the module path.
+The three pre-M0 confirmations are answered (2026-11-11):
+
+| Question | Answer |
+|----------|--------|
+| Package layout | The backend plan's ([../plans/backend/architecture.md](../plans/backend/architecture.md) §2), now spec §27.4 and [../STRUCTURE.md](../STRUCTURE.md). Module docs give it as the primary path |
+| Go version | Go 1.27, `toolchain go1.27.4` (D28) |
+| Module path | `github.com/TristanBietsch/mill` |
+
+Code copied from rex gets a header naming the rex commit and path it came from (ADR-026).
 
 ## 7. How to pick up work
 
@@ -86,5 +96,6 @@ Before starting M0, confirm with the user: the package layout (spec §27.4 vs ba
 ## 8. Doc debt
 
 - User docs under `docs/*.md` are stubs that point to the spec. Write each when its feature ships.
-- `docs/design.md` and `docs/tech.md` exist and are empty. Ask the user whether to delete them or what they are for.
+- Module doc file names still use the spec v2 package names (`sched.md` is `engine`); rename them and add docs for the new packages (`core`, `errs`, `partproto`, `schema` …) as their code lands.
+- `mockups/v2` still marks the backend-plan states as provisional and shows `M3201` as an error on manual pipelines; sync it on the next mockup pass.
 - Module docs under `modules/` describe planned packages. Once code exists, rewrite each from the source (rex's module doc shape: Path, Depends on, Entry points, Purpose, Public surface, Invariants, Gotchas).

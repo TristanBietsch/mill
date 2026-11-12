@@ -32,9 +32,8 @@ Contract summary. Reference: **[spec §7](../../spec/07-pipeline-format.md#7-pip
 
 ## Edges
 
-Inferred from `${{ nodes.a.… }}` and `in: a`. Write `edges:` only to name a non-default port (`check.false -> fix`) or order unrelated nodes (prefer `needs:`). Chains: `- a -> b -> c`. See [§7.4](../../spec/07-pipeline-format.md#74-edge-inference).
+Every reference orders; the input is `in:`, else explicit `edges:`, else the primary upstream (the referenced node every other referenced node is upstream of). No primary upstream is lint error `M3021`. Write `edges:` only to name a non-default port (`check.false -> fix`) or order unrelated nodes (prefer `needs:`). Chains: `- a -> b -> c`. See [§7.4](../../spec/07-pipeline-format.md#74-edge-inference).
 
-Known issue: a node referencing several nodes gets all their items as input under the literal rule. The backend plan proposes a "primary upstream" rule and lint error `M3021` (backend S7, D9). Not accepted yet.
 
 ## Expressions
 

@@ -6,8 +6,8 @@ A plan says how to build part of the spec: scope, order, decisions, tasks. The s
 
 | Plan | Scope | Status | Owner |
 |------|-------|--------|-------|
-| [backend/00-overview.md](backend/00-overview.md) | `milld`, engine, storage, protocols, execution, security, testing; milestones M0–M11 | Written 2026-11-11; 30 open decisions | another agent |
-| [editor.md](editor.md) | TUI pipeline editor | In progress | another agent |
+| [backend/00-overview.md](backend/00-overview.md) | `milld`, engine, storage, protocols, execution, security, testing; milestones M0–M11 | Accepted 2026-11-11; all 30 decisions decided, spec issues applied (spec v2.1) | another agent |
+| [editor.md](editor.md) | TUI pipeline editor | Accepted 2026-11-11; all 30 decisions decided, applied in spec §18.7 | another agent |
 
 Backend plan files: [milestones](backend/milestones.md) · [architecture](backend/architecture.md) · [engine](backend/engine.md) · [storage](backend/storage.md) · [protocols](backend/protocols.md) · [execution](backend/execution.md) · [security](backend/security.md) · [testing](backend/testing.md) · [tech-stack](backend/tech-stack.md) · [open-decisions](backend/open-decisions.md).
 

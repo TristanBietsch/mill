@@ -2,14 +2,15 @@
 
 mill is a **two-binary Go application**: `mill` (CLI + Bubble Tea TUI) and `milld` (daemon). Clients talk to the daemon over newline-delimited JSON on a local socket. Parts (plugins) talk to the daemon with the same envelope over stdio.
 
-This document is the map for where docs and code go. **No code exists yet**: the code layout below is the plan from [spec §27.4](spec/27-tech-stack.md#274-repository-layout). Once code exists, Go source wins on any conflict and this file gets fixed.
+This document is the map for where docs and code go. **No code exists yet**: the code layout below is the backend plan's layout ([plans/backend/architecture.md](plans/backend/architecture.md) §2), accepted on 2026-11-11 and mirrored in [spec §27.4](spec/27-tech-stack.md#274-repository-layout). Once code exists, Go source wins on any conflict and this file gets fixed.
 
 ## Project kind
 
 | Aspect | Detail |
 |--------|--------|
 | Binaries | `cmd/mill`, `cmd/milld` (planned) |
-| Module | `github.com/tristanbietsch/mill` (assumed; spec §30 item 12 asks for a name check first) |
+| Module | `github.com/TristanBietsch/mill` (repo of the same name, public; name check resolved, spec §30 item 12) |
+| License | MIT ([LICENSE](../LICENSE)) |
 | Public API | None outside the module (`internal/` only), except the parts SDKs under `sdk/` |
 | Build | `CGO_ENABLED=0`, one static binary per platform |
 
@@ -19,9 +20,11 @@ Today:
 
 ```
 mill/
-├── README.md  CONTRIBUTING.md  CHANGELOG.md  SECURITY.md  AGENTS.md  TODO.md
+├── README.md  CONTRIBUTING.md  CHANGELOG.md  SECURITY.md  AGENTS.md  TODO.md  LICENSE
 ├── docs/
 │   ├── index.md            # documentation map
+│   ├── design.md           # product and UX overview (one page)
+│   ├── tech.md             # tech overview (one page)
 │   ├── STRUCTURE.md        # this file
 │   ├── spec/               # the specification (authoritative until code exists)
 │   ├── plans/              # implementation plans (backend/, editor.md, …)
@@ -30,7 +33,7 @@ mill/
 └── mockups/                # HTML mockups of the TUI
 ```
 
-Planned (spec §27.4):
+Planned (backend plan architecture §2, spec §27.4):
 
 ```
 mill/
@@ -39,6 +42,7 @@ mill/
 │   └── milld/              # daemon (package main)
 ├── internal/               # all library code
 ├── sdk/{go,ts,python}/     # parts SDKs
+├── third_party/vt10x/      # terminal emulator fork (from rex)
 ├── plugins/                # official plugins (github, slack, linear, rex …), each a normal plugin
 ├── examples/               # example pipelines; also the end-to-end test suite
 ├── testdata/               # repo-root fixtures
@@ -48,51 +52,66 @@ mill/
 
 ## Domain tree (`internal/`, planned)
 
+Library code lives outside `daemon/` unless it only exists because there's a daemon: the engine, store, runners, workspaces, secrets and triggers are also used by `mill run --local` and the weekend prototype. Layering rules (what may import what) are in [plans/backend/architecture.md](plans/backend/architecture.md) §3.
+
 ```
 internal/
-├── surface/                # what the user runs directly
-│   ├── cli/                # subcommands, selectors, exit codes, output modes
-│   ├── tui/                # boot splash, board, run popup, log, editor, settings
-│   │   ├── canvas/         # cell-grid renderer, zoom levels, hit-testing
-│   │   └── settings/       # settings page generated from the registry
-│   ├── sound/              # soundsets, event mixer, debounce, silent fallback
-│   └── pipe/               # pipe-expression parser
+├── core/  errs/  clock/  paths/  mlog/     # base: plain data, the §29 error object, time, paths, logging
 ├── wire/
-│   ├── protocol/           # envelope, intents, events, codec (shared with parts protocol)
+│   ├── jsonl/              # envelope + codec, shared by the daemon and parts protocols
+│   ├── protocol/           # daemon intents and events
 │   └── client/             # socket dial, handshake, request/ack
-├── daemon/
-│   ├── server/             # intent handlers, per-connection queues
-│   ├── sched/              # ready queue, slots, budgets
-│   ├── store/              # event log, items, artifacts, index
-│   ├── runner/             # local, pty, container, ssh, remote, external
-│   ├── trigger/            # trigger host, dedupe, concurrency policy
-│   ├── workspace/          # worktrees, temp dirs, cleanup, path safety
-│   └── secrets/            # broker, redactor
-├── config/                 # Lua loader, layers and precedence, settings.lua writer, reload
+├── partproto/              # parts protocol messages, Part interface, transports, conformance suite
+├── pipeline/               # parse, lint, edge inference, compile
+│   ├── ir/                 # the compiled graph
+│   ├── pipe/               # pipe-expression parser
+│   ├── edit/               # edit operations and quick fixes (CLI, daemon, TUI)
+│   ├── yamledit/           # text-splice YAML edits
+│   └── layout/             # slots, pins, edge routing into a cell grid
+├── expr/  schema/          # CEL environment; output shorthand → JSON Schema
+├── engine/                 # run actor, reducer, readiness
+│   └── sched/ budget/ retry/ cache/
+├── store/                  # run dirs, event log, items, logs
+│   └── cas/ index/ lock/
+├── parthost/               # part registry and resolution, process pool, health, PartCall
+├── parts/builtin/          # sh, exec, check, data, control, agent*, git, gh, http, mcp, file …
+├── agents/  agents/detect/ # agent registry; terminal-agent state detection
+├── runner/                 # local, pty, container, ssh; process groups per OS
+├── workspace/              # worktrees, temp dirs, cleanup, retry snapshots, path safety
+├── secrets/  secrets/redact/
+├── trigger/                # trigger host + one package per kind
+├── config/  config/settings/
 ├── luaapi/                 # the mill.* Lua API, sandboxes, LuaLS type generation
 ├── plugins/                # resolver, installer, manifest, permissions, lockfile, pack, import/export
-├── parthost/               # process pool, Lua part host, lifecycle, routing
-├── parts/builtin/          # sh, exec, check, data, control, agent*, git, gh, http, mcp, file …
-├── pipeline/               # parse, lint, edge inference, compile, YAML editing, layout
-├── expr/                   # CEL environment and helpers
-└── catalog/
-    ├── settings/           # settings registry
-    └── agents/             # agent registry + merge
+├── daemon/
+│   ├── server/             # socket handlers, per-connection queues
+│   ├── boot/               # wiring: lock, config, recovery, engine, triggers, server
+│   └── status/             # status file for mill prompt and completion
+├── daemonctl/              # find, start and reach milld
+├── gateway/                # HTTP + WebSocket front door (later)
+├── surface/
+│   ├── cli/                # subcommands, selectors, exit codes, output modes; cli/core output kit; cli/local
+│   ├── tui/                # boot splash, board, run popup, log, editor, settings
+│   │   └── canvas/  editor/  settings/
+│   ├── sound/              # soundsets, event mixer, debounce, silent fallback
+│   └── mcpserver/          # mill mcp serve
+└── testutil/               # test env, golden files, fakes, echo agent harness
 ```
 
-**Pending layout decision.** The backend plan refines this tree ([plans/backend/architecture.md](plans/backend/architecture.md) §2): it moves `sched`, `store`, `runner`, `trigger`, `workspace` and `secrets` out of `daemon/` (so `mill run --local` can use them without a daemon), moves the pipe parser to `pipeline/pipe`, and adds `core`, `errs`, `clock`, `paths`, `mlog`, `engine`, `partproto`, `agents`, `daemonctl` and `gateway`. Until the user accepts that, the spec tree above is the contract. Module docs in [agents/modules/](agents/modules/overview.md) list both paths.
+The spec's earlier tree (with `sched`, `store`, `runner`, `trigger`, `workspace` and `secrets` under `daemon/`, and the pipe parser under `surface/`) is superseded. Module docs in [agents/modules/](agents/modules/overview.md) give the backend path first.
 
 ### Rationale (one line each)
 
 | Directory | Why it exists |
 |-----------|----------------|
-| `surface/` | Everything the user runs directly (`mill`, the TUI, pipe expressions) |
-| `wire/` | One envelope and codec shared by clients, daemon and parts |
-| `daemon/` | Long-lived work: scheduling, storage, processes, triggers |
+| `core/`, `errs/`, `clock/`, `paths/`, `mlog/` | Base layer every package may import |
+| `wire/`, `partproto/` | One envelope and codec shared by clients, daemon and parts |
+| `pipeline/`, `expr/`, `schema/` | The file format and expressions, independent of how runs execute |
+| `engine/`, `store/`, `runner/`, `workspace/`, `secrets/`, `trigger/` | Execution as a library, hosted by `milld` and by `mill run --local` |
+| `parthost/`, `parts/builtin/`, `plugins/` | Everything mill can do comes from parts; built-ins use the public protocol |
 | `config/`, `luaapi/` | Lua config and the one extension language |
-| `plugins/`, `parthost/`, `parts/builtin/` | Everything mill can do comes from parts; built-ins use the public protocol |
-| `pipeline/`, `expr/` | The file format and expressions, independent of how runs execute |
-| `catalog/` | Registries that drive several surfaces from one definition |
+| `daemon/`, `daemonctl/`, `gateway/` | Only what exists because there's a daemon |
+| `surface/` | Everything the user runs directly (`mill`, the TUI, sound, the MCP server) |
 
 ## Where new code goes (planned)
 
@@ -102,15 +121,17 @@ Need to…                              → Put it in…
 Add a CLI subcommand                    → surface/cli/ (+ register in cmd/mill)
 Add TUI key, view or popup              → surface/tui/
 Change a wire message                   → wire/protocol/ (+ docs/agents/data/schemas.md, spec §16)
+Change the parts protocol               → partproto/ (+ spec §9.3)
 Add a daemon intent handler             → daemon/server/
 Add a built-in part                     → parts/builtin/ (+ spec §10, its manifest flags)
-Add a runner or trigger                 → daemon/runner/ or daemon/trigger/ (they are parts too)
+Add a runner or trigger                 → runner/ or trigger/ (they are parts too)
+Change scheduling, retries or budgets   → engine/ (+ spec §15)
 Change the pipeline format or lint      → pipeline/ (+ spec §7, bump `mill:` only on a meaning change)
 Add a CEL helper                        → expr/
-Add a setting                           → catalog/settings/ only
-Add a built-in agent entry              → catalog/agents/
+Add a setting                           → config/settings/ only
+Add a built-in agent entry              → agents/
 Add a Lua API function                  → luaapi/ (+ LuaLS types)
-Add an error code                       → the errors package (+ explain page + golden test, spec §29.11)
+Add an error code                       → errs/ (+ explain page + golden test, spec §29.11)
 Add a sound                             → surface/sound/
 ```
 
@@ -119,7 +140,7 @@ Add a sound                             → surface/sound/
 - **Go filenames:** `snake_case.go` and `*_test.go`.
 - **Go directories:** lowercase, match the package name. Exception: none planned (`milld` has no hyphen).
 - **Tests:** co-located `*_test.go`; CLI scripts as `testdata/script/*.txtar`; end-to-end in `examples/`. Tiers in [CONTRIBUTING](../CONTRIBUTING.md#test-tiers-planned).
-- **Shared types:** no `internal/types/`. Wire shapes live in `wire/protocol`. Promote a type there only when two or more domains share it.
+- **Shared types:** no `internal/types/`. Plain shared data lives in `core/`, wire shapes in `wire/protocol`. Promote a type only when two or more domains share it.
 
 Full conventions: [agents/CONVENTIONS.md](agents/CONVENTIONS.md).
 

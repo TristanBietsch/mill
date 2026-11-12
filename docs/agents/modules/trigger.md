@@ -1,8 +1,8 @@
 # trigger
 
-**Path:** `internal/daemon/trigger`  
+**Path:** `internal/trigger` + one sub-package per kind (backend layout, accepted 2026-11-11)  
 **Status:** planned · first built in M4 (cron, poll, run), M7 (webhook, fswatch, git)  
-**Backend plan path:** `internal/trigger` + one sub-package per kind  
+**Spec v2 path (superseded):** `internal/daemon/trigger`  
 **Depends on:** pipeline, store (trigger state), clock  
 **Depended on by:** server
 

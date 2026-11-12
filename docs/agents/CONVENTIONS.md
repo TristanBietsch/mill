@@ -4,7 +4,7 @@ Planned conventions, from the spec and rex's observed practice. Once code exists
 
 ## Module layout
 
-- Go module `github.com/tristanbietsch/mill` (assumed), one module, `CGO_ENABLED=0`.
+- Go module `github.com/TristanBietsch/mill`, one module, Go 1.27, `CGO_ENABLED=0`, MIT.
 - Binaries under `cmd/<name>/main.go` only; `main` stays thin and calls into `internal/`.
 - Libraries under `internal/<package>/`. One package per directory. Tests in the same package as `*_test.go`; black-box tests as `package x_test`.
 - File names `snake_case.go`. OS-specific files `_unix.go`, `_windows.go`.
