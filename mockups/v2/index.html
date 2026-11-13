@@ -76,13 +76,13 @@ body { background: var(--desk); color: var(--ink); font-family: var(--sans); dis
 <body>
 <div class="top">
   <h1><span>≋</span> mill · prototype v2</h1>
-  <p>The whole TUI from spec §18: boot splash, board, run popup and log, editor (press <b>e</b>), wizard (<b>n</b>), plugins, settings, stats. Press a key to boot. <b>?</b> lists keys. Scenarios and widths change what the screens show. All data is made up.</p>
+  <p>The whole TUI from spec §18: boot splash, board, run popup and log, editor (press <b>e</b>), plugins, stats; new pipeline (<b>n</b>), settings (<b>S</b>) and help (<b>?</b>) are full-screen pages (spec v2.3, §18.1.1). Press a key to boot. Scenarios and widths change what the screens show. All data is made up.</p>
   <div class="btns">
     <button id="b-tui" aria-pressed="true">TUI</button>
     <button id="b-sh" aria-pressed="false">Shell</button>
     <button id="b-snd" aria-pressed="true">Sound on</button>
     <button id="b-saver">Screensaver</button>
-    <button id="b-imp" title="Opens the new pipeline wizard on import and picks a file (or drop one on the terminal)">Import file…</button>
+    <button id="b-imp" title="Opens the new pipeline page on import and picks a file (or drop one on the terminal)">Import file…</button>
     <button id="b-w">Width 124</button>
     <select id="b-scn" aria-label="Scenario"><option value="normal">Scenario: normal</option><option value="fresh-clone">Scenario: fresh clone (untrusted)</option><option value="config-error">Scenario: config error</option><option value="first-run">Scenario: first run</option><option value="boot-fail">Scenario: boot fails</option><option value="degraded">Scenario: degraded (disk low, breaker, restart)</option></select>
   </div>
@@ -92,7 +92,7 @@ body { background: var(--desk); color: var(--ink); font-family: var(--sans); dis
   <div class="scr" id="scr" tabindex="0" aria-label="mill terminal prototype. Focus and type to use it."></div>
   <input type="file" id="wiz-file" accept=".json,.yaml,.yml,.millpkg,.gz,.tgz,.tar,.pipe,.txt" hidden>
 </div>
-<div class="foot"><b>Board</b> j/k · enter run · L log · gi items · c cancel · za expand · v detailed · n new · e edit · R run · F rerun from failed · :run p k=v · :pipe (tab completes, ↑ history, ctrl+r searches it) · :help commands · / search (state: tag: uses: ok:&lt;90 cost:&gt;1 ran:&lt;24h) · t s V · 1/2/3 · p preview · S settings · ? help · :plugins :stats :runs :messages :bg :sh<br><b>Editor</b> a/i/o add · c connect · enter inspector · gp pipeline · ]e ga gA lint · zs what-if · R dry run · Y yaml · D diff · u undo · :w · ? all keys<br><b>Backend states</b> (decided, spec v2.1): ↯ crashed · ⊗ cancelled with its reason (budget, you) · retries as new attempts, try 1 / try 2 · untrusted projects and <b>mill trust .</b> (scenario "fresh clone") · M3021 ambiguous input · M3024 unreachable · ••• redacted secrets in logs and items</div>
+<div class="foot"><b>Board</b> j/k · enter run · L log · gi items · c cancel · za expand · v detailed · n new · e edit · R run · F rerun from failed · :run p k=v · :pipe (tab completes, ↑ history, ctrl+r searches it) · :help commands · / search (state: tag: uses: ok:&lt;90 cost:&gt;1 ran:&lt;24h) · t s V · 1/2/3 · p preview · S settings page · ? help page (1–8 groups, / filter, esc back) · :plugins :stats :runs :messages :bg :sh<br><b>Pages</b> (v2.3) settings · help · new pipeline: tab panes · 1–9 jump · [ ] step · / search on the last row · K full setting help · Y preview (swaps the step pane under 110 columns) · esc back · Width 58 shows the ‹ strip ›<br><b>Editor</b> a/i/o add · c connect · enter inspector · gp pipeline · ]e ga gA lint · zs what-if · R dry run · Y yaml · D diff · u undo · :w · ? the help page on Editor<br><b>Backend states</b> (decided, spec v2.1): ↯ crashed · ⊗ cancelled with its reason (budget, you) · retries as new attempts, try 1 / try 2 · untrusted projects and <b>mill trust .</b> (scenario "fresh clone") · M3021 ambiguous input · M3024 unreachable · ••• redacted secrets in logs and items</div>
 
 <script>
 "use strict";
@@ -756,7 +756,8 @@ const S = {
   board: { cur: 0, detailed: false, tag: "all", search: "", searchEdit: false, sort: 0, rev: false, readyOpen: SCN === "fresh-clone", preview: false },
   run: { num: 42, pipe: "issue-to-pr", sel: "build", agent: null, open: {}, top: 0, old: null },
   log: { cur: 0, top: 0, folds: { plan: true, build1: false }, search: "", searchEdit: false, follow: true, only: null },
-  plugins: { view: 0, cur: 0, q: "", qEdit: false, detail: false }, settings: { sec: SECTIONS.findIndex(x => x[0] === "Sound"), row: 0, edit: null, q: null }, runs: { cur: 0 }, msgs: { cur: 0 },
+  plugins: { view: 0, cur: 0, q: "", qEdit: false, detail: false }, settings: { sec: SECTIONS.findIndex(x => x[0] === "Sound"), row: 0, edit: null, q: null, focus: "rows", top: 0, K: false }, runs: { cur: 0 }, msgs: { cur: 0 },
+  help: { grp: 0, top: 0, q: null, qEdit: false, focus: "rows", back: null, code: null, cmd: null },   // the help page (§18.5.1)
 };
 function toast(text, cls = "dim", ms = 3500) { S.msg = { text, cls, until: performance.now() + ms }; }
 function errorToast(code, text, help) { toast(`error[${code}]: ${text}${help ? "  ·  help: " + help : ""}`, "red", 5500); MSGS.unshift({ t: new Date().toTimeString().slice(0, 8), lvl: "error", code, text: text + (help ? " · help: " + help : "") }); play("error"); }
@@ -2411,16 +2412,10 @@ function drawDiff(g) {
   else rows.slice(ED.diff.top, ED.diff.top + h - 4).forEach(([t, s], i) => g.put(x0 + 3, y0 + 2 + i, trunc((t === "#" ? "" : t + " ") + s, w - 6), t === "+" ? "grn" : t === "-" ? "red" : t === "…" ? "dim3" : t === "#" ? "dim" : "dim"));
   g.segs(x0 + 3, y0 + h - 2, [["j/k", "b"], [" scroll · ", "dim"], [":w", "b"], [" save · ", "dim"], [":e!", "b"], [" revert · ", "dim"], ["esc", "b"], [" close", "dim"]]);
 }
-function drawEdHelp(g) {
-  const L = [["MOVE", ""], ["hjkl", "nearest node that way"], ["w b", "next / previous in run order"], ["gg G", "first trigger / last node"], ["/", "jump to a node"], ["tab", "focus edges one by one"], ["gd gr", "go to upstream / references"], ["ctrl+o", "jump back"], ["+ - =", "zoom in / out / fit"], ["zz zh..zl", "center / pan"], ["M O", "minimap / outline"],
+const ED_HELP_L = [["MOVE", ""], ["hjkl", "nearest node that way"], ["w b", "next / previous in run order"], ["gg G", "first trigger / last node"], ["/", "jump to a node"], ["tab", "focus edges one by one"], ["gd gr", "go to upstream / references"], ["ctrl+o", "jump back"], ["+ - =", "zoom in / out / fit"], ["zz zh..zl", "center / pan"], ["M O", "minimap / outline"],
     ["", ""], ["MAKE", ""], ["a i o", "add after / before / branch"], ["gt", "add a trigger"], ["yy p P", "yank / paste / unconnected"], ["dd r", "delete / rename"], ["gl gP gU", "loop / sub-pipeline / undo it"], ["v V", "visual / all downstream"], ["HJKL g=", "move a slot (pinned) / unpin"]];
-  const R = [["CONNECT", ""], ["c C", "connect / needs-only"], ["x", "disconnect (edge picker)"], ["n", "data ↔ needs while connecting"], ["", ""], ["CHECK", ""], ["]e [e", "next / previous problem"], ["! ga gA", "problems / fix / fix all safe"], ["gx", "explain the code"], ["zs", "what-if: what gets skipped"], ["R . gi m", "dry run / this node / items / pin"],
+const ED_HELP_R = [["CONNECT", ""], ["c C", "connect / needs-only"], ["x", "disconnect (edge picker)"], ["n", "data ↔ needs while connecting"], ["", ""], ["CHECK", ""], ["]e [e", "next / previous problem"], ["! ga gA", "problems / fix / fix all safe"], ["gx", "explain the code"], ["zs", "what-if: what gets skipped"], ["R . gi m", "dry run / this node / items / pin"],
     ["ze", "estimates on cards"], ["", ""], ["FILE", ""], ["enter gp", "inspector / pipeline panel"], ["Y D E", "YAML pane / diff / $EDITOR"], ["u ctrl+r", "undo / redo"], [":w :q", "save / leave (:w! with errors)"], ["space", "every action for the selection"]];
-  const w = ow(), x0 = ox(w), y0 = 1, two = w >= 100, items = two ? null : L.concat(R).slice(0, H - 7), h = (two ? Math.max(L.length, R.length) : items.length) + 5;
-  overlayBox(g, x0, y0, w, h, [["?", "mark"], [" editor keys", "b"], [" · spec §18.7.14", "dim"]]);
-  const col = (items, X, cw) => items.forEach(([k, v], i) => { const y = y0 + 2 + i; if (!v && k) g.put(X, y, k, "hd"); else { g.put(X, y, k, "amb"); g.put(X + 13, y, trunc(v, cw - 14), ""); } });
-  if (two) { col(L, x0 + 3, 52); col(R, x0 + 57, w - 60); } else col(items, x0 + 3, w - 6); g.segs(x0 + 3, y0 + h - 2, [["any key", "b"], [" closes", "dim"]]);
-}
 
 /* ------------------------------------------------------------------ the editor screen */
 function rEditor(g) {
@@ -2443,7 +2438,6 @@ function rEditor(g) {
   if (ED.pe) HITS = [];
   if (ED.pe) drawTextEditor(g, ED.pe, [[ED.pe.id + " · " + ED.pe.key, "b"]]);
   if (ED.diff) drawDiff(g);
-  if (ED.help) drawEdHelp(g);
   // status line
   const mode = ED.pe || ED.inp || ED.ye || ED.pal || ED.prompt ? ["INSERT", "invg"] : ED.con ? ["CONNECT", "inva"] : ED.visual ? ["VISUAL", "inva"] : ["NORMAL", "inv"];
   const focusW = ED.focus === "insp" ? (ED.right === "yaml" ? " yaml" : ED.right === "pipe" ? " pipeline" : " inspector") : ED.focus === "panel" ? " " + ED.panel : "";
@@ -3069,7 +3063,6 @@ function canvasKey(k) {
   }
 }
 function edKey(k) {   // returns true when the editor consumed the key
-  if (ED.help) { ED.help = false; play("back"); return true; }
   if (ED.pe) { const P = ED.pe; if (k === "Escape" || k === "C-c") { ED.pe = null; if (k === "Escape") { const v = P.lines.join("\n"); if (v !== P.orig) edit(`edit ${P.id}.${P.key}`, d => setPath(d.nodes[P.id], P.key, v), { sound: "toggle" }); } else say("prompt edit discarded"); play("back"); return true; } if (k === "C-e") { toast("ctrl+e hands the prompt to $EDITOR and reads it back", "dim"); return true; } textKey(P, k, true); return true; }
   if (ED.ye) { const Y = ED.ye; if (k === "C-c") { ED.ye = null; say("YAML edit discarded"); return true; } if (k === "Escape") { try { const d2 = yParse(Y.lines.join("\n")); if (!d2 || typeof d2.nodes !== "object" || !d2.nodes) throw Object.assign(new Error("a pipeline needs nodes:"), { line: 1 }); ED.ye = null; edit("edit YAML", d => { for (const kk of Object.keys(d)) delete d[kk]; Object.assign(d, d2); }, { sound: "toggle" }); } catch (e) { Y.err = { line: e.line || 1, msg: e.message }; Y.r = Math.max(0, (e.line || 1) - 1); Y.c = 0; play("error"); } return true; } Y.err = null; textKey(Y, k, true); return true; }
   if (ED.inp) { if (k === "Enter" && !(ED.inp.ac && ED.inp.ac.items.length && false)) { commitInp(false); return true; } if (k === "Escape") { if (ED.inp.ac) { ED.inp.ac = null; return true; } commitInp(false); return true; } if (k === "C-c") { commitInp(true); return true; } textKey(ED.inp, k, false); return true; }
@@ -3077,7 +3070,7 @@ function edKey(k) {   // returns true when the editor consumed the key
   if (ED.pal) { palAct(k); return true; }
   if (ED.pick) { pickAct(k); return true; }
   if (ED.diff) { if (k === "j" || k === "ArrowDown") ED.diff.top++; else if (k === "k" || k === "ArrowUp") ED.diff.top = Math.max(0, ED.diff.top - 1); else if (k === "Escape" || k === "D" || k === "q") { ED.diff = null; play("back"); } else if (k === ":") return false; return true; }
-  if (k === "?") { ED.help = true; play("open"); return true; }
+  if (k === "?") { openHelp(); return true; }   // the help page on the Editor group (§18.5.1)
   if (k === ":") return false;
   const known = ["dd", "yy", "gg", "gd", "gr", "ga", "gA", "gx", "gt", "gp", "gl", "gP", "gU", "gi", "g=", "zz", "zh", "zj", "zk", "zl", "zs", "zo", "zc", "ze", "]e", "[e"];
   const s = seq(k, known); if (s === "") return true; const key = s || k;
@@ -3113,7 +3106,7 @@ function edCommand(c, arg) {
     case "pattern": toast(`saved the selection as a pattern: ~/.config/mill/patterns/${arg.replace(/^save\s*/, "") || "mine"}.mill.yaml`, "grn"); return true;
     case "prompt": toast(arg === "inline" ? "the prompt is inline again" : `moved the prompt to prompts/${ED.name}-${ED.sel}.md · the field now says @prompts/${ED.name}-${ED.sel}.md`, "dim"); return true;
     case "sample": toast(`opens .mill/samples/${ED.name}/${ED.sel}.jsonl in $EDITOR`, "dim"); return true;
-    case "diff": ED.diff = { top: 0 }; return true; case "yaml": ED.right = "yaml"; return true; case "outline": ED.outline = true; return true; case "help": ED.help = true; return true;
+    case "diff": ED.diff = { top: 0 }; return true; case "yaml": ED.right = "yaml"; return true; case "outline": ED.outline = true; return true; case "help": clHelp(arg); return true;
   }
   return false;
 }
@@ -3152,11 +3145,11 @@ function wizDoc(w) {
 /* ------------------------------------------------------------------ wizard v2: start › shape › run › review (docs/plans/wizard.md) */
 const WIZ2 = ["start", "shape", "run", "review"];
 const WSRC = [
-  { id: "describe", gl: "✎", label: "describe it", note: "say what it should do · an agent drafts the steps" },
-  { id: "template", gl: "⊞", label: "template", note: "built-in, plugin and pattern starters" },
-  { id: "duplicate", gl: "⧉", label: "duplicate", note: "copy a pipeline you already have" },
-  { id: "import", gl: "⇪", label: "import a file", note: "n8n JSON · .millpkg · .mill.yaml · pipe · URL" },
-  { id: "blank", gl: "□", label: "blank", note: "a trigger and nothing else" },
+  { id: "describe", gl: "✎", label: "describe it", short: "say what it should do", note: "say what it should do · an agent drafts the steps" },
+  { id: "template", gl: "⊞", label: "template", short: "built-ins, plugins, patterns", note: "built-in, plugin and pattern starters" },
+  { id: "duplicate", gl: "⧉", label: "duplicate", short: "a copy; its triggers start manual", note: "copy a pipeline you already have" },
+  { id: "import", gl: "⇪", label: "import a file", short: "n8n, .millpkg, mill, pipe", note: "n8n JSON · .millpkg · .mill.yaml · pipe · URL" },
+  { id: "blank", gl: "□", label: "blank", short: "an empty pipeline", note: "a trigger and nothing else" },
 ];
 const WTRIG = [
   { k: "manual", label: "manual" }, { k: "cron", label: "schedule", field: "schedule", def: "0 3 * * *" }, { k: "webhook", label: "webhook", field: "path", def: "/github" },
@@ -3198,7 +3191,7 @@ Object.assign(EXPLAIN, {
 });
 
 function wizNew(o = {}) {
-  if (!o.fresh && S.wizLast && !Object.keys(o).length) { S.wiz = S.wizLast; S.wizLast = null; S.wiz.ins = null; S.wiz.picker = null; S.wiz.drafting = null; S.wiz.help = false; S.wiz.err = null; S.wiz.say = "resumed your draft · :new! starts over"; play("open"); return; }
+  if (!o.fresh && S.wizLast && !Object.keys(o).length) { S.wiz = S.wizLast; S.wizLast = null; S.wiz.ins = null; S.wiz.picker = null; S.wiz.drafting = null; S.wiz.err = null; S.wiz.say = "resumed your draft · :new! starts over"; play("open"); return; }
   delete o.fresh; S.wizLast = null;
   S.wiz = { step: 0, max: 0, focus: "list", src: 0, prow: 0, sentence: "", refine: "", tpl: 0, tq: "", dup: 0, dq: "", path: "", imp: null, pick: 0, picker: null, ins: null, drafting: null,
     base: null, agent: 0, amap: 0, trig: 0, cfg: Object.fromEntries(WTRIG.filter(t => t.field).map(t => [t.k, t.def])), budget: 1, handoff: 1, adv: false, maxAgents: 2, allow: {},
@@ -3243,6 +3236,7 @@ function wizTick(w) {
   const p = wizPropose(d.text), before = w.base && w.base.kind === "gen" && w.base.src === "describe" ? Object.keys(w.base.gen.steps).filter(k => w.base.gen.steps[k]) : null;
   if (before) { for (const k of before) if (!p.removed.includes(k)) p.steps[k] = true; Object.assign(p.why, Object.fromEntries(Object.entries(w.base.gen.why || {}).filter(([k]) => !p.why[k]))); }   // a refinement keeps what you turned on
   wizSetBase(w, { kind: "gen", src: "describe", label: "drafted from your sentence", name: slugName(d.text), gen: { steps: p.steps, agent: p.agent, desc: p.desc, why: p.why }, trig: { k: p.trig.k, cfg: p.trig.cfg }, trigWhy: p.trig.why, sentence: d.text });
+  w.base.mode = d.mode; w.base.who = d.who; w.warn = d.mode === "down" ? ["M2212", "ollama is unreachable · keyword rules drafted this"] : null;   // the rail marks shape with ! (§18.8)
   w.step = 1; w.max = Math.max(w.max, 1); w.row = 0; play("node_done");
   const now = Object.keys(p.steps);
   w.say = before ? `refined: ${now.filter(k => !before.includes(k)).map(k => "+ " + k).concat(before.filter(k => !now.includes(k)).map(k => "− " + k)).join(" · ") || "no change"}` : `${d.who} proposed ${now.length} steps and ${p.trig.k === "manual" ? "no trigger" : "a trigger"} · ${d.mode === "agent" ? "≈ $0.01 · " : d.mode === "ollama" ? "free, offline · " : d.mode === "down" ? "M2212 ollama unreachable, fell back · " : ""}nothing written`;
@@ -3553,8 +3547,12 @@ function wizOutline(doc) {
   for (const id of gr.ids) if (!seen.has(id)) out.push({ id, lead: "· ", nd: gr.nodes[id], port: null });
   return { rows: out, gr };
 }
-function drawPreview(g, doc, x, y, wd, h, view, title) {
-  g.box(x, y, wd, h, "dim2", [[title || (view === "yaml" ? "yaml" : "graph"), "b"], [view === "yaml" ? " · Y graph" : " · Y yaml", "dim3"]]);
+function drawPreview(g, doc, x, y, wd, h, view, title, bare) {
+  if (bare) {   // the new-pipeline page's preview pane (§18.8): a heading instead of a box; the rows below are drawn as in the box
+    g.segs(x + 1, y, [[view === "yaml" ? "YAML" : "GRAPH", "hd"], [view === "yaml" ? " · Y graph" : " · Y yaml", "dim3"]]);
+    if (!doc) { wrapText("the graph shows once you choose how to start", wd - 2).forEach((l, i) => g.put(x + 1, y + 2 + i, l, "dim3")); return; }
+    x -= 1; y += 1; h -= 1; wd += 1;
+  } else g.box(x, y, wd, h, "dim2", [[title || (view === "yaml" ? "yaml" : "graph"), "b"], [view === "yaml" ? " · Y graph" : " · Y yaml", "dim3"]]);
   if (!doc) return;
   if (view === "yaml") { yEmit(doc).lines.slice(0, h - 2).forEach((t, i) => g.put(x + 2, y + 1 + i, trunc(t, wd - 4), t.startsWith("  ") || !t ? "dim" : "")); return; }
   const { rows, gr } = wizOutline(doc), lint = lintDoc(doc, gr), sev = id => lint.some(p => p.node === id && p.sev === "error") ? ["✗", "red"] : lint.some(p => p.node === id && p.sev === "warning") ? ["!", "amb"] : null;
@@ -3576,8 +3574,16 @@ function fieldSegs(w, key, text, ph, width) {
   return v ? [[trunc(v, width - 1), on ? "b" : ""], [on ? "▌" : "", "blu"]] : [[on ? "▌" : "", "blu"], [trunc(ph, width - 1), "dim3"]];
 }
 function wrapText(s, n) { const out = []; let cur = ""; for (const word of String(s).split(/\s+/)) { if (cur && len(cur + " " + word) > n) { out.push(cur); cur = word; } else cur = cur ? cur + " " + word : word; } if (cur) out.push(cur); return out; }
+function wrapSegs(segs, n) {   // word-wrap styled segments to n columns
+  const out = [[]]; let w = 0;
+  for (const [t, c] of segs) for (const tok of String(t).split(/(?<= )/)) {
+    if (w > 0 && w + len(tok.trimEnd()) > n) { out.push([]); w = 0; if (!tok.trim()) continue; }
+    out[out.length - 1].push([tok, c]); w += len(tok);
+  }
+  return out;
+}
 function rImp(g, imp, x, y, wd, yMax) {
-  const line = (k, segs) => { if (y > yMax) return; g.put(x, y, k, "dim"); g.segs(x + 10, y, segsTrunc(segs, Math.max(0, wd - 10))); y++; };
+  const line = (k, segs) => wrapSegs(segs, Math.max(8, wd - 10)).forEach((s, i) => { if (y > yMax) return; if (!i) g.put(x, y, k, "dim"); g.segs(x + 10, y, segsTrunc(s, Math.max(0, wd - 10))); y++; });   // the page's step pane is narrower than the old box: wrap, don't cut
   if (imp.err) { g.segs(x, y++, segsTrunc([["✗ ", "red"], [`${imp.err[0]} `, "red"], [imp.err[1], ""]], wd)); g.put(x + 2, y++, trunc("gx explains · nothing was written", wd - 2), "dim3"); return y; }
   const one = imp.pipelines ? imp.pipelines[S.wiz.pick] || imp.pipelines[0] : imp, lint = lintDoc(one.doc, derive(one.doc)), le = lint.filter(p => p.sev === "error"), lw = lint.filter(p => p.sev === "warning");
   g.segs(x, y++, [["✓ ", "grn"], [trunc(`${imp.upload ? "uploaded · " : ""}${imp.label} · ${imp.count} ${imp.kind === "millpkg" ? "pipeline" + (imp.count > 1 ? "s" : "") : imp.kind === "pipe" ? "stages" : "nodes"}${imp.from ? " · from " + imp.from : ""}`, wd - 2), "b"]]);
@@ -3593,34 +3599,64 @@ function rImp(g, imp, x, y, wd, yMax) {
   line("trust", [["new file: creating it trusts this version (§9.10)", "dim"]]);
   return y;
 }
-function rWizard(g) {
+/* the new-pipeline page (§18.8, §18.1.1): step rail · step pane · graph preview at 110 columns or more */
+function newGeom() {
+  const narrow = W < PG_NARROW, leftW = 20, sep2 = W >= 110 ? leftW + 2 + Math.floor((W - leftW - 2) * 0.58) : 0;
+  const X = narrow ? 1 : leftW + 2, R = (sep2 || W - 1) - 2;
+  return { narrow, leftW, sep2, X, R, PW: R - X + 1 };
+}
+const WIZ_WARN = ["M2212", "M2213", "M2307"];
+function railMark(w, i) {
+  if (i === w.step) return ["▸", "b"];
+  if (!w.base || i > w.max) return i === 3 && w.base && wizLintCount(w)[0] ? ["✗", "red"] : ["·", "dim3"];
+  if (i === 1 && (w.base.mode === "down" || w.base.mode === "invalid")) return ["!", "amb"];
+  if (i === 3) { const [e, wn] = wizLintCount(w); if (e) return ["✗", "red"]; if (wn) return ["!", "amb"]; }
+  return ["✓", "grn"];
+}
+function wizLintCount(w) { const fin = wizFinal(w), L = lintDoc(fin, derive(fin)); return [L.filter(p => p.sev === "error").length, L.filter(p => p.sev === "warning").length]; }
+function railWord(w, i) {
+  if (i === 0) { const id = wizSrc(w); return id === "duplicate" ? "copy" : id; }
+  if (!w.base) return "";
+  if (i === 1) { const n = Object.keys(wizFinal(w).nodes).length; return `${n} step${n === 1 ? "" : "s"}`; }
+  if (i === 2) { const t = wizTrigOpts(w)[w.trig]; return t ? (t.k === "source" ? "as source" : t.k === "run" ? "after" : t.k) : ""; }
+  const [e, wn] = wizLintCount(w); return e ? `lint ✗ ${e}` : wn ? `lint ! ${wn}` : "lint ✓";
+}
+function rNewPage(g) {
   const w = S.wiz; wizTick(w);
-  const bw = ow(), x0 = ox(bw), y0 = 2, bh = 28, X = x0 + 3, Y = y0 + 4, R = x0 + bw - 4, B = y0 + bh - 4, C = { x0, y0, bw, bh, X, Y, R, B };
-  overlayBox(g, x0, y0, bw, bh, [["≋", "mark"], [" new pipeline", "b"], [w.base && w.name ? " · " + w.name : "", "dim"]]);
-  let x = X;
-  WIZ2.forEach((s, i) => {
-    if (i) x = g.put(x, y0 + 1, "  ›  ", "dim3");
-    const x1 = x, cur = i === w.step, done = !cur && w.base && i <= w.max;
-    x = g.put(x, y0 + 1, done ? "✓ " : `${i + 1} `, done ? "grn" : cur ? "b" : "dim3"); x = g.put(x, y0 + 1, s, cur ? "b" : done ? "dim" : "dim3");
-    hit(x1, y0 + 1, x - 1, y0 + 1, () => wizGo(i));
-  });
-  if (w.base && bw >= 80) g.rput(R, y0 + 1, trunc(w.base.label, Math.max(0, R - x - 4)), "dim3");
-  g.hl(x0 + 1, x0 + bw - 2, y0 + 2, "dim2");
-  [rWizStart, rWizShape, rWizRun, rWizReview][w.step](g, w, C);
-  if (w.drafting) g.segs(X, y0 + bh - 2, [[spin(), "blu"], [trunc(` drafting ${w.drafting.label}… · esc stops it`, bw - 8), w.drafting.mode === "down" ? "amb" : "blu"]]);
-  else if (w.err) g.segs(X, y0 + bh - 2, [["error", "red b"], [`[${w.err[0]}]`, "red"], [": " + trunc(w.err[1], bw - 30), ""], ["  gx", "b"]]);
-  else if (w.say) g.put(X, y0 + bh - 2, trunc(w.say, bw - 6), "dim");
+  const Gm = newGeom(), fin = w.base ? wizFinal(w) : null;
+  const mid = w.base && w.name ? [[w.name, ""], [w.nameTouched ? "" : " (suggested)", "dim"]] : null;
+  const strip = [["‹ ", "dim"], ...WIZ2.flatMap((s, i) => [[i ? " · " : "", "dim3"], [i === w.step ? `[${s}]` : s, i === w.step ? "b" : "dim"]]), [" ›", "dim"]];
+  const F = pageFrame(g, { page: "new pipeline", mid, right: [CWD + " · draft", "draft"], leftW: Gm.leftW, sep2: Gm.sep2, strip });
+  if (!F.narrow) {
+    g.put(1, F.top, "STEPS", "hd");
+    WIZ2.forEach((s, i) => {
+      const y = F.top + 1 + i, [m, mc] = railMark(w, i), on = i === w.step;
+      g.put(1, y, m, mc); g.put(3, y, s, on ? "b" : "dim"); g.put(11, y, trunc(railWord(w, i), Gm.leftW - 12), "dim");
+      selRow(g, 0, Gm.leftW - 1, y, on, w.focus === "rail");
+      hit(0, y, Gm.leftW - 1, y, () => { w.err = null; if (i === w.step) { w.focus = i === 0 ? "list" : "pane"; play("tick"); } else wizGo(i); });
+    });
+  }
+  // the step pane; its last row holds the working, warning and error line (they never close the page)
+  const C = { x0: F.X - 1, y0: F.top, bw: Gm.PW + 2, bh: F.bot - F.top + 1, X: F.X, Y: F.top, R: Gm.R, B: F.bot - 2 };
+  if (w.np && !Gm.sep2) drawPreview(g, fin, F.X - 1, F.top, Gm.PW + 1, F.bot - F.top + 1, w.view, null, true);
+  else [rWizStart, rWizShape, rWizRun, rWizReview][w.step](g, w, C);
+  if (Gm.sep2) drawPreview(g, fin, Gm.sep2 + 1, F.top, W - Gm.sep2 - 3, F.bot - F.top + 1, w.view, null, true);
+  const ly = F.bot, lw = Gm.R - F.X + 1;
+  if (w.drafting) { g.segs(F.X, ly, [[spin(), "blu"], [trunc(` drafting ${w.drafting.label}…`, lw - 12), w.drafting.mode === "down" ? "amb" : ""]]); g.rput(Gm.R, ly, "esc stops", "dim3"); }
+  else if (w.err || w.warn) {   // ✗ errors and ! warnings: inline, wrapped to two rows, until the next key (§18.1.1)
+    const warn = w.err ? WIZ_WARN.includes(w.err[0]) : true, segs = w.err ? [[warn ? "! " : "✗ ", warn ? "amb" : "red"], [w.err[0] + " ", warn ? "amb" : "red"], [w.err[1], ""], [" · gx explains", "dim3"]] : [["! ", "amb"], [w.warn[1], ""], [` (${w.warn[0]})`, "amb"]];
+    const ls = wrapSegs(segs, lw).slice(0, 2); ls.forEach((l, i) => { g.clear(F.X, ly - ls.length + 1 + i, lw, 1); g.segs(F.X + (i ? 2 : 0), ly - ls.length + 1 + i, segsTrunc(l, lw - (i ? 2 : 0))); });
+  }
+  else if (w.say) g.put(F.X, ly, trunc(w.say, lw), "dim");
   if (w.picker) rWizPicker(g, w, C);
-  if (w.help) rWizHelp(g, C);
   const mode = w.ins ? "INSERT" : "NORMAL";
-  g.clear(0, H - 2, W, 2);
   statusLine(g, `NEW · ${mode}`, w.ins ? "invg" : "inv", [[`${w.step + 1}/4 ${WIZ2[w.step]}`, "b"], ["   " + trunc(wizContext(w), Math.max(0, W - (W >= 100 ? 70 : 34))), "dim"]], W >= 100 ? [[" nothing is written until create ", "dim"]] : []);
-  let kx = 1; wizKeys(w).forEach(([k, v], i) => { if (i) kx = g.put(kx, H - 1, " · ", "dim3"); kx = g.put(kx, H - 1, k, "b"); kx = g.put(kx, H - 1, " " + v, "dim"); });
+  helpBar(g, wizKeys(w));
 }
 function wizContext(w) {
   const s = WIZ2[w.step];
   if (s === "start") return w.focus === "list" ? WSRC[w.src].note : wizSrc(w) === "import" ? "file, URL, gh:owner/repo/path, or a pipe expression" : WSRC[w.src].note;
-  if (s === "shape") return w.base ? `${Object.keys(wizFinal(w).nodes).length} steps · ${w.base.label}` : "";
+  if (s === "shape") return w.base ? `${Object.keys(wizFinal(w).nodes).length} steps · ${w.base.who ? "drafted by " + w.base.who.split(" · ")[0] : w.base.label}` : "";
   if (s === "run") return "the run never waits on you, so its limits are set here";
   return wizFiles(w, wizFinal(w))[0];
 }
@@ -3642,18 +3678,20 @@ function wizKeys(w) {
   return [["i", "rename"], ["h/l", "then"], ["Y", w.view === "graph" ? "yaml" : "graph"], ["enter", "create"], ["?", "more"]];
 }
 function selRow(g, x1, x2, y, on, focused = true) { if (on) g.bg(x1, x2, y, focused ? "sel" : "fold"); }
-function rWizStart(g, w, C) {
-  const { X, Y, R, B } = C, LW = C.bw >= 90 ? 24 : 20, PX = X + LW + 3, PW = R - PX + 1, src = wizSrc(w), pane = w.focus === "pane";
-  g.put(X, Y, "How do you want to start?", "hd");
-  WSRC.forEach((s, i) => { const y = Y + 2 + i * 2, on = i === w.src; g.segs(X, y, [[s.gl + " ", on ? "blu" : "dim"], [s.label, on ? "b" : ""]]); selRow(g, X - 1, X + LW, y, on, !pane); hit(X - 1, y, X + LW, y, () => { w.src = i; w.focus = "list"; w.err = null; play("tick"); }); });
-  g.vl(X + LW + 1, Y + 2, B, "dim3");
-  let y = Y + 2;
+function rWizStart(g, w, C) {   // §18.8: the source list stacked over the source's pane
+  const { X, Y, R, B } = C, PX = X, PW = R - X + 1, src = wizSrc(w), pane = w.focus === "pane";
+  g.put(X, Y, "HOW DO YOU WANT TO START?", "hd");
+  WSRC.forEach((s, i) => { const y = Y + 1 + i, on = i === w.src; g.segs(X, y, segsTrunc([[on ? "▸ " : "  ", "b"], [s.gl + " ", on ? "blu" : "dim"], [s.label.padEnd(17), on ? "b" : ""], [s.short, "dim"]], PW)); selRow(g, X - 1, R, y, on, w.focus === "list"); hit(X - 1, y, R, y, () => { w.src = i; w.focus = "list"; w.err = null; play("tick"); }); });
+  let y = Y + WSRC.length + 2;
+  g.put(PX, y++, { describe: "IN A SENTENCE", template: "STARTERS", duplicate: "PIPELINES", import: "FROM A FILE", blank: "BLANK" }[src], "hd");
   if (src === "describe") {
-    wrapText("Say what it should do. The drafter proposes the trigger and steps; you check them on the next screen. Nothing is written until you create it.", PW).forEach(l => g.put(PX, y++, l, "dim")); y++;
-    g.put(PX, y++, "in a sentence", "dim");
-    const on = w.ins && w.ins.key === "sentence", txt = on ? w.ins.text : w.sentence, lines = txt ? wrapText(txt, PW - 2) : [""];
-    lines.slice(-5).forEach((l, i, a) => { g.segs(PX, y, txt ? [[l, "b"], [on && i === a.length - 1 ? "▌" : "", "blu"]] : [[on ? "▌" : "", "blu"], [trunc("every night find flaky tests, fix them, run the tests and open a draft PR", PW - 2), "dim3"]]); selRow(g, PX - 1, R, y, pane && !on); y++; });
-    y++; { const db = setting("drafter.backend"); g.put(PX, y++, trunc(db === "agent" ? `drafted with ${setting("drafter.agent")} · headless · ≈ $0.01 · counts toward today's spend` : db === "off" ? "drafted with keyword rules · drafter.backend is off · free" : OLLAMA.down ? "drafted with keyword rules · ollama unreachable (M2212) · c in :settings checks again" : `drafted with ollama · ${setting("drafter.model")} · local, free, offline`, PW), db === "ollama" && OLLAMA.down ? "amb" : "dim3"); }
+    const on = w.ins && w.ins.key === "sentence", txt = on ? w.ins.text : w.sentence, lines = txt ? wrapText(txt, PW - 4) : [""], n = Math.max(2, Math.min(5, lines.length));
+    g.box(PX, y, PW, n + 2, pane || on ? "b" : "dim3");
+    lines.slice(-n).forEach((l, i, a) => g.segs(PX + 2, y + 1 + i, txt ? [[l, "b"], [on && i === a.length - 1 ? "▌" : "", "blu"]] : [[on ? "▌" : "", "blu"], [trunc("every night find flaky tests, fix them, run the tests and open a draft PR", PW - 5), "dim3"]]));
+    hit(PX, y, R, y + n + 1, () => { w.focus = "pane"; play("tick"); });
+    y += n + 2;
+    { const db = setting("drafter.backend"); g.put(PX, y++, trunc(db === "agent" ? `enter drafts with ${setting("drafter.agent")} · headless · ≈ $0.01 · counts toward today's spend` : db === "off" ? "enter drafts with keyword rules · drafter.backend is off · free" : OLLAMA.down ? "enter drafts with keyword rules · ollama unreachable (M2212) · c in :settings checks again" : `enter drafts with ollama · ${setting("drafter.model")} · free, offline`, PW), db === "ollama" && OLLAMA.down ? "amb" : "dim3"); }
+    y++; wrapText("The drafter proposes the trigger and steps; you check them on the next step. Nothing is written until you create it.", PW).forEach(l => { if (y <= B) g.put(PX, y++, l, "dim3"); });
   } else if (src === "template") {
     const items = galItems(w), cols = galCols(), cw = Math.floor((PW - (cols - 1) * 2) / cols), vis = 4; w.tpl = Math.min(w.tpl, Math.max(0, items.length - 1));
     const top = Math.max(0, Math.floor(w.tpl / cols) - vis + 1);
@@ -3671,7 +3709,7 @@ function rWizStart(g, w, C) {
     const top = Math.max(0, w.dup - (B - y - 1));
     items.slice(top, top + B - y + 1).forEach((p, i) => { const j = top + i, on = j === w.dup; g.segs(PX, y, [[p.name.padEnd(22), on ? "b" : ""], [trunc(p.trigger || "", 16).padEnd(18), "dim"], [trunc(p.desc || "", Math.max(0, PW - 40)), "dim3"]]); selRow(g, PX - 1, R, y, on, pane); hit(PX, y, R, y, () => { w.dup = j; w.focus = "pane"; play("tick"); }); y++; });
   } else if (src === "import") {
-    g.put(PX, y++, trunc("A file, a URL, gh:owner/repo/path, or a pipe expression. Drop a file on the terminal to paste its path.", PW), "dim"); y++;
+    wrapText("A file, a URL, gh:owner/repo/path, or a pipe expression. Drop a file on the terminal to paste its path.", PW).slice(0, 2).forEach(l => g.put(PX, y++, l, "dim")); y++;
     g.put(PX, y, "path", "dim"); g.segs(PX + 6, y, fieldSegs(w, "path", w.path, "~/Downloads/slack-digest.json", PW - 7)); selRow(g, PX - 1, R, y, pane && w.prow === 0 && !w.ins); hit(PX, y, R, y, () => { w.focus = "pane"; w.prow = 0; }); y++;
     g.segs(PX + 6, y, [["o", "b"], [" browse…", "dim"], [typeof document !== "undefined" && document.getElementById("wiz-file") && document.getElementById("wiz-file").click ? "   u upload (browser)   or drop a file here" : "", "dim3"]]); selRow(g, PX - 1, R, y, pane && w.prow === 1); hit(PX, y, R, y, () => { w.picker = { dir: "~/Downloads", cur: 0, top: 0 }; }); y += 2;
     if (w.imp) rImp(g, w.imp, PX, y, PW, B); else if (S.dropHover) g.put(PX, y, trunc("drop it: the file is read here, nothing is written", PW), "blu");
@@ -3688,10 +3726,10 @@ function shapeRows(w) {
   return rows;
 }
 function rWizShape(g, w, C) {
-  const { X, Y, R, B } = C, fin = wizFinal(w), rows = shapeRows(w), wide = C.bw >= 90, LW = wide ? Math.floor((R - X) * 0.52) : R - X, PX = X + LW + 2;
-  g.put(X, Y, w.base.kind === "gen" ? "What it does · space turns a step on or off" : "What it does · used as is; change it in the editor after create", "hd");
+  const { X, Y, R, B } = C, fin = wizFinal(w), rows = shapeRows(w), wide = !!C.inner, LW = wide ? Math.floor((R - X) * 0.52) : R - X, PX = X + LW + 2;
+  g.put(X, Y, trunc(w.base.kind === "gen" ? "WHAT IT DOES · space turns a step on or off" : "WHAT IT DOES · used as is; change it in the editor after create", R - X + 1), "hd");
   w.row = Math.min(w.row, rows.length - 1);
-  if (!wide && w.np) { drawPreview(g, fin, X - 1, Y + 1, R - X + 2, B - Y, w.view, null); return; }
+  if (C.np) { drawPreview(g, fin, X - 1, Y + 1, R - X + 2, B - Y, w.view, null); return; }   // the page draws the preview (newGeom)
   let y = Y + 2;
   rows.forEach((r, i) => {
     if (y > B) return; const on = i === w.row;
@@ -3714,7 +3752,7 @@ function wizRunRows(w) {
 }
 function rWizRun(g, w, C) {
   const { X, Y, R, B } = C, rows = wizRunRows(w), t = wizTrigOpts(w)[w.trig], fin = wizFinal(w), est = estTotal(fin), bo = wizBudgetOpts(w)[w.budget], NX = X + 34;
-  g.put(X, Y, "When it runs, and its limits", "hd"); if (C.bw >= 90) g.rput(R, Y, "the run never waits on you", "dim3");
+  g.put(X, Y, "WHEN IT RUNS, AND ITS LIMITS", "hd"); if (C.bw >= 90) g.rput(R, Y, "the run never waits on you", "dim3");
   w.row = Math.min(w.row, rows.length - 1);
   let y = Y + 2; const ch = (v, on) => [["◂ ", "dim"], [v, on ? "b" : ""], [" ▸", "dim"]], LX = Math.max(16, ...rows.filter(r => r.k === "allow").map(r => r.u.length + 10)), NX2 = Math.max(NX, X + LX + 18);
   rows.forEach((r, i) => {
@@ -3733,8 +3771,8 @@ function rWizRun(g, w, C) {
   });
 }
 function rWizReview(g, w, C) {
-  const { X, Y, R, B } = C, fin = wizFinal(w), wide = C.bw >= 90, LW = wide ? Math.floor((R - X) * 0.52) : R - X, PX = X + LW + 2, lint = lintDoc(fin, derive(fin)), le = lint.filter(p => p.sev === "error"), lw = lint.filter(p => p.sev === "warning"), est = estTotal(fin), np = nameProblem(w.ins && w.ins.key === "name" ? w.ins.text : w.name);
-  g.put(X, Y, "Review · nothing is written until enter", "hd");
+  const { X, Y, R, B } = C, fin = wizFinal(w), wide = !!C.inner, LW = wide ? Math.floor((R - X) * 0.52) : R - X, PX = X + LW + 2, lint = lintDoc(fin, derive(fin)), le = lint.filter(p => p.sev === "error"), lw = lint.filter(p => p.sev === "warning"), est = estTotal(fin), np = nameProblem(w.ins && w.ins.key === "name" ? w.ins.text : w.name);
+  g.put(X, Y, "REVIEW · nothing is written until enter", "hd");
   let y = Y + 2; const row = (k, segs, cls) => { if (y > B) return; g.put(X, y, k, "dim"); g.segs(X + 10, y, segsTrunc(segs.map(([t, c]) => [t, c || cls || ""]), Math.max(0, LW - 11))); y++; };
   row("name", fieldSegs(w, "name", w.name, "new-pipeline", LW - 12)); selRow(g, X - 1, X + LW - 1, y - 1, w.row === 0 && !w.ins);
   row("", np ? [["✗ " + np[0] + " " + np[1], "red"]] : [["✓ free · lowercase, digits, dashes", "dim3"]]);
@@ -3776,13 +3814,6 @@ function pickerKey(k) {
     if (it.dir) { P.dir = it.dir; P.cur = 0; P.top = 0; play("open"); return; }
     w.picker = null; w.path = it.file.replace(CWD + "/", "./"); w.prow = 0; wizLoadPath(it.file); return;
   }
-}
-function rWizHelp(g, C) {
-  const rows = [["NORMAL", ""], ["j k", "next / previous row"], ["h l", "change a ◂ value ▸; on start, sources ↔ pane"], ["i  a  enter", "edit a text field (INSERT)"], ["cc", "clear a field and edit it"], ["space", "turn a step or a switch on/off"], ["tab  shift+tab", "next / previous step"], ["1 2 3 4", "jump to a step (breadcrumb)"], ["Y", "graph ↔ yaml preview"], ["o  u", "browse files · upload (browser)"], ["/", "filter the gallery or the list"], ["gx", "explain the error code"], [":", "command line (:w creates, :q cancels)"], ["esc", "cancel · nothing is written"], ["INSERT", ""], ["type  backspace", "edit"], ["ctrl+w  ctrl+u", "delete a word · clear"], ["tab", "complete a path or a name"], ["enter", "done (and act: draft, load)"], ["esc", "back to NORMAL, keep the text"], ["ctrl+c", "back to NORMAL, drop the edit"]];
-  const hw = Math.min(64, C.bw - 6), hh = rows.length + 3, hx = C.x0 + Math.floor((C.bw - hw) / 2), hy = Math.max(1, C.y0 + 1);
-  HITS = []; g.clear(hx, hy, hw, hh); for (let r = hy; r < hy + hh; r++) g.bg(hx, hx + hw - 1, r, "pop"); g.box(hx, hy, hw, hh, "b", [["new pipeline · keys", "b"]]);
-  rows.forEach(([k, v], i) => v ? g.segs(hx + 2, hy + 1 + i, [[k.padEnd(18), "b"], [trunc(v, hw - 22), "dim"]]) : g.put(hx + 2, hy + 1 + i, k, "hd"));
-  g.put(hx + 2, hy + hh - 2, "any key closes", "dim3");
 }
 
 /* ---- keys: NORMAL moves (hjkl), i/a/enter edit a field (INSERT), esc goes back to NORMAL */
@@ -3826,14 +3857,13 @@ function wizInsKey(k) {
 }
 function wizKey(k) {
   const w = S.wiz;
-  if (w.help) { w.help = false; play("back"); return; }
   if (w.picker) return pickerKey(k);
   if (w.ins) return wizInsKey(k);
   if (w.drafting) { if (k === "Escape" || k === "C-c") { w.drafting = null; w.say = "drafting stopped · nothing was proposed"; play("back"); } return; }
   const s = seq(k, ["gx", "cc", "za"]); if (s === "") return; const key = s || k;
-  if (key !== "gx") w.err = null;
+  if (key !== "gx") { w.err = null; w.warn = null; }
   switch (key) {
-    case "?": w.help = true; play("open"); return;
+    case "?": return openHelp();   // the help page on these keys (Modes › NEW PIPELINE); esc comes back here
     case "Escape": if (w.step === 0 && w.focus === "pane") { w.focus = "list"; play("back"); return; } return wizCancel();
     case "Tab": return wizGo(w.step + 1);
     case "S-Tab": return wizGo(w.step - 1);
@@ -3841,16 +3871,23 @@ function wizKey(k) {
     case "gx": { const c = w.err ? w.err[0] : (w.imp && w.imp.err ? w.imp.err[0] : null); w.say = c ? `${c}: ${EXPLAIN[c] || "see mill explain " + c} · mill explain ${c}` : "no error to explain"; return; }
     case "Y": if (C_wide()) w.view = w.view === "graph" ? "yaml" : "graph"; else if (!w.np) { w.np = true; w.view = "graph"; } else if (w.view === "graph") w.view = "yaml"; else { w.np = false; w.view = "graph"; } play("toggle"); return;
   }
+  if (w.focus === "rail") {   // on the step rail: j/k move between steps (the step follows), l or enter goes into the step (§18.1.1)
+    if (key === "j" || key === "ArrowDown") return wizGo(w.step + 1);
+    if (key === "k" || key === "ArrowUp") return wizGo(w.step - 1);
+    if (key === "l" || key === "Enter" || key === "ArrowRight") { w.focus = w.step === 0 ? "list" : "pane"; play("tick"); }
+    return;
+  }
   return [wizStartKey, wizShapeKey, wizRunKey, wizReviewKey][w.step](key);
 }
-const C_wide = () => ow() >= 90;
-function galCols() { const bw = ow(), LW = bw >= 90 ? 24 : 20; return bw - LW - 9 >= 56 ? 2 : 1; }
+const C_wide = () => W >= 110;   // the preview pane is on the page (§18.8); narrower, Y swaps the step pane for it
+function galCols() { return newGeom().PW >= 56 ? 2 : 1; }
 function wizStartKey(k) {
   const w = S.wiz, src = wizSrc(w);
   if (w.focus === "list") {
     if (k === "j" || k === "ArrowDown") { if (w.src < WSRC.length - 1) { w.src++; w.base = null; play("tick"); } return; }
     if (k === "k" || k === "ArrowUp") { if (w.src > 0) { w.src--; w.base = null; play("tick"); } return; }
     if (k === "g") { w.src = 0; return; } if (k === "G") { w.src = WSRC.length - 1; return; }
+    if ((k === "h" || k === "ArrowLeft") && W >= PG_NARROW) { w.focus = "rail"; play("back"); return; }
     if (k === "l" || k === "ArrowRight" || k === "Enter") { w.focus = "pane"; w.prow = 0; play("open"); return; }
     if (k === "i" || k === "a") { w.focus = "pane"; if (src === "describe") return wizStartIns("sentence"); if (src === "import") return wizStartIns("path"); if (src === "template") return wizStartIns("tq"); if (src === "duplicate") return wizStartIns("dq"); return; }
     return;
@@ -4003,14 +4040,16 @@ const CMDS = [
   ["cancel", [], "run", "", "mill cancel <run>", "cancel this run"], ["log", [], "run", "", "mill logs <run>", "this run's log"], ["items", [], "run", "", "mill items <run>/<node>", "the selected node's items"],
   ["attach", [], "run", "", "mill attach <run>/<node>", "the selected agent's screen, view-only"],
 ];
-function clCtx() { return S.screen === "boot" || S.screen === "setup" ? "boot" : S.wiz ? "wizard" : S.popup ? "run" : S.overlay === "plugins" || S.overlay === "settings" ? S.overlay : S.overlay ? "overlay" : S.screen === "editor" ? "editor" : "board"; }
+function clCtx() { return S.screen === "boot" || S.screen === "setup" ? "boot" : S.overlay === "plugins" || S.overlay === "settings" ? S.overlay : S.overlay ? "overlay" : S.wiz ? "wizard" : S.popup ? "run" : S.screen === "editor" ? "editor" : "board"; }
 // nvim: `:` opens the command line from every NORMAL-like state; INSERT and text fields type a literal ":"
 function clTextEntry() {
   if (S.screen === "preboot") return true;
   if (S.screen === "setup") return !!S.setup && SETUP_STEPS[S.setup.step] === "trusted folders";
   if (S.screen === "boot") return false;
   if (S.confirm) return false;
-  if (S.wiz) return !!S.wiz.ins;
+  if (S.overlay === "help") return !!S.help.qEdit;
+  if (S.overlay === "settings") return !!(S.settings.edit || S.settings.qEdit);
+  if (S.wiz && !S.overlay) return !!S.wiz.ins;
   if (S.screen === "board" && S.board.searchEdit && !S.popup && !S.overlay) return true;
   if (S.popup === "log" && S.log.searchEdit) return true;
   if (S.overlay === "settings" && (S.settings.edit || S.settings.qEdit)) return true;
@@ -4054,7 +4093,7 @@ function clExec(t) {
   if (ctx === "wizard" && wizCommand(name, arg, bang)) return;
   const p = arg ? PIPES.find(x => x.name === arg) : null, needP = () => { const near = closest(arg, PIPES.map(x => x.name)); errorToast("M1201", `pipeline "${arg}" not found`, near ? `did you mean ${near}?` : "mill ls"); };
   switch (name) {
-    case "quit": if (S.popup) { S.popup = null; S.run.old = null; play("back"); return; } if (S.overlay) { S.overlay = null; play("back"); return; } return command(bang ? "q!" : "q");
+    case "quit": if (S.overlay === "help") return closeHelp(); if (S.overlay === "settings") return closeSettings(); if (S.popup) { S.popup = null; S.run.old = null; play("back"); return; } if (S.overlay) { S.overlay = null; play("back"); return; } return command(bang ? "q!" : "q");
     case "qall": S.popup = null; S.overlay = null; if (S.screen === "editor" && edDirty() && !bang) return leaveEditor2(false); S.screen = "board"; return command("q");
     case "write": return command(bang ? "w!" : "w");
     case "wq": return command("wq");
@@ -4110,14 +4149,20 @@ function clPipe(expr) {
   const n = splitPipe(expr).length; play("run_start"); toast(`≋ pipe · ${n} stage${n > 1 ? "s" : ""} started · mill pipe '${trunc(expr, 40)}'`, "blu");
   setTimeout(() => { play("run_done"); toast(`✓ pipe done · ${n} stage${n > 1 ? "s" : ""} · 4.8s · $0.01 · mill logs pipe#1 has the output`, "grn", 6000); S.dirty = true; }, 2500);
 }
-function clHelp(arg) {
-  if (!arg) { if (S.wiz) { S.wiz.help = true; return; } if (S.screen === "editor" && !S.popup && !S.overlay) { ED.help = true; return; } S.overlay = "help"; return; }
-  if (arg === "commands" || arg === ":" || arg === "cmdline") { S.overlay = "cmds"; S.cmdsTop = 0; play("open"); return; }
-  if (/^M\d{4}$/i.test(arg)) return clExec("explain " + arg);
-  const c = CMDS.find(x => x[0] === arg.replace(/^:/, "") || x[1].includes(arg.replace(/^:/, "")));
-  if (c) return toast(`:${c[0]}${c[1].length ? " (:" + c[1].join(", :") + ")" : ""} · ${c[5]} · ${c[2]} · CLI: ${c[4]}`, "dim", 8000);
-  if (["keys", "board", "editor", "wizard", "new", "run"].includes(arg)) return clHelp("");
-  errorToast("M1305", `no help for "${arg}"`, ":help commands");
+function clHelp(arg) {   // §18.5.1: a group, then a command, then an error code; each opens the help page on it
+  const booting = S.screen === "boot" || S.screen === "setup", a = String(arg || "").trim(), low = a.toLowerCase(), bare = low.replace(/^:/, "");
+  if (!a) return openHelp();
+  if (booting) { if (/^M\d{4}$/i.test(a)) return clExec("explain " + a); const c = CMDS.find(x => x[0] === bare || x[1].includes(bare)); if (c) return toast(`:${c[0]}${c[1].length ? " (:" + c[1].join(", :") + ")" : ""} · ${c[5]} · ${c[2]} · CLI: ${c[4]}`, "dim", 8000); }
+  if (low === "commands" || low === ":" || low === "cmdline") return openHelp(4);
+  if (!a.startsWith(":")) {
+    const gi = HELP_GROUPS.findIndex(n => n.toLowerCase() === low); if (gi >= 0) return openHelp(gi);
+    if (low === "keys" || low === "board") return openHelp(0);
+    if (low === "wizard") return openHelp(3, { head: "NEW PIPELINE" });
+  }
+  const c = CMDS.find(x => x[0] === bare || x[1].includes(bare)); if (c) return openHelp(4, { cmd: c[0] });
+  if (/^M\d{4}$/i.test(a)) return openHelp(null, { code: a.toUpperCase() });
+  const near = closest(bare, [...HELP_GROUPS.map(n => n.toLowerCase()), ...CMDS.map(x => x[0])]);
+  errorToast("M1306", `no help for "${a}"`, near ? `did you mean :help ${near}?` : ":help commands lists them");
 }
 function clCands(head, tok) {
   const words = head.trim().split(/\s+/).filter(Boolean).map(x => x.replace(/^\d+/, ""));
@@ -4210,17 +4255,8 @@ function drawCmdline(g) {
   if (CL.echo && performance.now() - CL.echo.at < 12000) { g.clear(0, y, W, 1); g.put(0, y, trunc(CL.echo.text, W - 1), CL.echo.cls); return; }
   const w = S.wiz;
   if (S.screen === "boot" || S.screen === "setup") return;
-  const q = w && w.ins && (w.ins.key === "tq" || w.ins.key === "dq") ? w.ins.text : S.board.searchEdit && S.screen === "board" && !S.popup && !S.overlay && !S.wiz ? S.board.search : S.popup === "log" && S.log.searchEdit ? S.log.search : S.overlay === "plugins" && S.plugins.qEdit ? S.plugins.q : S.overlay === "settings" && S.settings.qEdit ? S.settings.q : null;
+  const q = S.overlay === "help" && S.help.qEdit ? S.help.q : w && !S.overlay && w.ins && (w.ins.key === "tq" || w.ins.key === "dq") ? w.ins.text : S.board.searchEdit && S.screen === "board" && !S.popup && !S.overlay && !S.wiz ? S.board.search : S.popup === "log" && S.log.searchEdit ? S.log.search : S.overlay === "plugins" && S.plugins.qEdit ? S.plugins.q : S.overlay === "settings" && S.settings.qEdit ? S.settings.q : null;
   if (q != null) { g.clear(0, y, W, 1); g.segs(0, y, [["/", "b"], [q, "b"], ["▌", "blu"]]); g.rput(W - 2, y, "enter keep · esc clear", "dim3"); }
-}
-function rCmdsOverlay(g) {
-  const w = ow(), x0 = ox(w), y0 = 1, h = H - 4, lines = [];
-  for (const grp of ["global", "board", "editor", "wizard", "run", "plugins", "settings"]) { lines.push([grp.toUpperCase(), null]); for (const c of CMDS.filter(x => x[2] === grp)) lines.push([c, grp]); }
-  overlayBox(g, x0, y0, w, h, [[":help commands", "b"], [" · every command, its context and its CLI", "dim"]]);
-  S.cmdsTop = Math.max(0, Math.min(S.cmdsTop || 0, lines.length - (h - 4)));
-  const cw = Math.max(18, Math.floor((w - 6) * 0.22)), dw = Math.floor((w - 6 - cw) * 0.5);
-  lines.slice(S.cmdsTop, S.cmdsTop + h - 4).forEach(([c, grp], i) => { const y = y0 + 2 + i; if (!grp) { g.put(x0 + 3, y, c, "hd"); return; } g.segs(x0 + 3, y, [[(":" + c[0] + (c[1].length ? " :" + c[1].join(" :") : "")).padEnd(cw).slice(0, cw), "b"], [trunc(c[5], dw - 1).padEnd(dw), "dim"], [trunc(c[4], w - 8 - cw - dw), "dim3"]]); });
-  g.put(x0 + 3, y0 + h - 2, `j/k scroll · esc close · ${lines.length - (h - 4) > 0 ? "more below" : ""}`, "dim3");
 }
 
 
@@ -4305,47 +4341,89 @@ function valSegs(r, sel) {
   if (r.type === "num") return [["◂ ", "dim"], [String(r.val), sel ? "b" : ""], [" ▸", "dim"]];
   return [[r.val === "" ? "(empty)" : String(r.val), r.val === "" ? "dim3" : ""]];
 }
-function rSettingsOverlay(g) {
-  const st = S.settings, w = ow(112), x0 = ox(w), y0 = 2, h = 28;
-  overlayBox(g, x0, y0, w, h, [["settings", "b"]]);
-  if (w >= 90) g.rput(x0 + w - 3, y0, " changes save to settings.lua ", "dim3");
-  SECTIONS.forEach(([n], i) => { const y = y0 + 2 + i, on = i === st.sec && !st.q; g.put(x0 + 2, y, on ? String(i + 1).padStart(2) : String(Math.abs(i - st.sec)).padStart(2), on ? "b" : "dim3"); g.put(x0 + 5, y, n, on ? "b" : "dim"); if (on) g.bg(x0 + 1, x0 + 16, y, "sel"); hit(x0 + 1, y, x0 + 16, y, () => { st.sec = i; st.row = 0; st.q = null; play("toggle"); }); });
-  g.vl(x0 + 18, y0 + 1, y0 + h - 4, "dim3");
-  const rows = settingsRows(), X = x0 + 21, VX = X + 17, NX = X + 41, room = x0 + w - 2 - NX;
+/* the settings page (§18.10, §18.1.1): sections with changed-count badges · rows with values flush right · the inspector */
+const capLabel = s => s.charAt(0).toUpperCase() + s.slice(1).replace(/\burl\b/g, "URL");
+const setChanged = r => !!(r && r.id && String(r.val) !== String(r.def));
+const secChanged = i => SECTIONS[i][1].filter(setChanged).length;
+function setTakes(r) { return /^drafter\./.test(r.id) ? "next draft" : /^(max_concurrent_|default_runner|keep_workspaces|retention)/.test(r.id) ? "next run" : r.id === "gateway.listen" ? "restart" : "now"; }
+function setValPage(r, sel) {
+  if (S.settings.edit && sel) return [[S.settings.edit.text, "b"], ["▌", "blu"]];
+  if (r.src) return [[String(r.val), "dim2"], ["  " + r.src, "dim3"]];   // set by a higher layer: dim, with its source
+  const ch = setChanged(r) ? [["• ", ""]] : [], v = r.id === "sound.volume" || r.type === "bool" ? valSegs(r) : [[r.val === "" ? "(empty)" : String(r.val), r.val === "" ? "dim3" : sel ? "b" : ""]];
+  return sel && r.type !== "text" ? [["◂ ", "dim"], ...ch, ...v, [" ▸", "dim"]] : [...ch, ...v];
+}
+function settingsLines(rows, q) {
+  const L = [];
+  if (q) { let sec = null; rows.forEach((r, i) => { if (r.sec !== sec) { sec = r.sec; L.push({ head: sec }); } L.push({ i }); }); return L; }
+  let ph = false; rows.forEach((r, i) => { if (r.kind === "preview" && !ph) { ph = true; L.push({ blank: true }, { head: "PREVIEW · " + setting("sound.set"), hd: true }); } L.push({ i }); });
+  return L;
+}
+function openSettings() { leaveAgent(); S.overlay = "settings"; Object.assign(S.settings, { focus: "rows", K: false, pick: null, edit: null, top: 0 }); play("open"); }
+function closeSettings() { S.overlay = null; Object.assign(S.settings, { focus: "rows", K: false, pick: null, edit: null }); play("back"); }
+function rSettingsPage(g) {
+  const st = S.settings, q = st.q ? st.q : null, rows = settingsRows();
   st.row = Math.max(0, Math.min(st.row, rows.length - 1));
-  if (st.q != null) g.segs(X, y0 + 1, [["/", "mark"], [" " + st.q, "b"], [`  ${rows.length} match${rows.length === 1 ? "" : "es"}`, "dim3"]]);
-  let y = y0 + 2, ph = false;
-  const isDraft = st.q == null && SECTIONS[st.sec][0] === "Drafter", dOff = setting("drafter.backend") === "off";
-  if (isDraft) { const ds = drafterStatus().segs, dl = ds.reduce((a, [t]) => a + len(t), 0); g.segs(X, y, ds.map(([t, c]) => [trunc(t, x0 + w - X - 4), c])); if (X + dl + 16 < x0 + w - 3) g.rput(x0 + w - 3, y, "c checks again", "dim3"); y += 2; }
-  rows.forEach((r, i) => {
-    if (y > y0 + h - 5) return;
-    const sel = i === st.row;
-    if (isDraft && dOff && r.id !== "drafter.backend" && !sel) { g.put(X, y, trunc(r.label, 16), "dim3"); g.put(VX, y, trunc(String(r.val), 22), "dim3"); if (room > 8) g.put(NX, y, "unused while backend is off", "dim3"); const yy = y; hit(X - 1, yy, x0 + w - 2, yy, () => { st.row = i; play("tick"); }); y++; return; }
-    if (r.kind === "preview") {
-      if (!ph) { y++; g.put(X, y++, "PREVIEW · " + setting("sound.set"), "hd"); ph = true; }
-      g.put(X + 2, y, "▶", sel ? "blu" : "dim2"); g.put(X + 4, y, r.label, sel ? "b" : ""); g.put(VX, y, trunc(r.note, x0 + w - VX - 3), "dim");
-    } else {
-      g.put(X, y, trunc(st.q ? r.sec.toLowerCase() + "·" + r.label : r.label, 16), r.src ? "dim2" : "dim");
-      if (st.edit && sel) { g.put(VX, y, st.edit.text, "b"); g.put(VX + len(st.edit.text), y, "▌", "blu"); }
-      else g.segs(VX, y, (r.src ? valSegs(r).map(([t]) => [t, "dim2"]) : valSegs(r, sel)).map(([t, c]) => [trunc(t, 22), c]));
-      if (room > 8) g.put(NX, y, trunc(r.src ? `set in ${r.src} · gd goes there` : r.note || (r.type === "enum" ? r.vals.join(" · ") : r.type === "num" ? `${r.min}–${r.max}` : ""), room), r.src ? "amb2" : "dim3");
+  const r = rows[st.row], secName = SECTIONS[st.sec][0], hitSecs = q ? new Set(rows.map(x => x.sec)) : null, searching = st.q != null && (!!st.q || st.qEdit);
+  const help = r && r.h ? wrapText(r.h, W - 3) : [], insp = st.K && !st.pick ? Math.min(14, 2 + help.length) : 4;
+  const leftW = Math.min(24, 7 + Math.max(...SECTIONS.map(([n]) => len(n))));
+  const mid = searching ? [["/" + st.q, "b"], [` · ${q ? rows.length : 0} hit${q && rows.length === 1 ? "" : "s"}`, "dim"]] : [[secName, ""], [r && r.label ? " › " : "", "dim3"], [r && r.label ? capLabel(r.label) : "", ""]];
+  const curSec = q && r ? SECTIONS.findIndex(([n]) => n === r.sec) : st.sec, nb = secChanged(curSec < 0 ? st.sec : curSec);
+  const F = pageFrame(g, { page: "settings", mid, right: ["~/.config/mill/settings.lua", "settings.lua"], leftW, insp, strip: pageStrip(SECTIONS[curSec < 0 ? st.sec : curSec][0], nb ? `  ${nb} changed` : "") });
+  pageList(g, F, "SECTIONS", SECTIONS.map(([n], i) => ({ label: n, badge: secChanged(i) || "", dim: q && !hitSecs.has(n) })), q && !rows.length ? -1 : curSec, st.focus === "list", i => { Object.assign(st, { sec: i, row: 0, top: 0, q: null, qEdit: false }); play("toggle"); });
+  const X = F.X, R = F.R, isDraft = !q && secName === "Drafter", dOff = setting("drafter.backend") === "off";
+  let y = F.top;
+  if (q) g.put(X, y, trunc(rows.length ? `${rows.length} setting${rows.length === 1 ? "" : "s"} match “${q}”` : `no setting matches “${q}”`, R - X + 1), rows.length ? "dim" : "");
+  else g.put(X, y, secName, "hd");
+  y++;
+  if (q && !rows.length) g.put(X, y + 1, trunc("esc clears the search · / searches again", R - X + 1), "dim3");
+  if (isDraft) { const ds = drafterStatus().segs; g.segs(X, y, segsTrunc(ds, R - X - 13)); g.rput(R, y, "c check now", "dim3"); y++; }
+  if (!q) y++;
+  const lines = settingsLines(rows, q), ht = F.bot - y + 1, li = Math.max(0, lines.findIndex(l => l.i === st.row));
+  st.top = Math.max(0, Math.min(st.top || 0, lines.length - ht)); if (li < st.top) st.top = Math.max(0, li - (lines[li - 1] && lines[li - 1].head ? 1 : 0)); if (li >= st.top + ht) st.top = li - ht + 1;
+  if (st.top > 0) g.rput(R, y - 1, "↑ more", "dim3");
+  lines.slice(st.top, st.top + ht).forEach((l, j) => {
+    const yy = y + j;
+    if (l.blank) return;
+    if (l.head) { g.put(X, yy, l.head, l.hd ? "hd" : "dim"); return; }
+    const i = l.i, rr = rows[i], sel = i === st.row;
+    if (sel) g.put(X, yy, "▸", "b");
+    if (rr.kind === "preview") { g.segs(X + 2, yy, [["▶ ", sel ? "blu" : "dim2"], [rr.label, sel ? "b" : ""]]); g.rput(R, yy, trunc(rr.note, Math.max(0, R - X - 20)), "dim"); }
+    else {
+      const off = isDraft && dOff && rr.id !== "drafter.backend" && !sel, vs = off ? [[String(rr.val), "dim3"]] : setValPage(rr, sel), vl = vs.reduce((a, [t]) => a + len(t), 0);
+      g.put(X + 2, yy, trunc(capLabel(rr.label), 22), off ? "dim3" : rr.src ? "dim2" : sel ? "b" : "");
+      g.rsegs(R, yy, segsTrunc(vs, Math.max(4, R - X - 26)));
+      if (off) g.put(X + 26, yy, trunc("unused while backend is off", Math.max(0, R - X - 28 - vl)), "dim3");
     }
-    if (sel) g.bg(X - 1, x0 + w - 2, y, "sel");
-    const yy = y; hit(X - 1, yy, x0 + w - 2, yy, () => { if (st.row === i && r.picker) openModelPicker(r); else if (st.row === i && r.kind !== "preview" && r.type !== "text") changeSetting(r, 1); else if (r.kind === "preview" && st.row === i) previewSound(r.ev); else { st.row = i; play("tick"); } });
-    if (st.pick && sel) st.pick.y = y;
-    y++;
+    selRow(g, X - 1, R + 1, yy, sel, st.focus !== "list");
+    hit(X - 1, yy, R + 1, yy, () => { st.focus = "rows"; if (st.row === i && rr.picker) openModelPicker(rr); else if (st.row === i && rr.kind !== "preview" && rr.type !== "text") changeSetting(rr, 1); else if (rr.kind === "preview" && st.row === i) previewSound(rr.ev); else { st.row = i; play("tick"); } });
+    if (st.pick && sel) st.pick.y = yy;
   });
+  if (st.top + ht < lines.length) g.rput(R, F.bot, "↓ more", "dim3");
   if (st.pick) {
-    const pr = SETTING["drafter.model"], bx = VX - 2, by = (st.pick.y || y0 + 6) + 1, bw = 40, bh = pr.vals.length + 2;
-    g.clear(bx, by, bw, bh); g.box(bx, by, bw, bh, "b", [["pulled models", "b"]]);
+    const pr = SETTING["drafter.model"], bw = Math.min(40, R - X), bx = R - bw + 1, bh = pr.vals.length + 2, by = Math.min((st.pick.y || F.top + 4) + 1, F.bot - bh + 1);
+    g.clear(bx, by, bw, bh); for (let yy = by; yy < by + bh; yy++) g.bg(bx, bx + bw - 1, yy, "pop"); g.box(bx, by, bw, bh, "b", [["pulled models", "b"]]);
     pr.vals.forEach((v, j) => { const on = j === st.pick.i; g.put(bx + 2, by + 1 + j, (v === pr.val ? "● " : "  ") + v, on ? "b" : ""); g.rput(bx + bw - 3, by + 1 + j, pr.sizes[v], "dim"); if (on) g.bg(bx + 1, bx + bw - 2, by + 1 + j, "sel"); hit(bx + 1, by + 1 + j, bx + bw - 2, by + 1 + j, () => { st.pick.i = j; keySettings("Enter"); }); });
   }
-  const r = rows[st.row], m = activeMsg();
-  g.hl(x0 + 1, x0 + w - 2, y0 + h - 3, "dim3");
-  if (m) g.put(x0 + 3, y0 + h - 2, trunc(m.text, w - 6), m.cls);
-  else if (st.pick) g.segs(x0 + 3, y0 + h - 2, [["j/k", "b"], [" move · ", "dim"], ["enter", "b"], [" uses it · ", "dim"], ["esc", "b"], [" closes · models Ollama reports as pulled (/api/tags)", "dim"]]);
-  else if (r && r.id) g.segs(x0 + 3, y0 + h - 2, [[trunc(r.h, w - 40), ""], ["  ·  default ", "dim3"], [String(r.defLabel || (r.def === "" ? "(empty)" : r.def)), "dim"], ["  ·  ", "dim3"], [r.src ? r.src : r.val !== r.def ? "settings.lua" : "default", r.src ? "amb2" : "dim"]].map(([t, c]) => [t, c]));
-  else g.segs(x0 + 3, y0 + h - 2, [["enter", "b"], [" plays it · previews ignore the group switches", "dim"]]);
+  // the inspector: id, default, changed, when it takes effect, the CLI · options or range · help (K shows all of it)
+  const iy = F.inspY;
+  if (st.pick) g.segs(1, iy, segsTrunc([["j/k", "b"], [" move · ", "dim"], ["enter", "b"], [" uses it · ", "dim"], ["esc", "b"], [" closes · the models Ollama reports as pulled (/api/tags)", "dim"]], W - 2));
+  else if (r && r.kind === "preview") { g.segs(1, iy, [["preview ", "dim"], [r.label, "b"], [" · " + r.note, "dim"]]); g.segs(1, iy + 1, segsTrunc([["enter", "b"], [" or ", "dim"], ["p", "b"], [" plays it · previews ignore the group switches", "dim"]], W - 2)); }
+  else if (r && r.id) {
+    const tk = setTakes(r), ch = setChanged(r), dl = String(r.defLabel || (r.def === "" ? "(empty)" : r.def)), wide = W >= 100;
+    g.segs(1, iy, segsTrunc([["id ", "dim"], [r.id, "b"], [" · default ", "dim"], [dl, ""], [" · ", "dim3"], [r.src ? `set in ${r.src} · gd goes there` : ch ? "• changed" : "unchanged", r.src ? "amb2" : ch ? "" : "dim"], [" · ", "dim3"], [wide ? (tk === "now" ? "applies now" : tk === "restart" ? "applies on restart" : `applies to the ${tk}`) : tk, "dim"], [wide ? " · mill config set " + r.id : "", "dim"]], W - 2));
+    const pick = (vs, lab) => vs.flatMap((v, i) => [[i ? "   " : "", ""], [v === r.val ? `[${lab(v)}]` : lab(v), v === r.val ? "b" : "dim"]]);
+    const opt = r.picker ? ["pulled   ", pick(r.vals, v => v + (wide ? " " + r.sizes[v] : ""))] : r.type === "enum" ? ["options  ", pick(r.vals, v => v)]
+      : r.type === "bool" ? ["options  ", [[r.val ? "[on]" : "on", r.val ? "b" : "dim"], ["   ", ""], [r.val ? "off" : "[off]", r.val ? "dim" : "b"]]]
+      : r.type === "num" ? ["range    ", [[`${r.min}–${r.max}${r.step > 1 ? " · step " + r.step : ""}`, ""]]] : ["text     ", [[r.note || "any text", "dim"]]];
+    const keys = r.picker ? "h/l cycle · enter list · K more" : r.type === "text" ? "i edit · u reset · K more" : "h/l change · u reset · K more";
+    g.segs(1, iy + 1, segsTrunc([[opt[0], "dim"], ...opt[1]], W - 6 - len(keys))); g.rput(W - 2, iy + 1, keys, "dim3");
+    const n = insp - 2; help.slice(0, n).forEach((l, i) => g.put(1, iy + 2 + i, i === n - 1 && help.length > n ? trunc(l, W - 13).replace(/…$/, "") + " … K more" : l, ""));
+  }
+  const nCh = SECTIONS.reduce((a, _, i) => a + secChanged(i), 0);
+  statusLine(g, searching ? "SETTINGS · SEARCH" : "SETTINGS", "inv", [[r && r.id ? r.id : r ? "preview" : "", "b"]],
+    q ? [[` ${rows.length} hit${rows.length === 1 ? "" : "s"} in ${hitSecs.size} section${hitSecs.size === 1 ? "" : "s"} `, "dim"]] : [[` ${SECTIONS.length} sections · ${nCh} changed${W >= 100 ? " · changes apply now" : ""} `, "dim"]]);
+  helpBar(g, st.edit ? [["type", "edit"], ["enter", "save"], ["esc", "cancel"], ["ctrl+u", "clear"]] : st.pick ? [["j/k", "move"], ["enter", "use it"], ["esc", "close"]] : st.K ? [["any key", "closes the help"]]
+    : st.focus === "list" && !F.narrow ? [["j/k", "section"], ["l", "settings"], ["1-9", "jump"], ["/", "search"], ["esc", "back"]] : [["j/k", "move"], ["h/l", "change"], ["/", "search"], ["u", "reset"], ["?", "more"]]);
 }
 function openModelPicker(r) {
   const st = S.settings;
@@ -4365,8 +4443,8 @@ function changeSetting(r, dir) {
 }
 function commitSettingText(r, text) {
   const bad = (r.re && !r.re.test(text)) || (r.check && r.check(text));
-  if (bad) return errorToast(r.id === "trusted_dirs" ? "M9301" : "M8005", `${r.id} can't be "${text}"${r.check && r.check(text) ? ` (refused: ${r.check(text)})` : ""}`, r.note || r.h);
-  r.val = text; play("toggle"); toast(`${r.id} = ${text === "" ? "(empty)" : text} · saved to settings.lua`, "grn");
+  if (bad) { errorToast(r.id === "trusted_dirs" ? "M9301" : "M8005", `${r.id} can't be "${text}"${r.check && r.check(text) ? ` (refused: ${r.check(text)})` : ""}`, r.note || r.h); return false; }   // the editor stays open (§18.10)
+  r.val = text; play("toggle"); toast(`${r.id} = ${text === "" ? "(empty)" : text} · saved to settings.lua`, "grn"); return true;
 }
 
 /* ------------------------------------------------------------------ :stats (§18.12) */
@@ -4497,26 +4575,6 @@ function rDigestOverlay(g) {
 }
 
 /* ------------------------------------------------------------------ help (§18.5) */
-const HELP_L = [["NAVIGATION", ""], ["j k ↓ ↑", "move"], ["g G", "first / last row"], ["1 2 3", "failed / running / ready"], ["tab", "next failed"], ["/", "search: state: tag: uses: ok:<90"], ["t  s -  V", "tags · sort/reverse · views"], ["v", "simple / detailed rows"],
-  ["ACTIONS", ""], ["enter", "open the latest run"], ["R", "run (dry run if never run)"], ["F", "rerun from the failed node"], ["e  n", "edit · new pipeline"], [":run  :pipe", "run a pipeline with inputs · a pipe"], ["p", "preview line"], ["x  dd", "disable/enable · delete"], ["S  ?", "settings · this help"], ["q ctrl+c", "quit (asks first)"],
-  ["MOUSE", ""], ["click", "select · double-click opens"], ["wheel", "move · click a tag chip filters"],
-  ["MODES", ""], ["esc", "leaves any mode back to the board"], ["", "the mode shows bottom left"]];
-const HELP_R = [["COMMANDS", ""], [":plugins :stats", "apps · runs, success, time, cost"], [":settings :new", "settings · new pipeline"], [":runs :messages", "older runs · errors this session"], [":digest :doctor", "the day · health checks by layer"], [":sort :set", "sort · change a setting"], [":enable :disable", "a pipeline's triggers"], [":bg :detach", "leave, everything keeps running"], [":screensaver :sh :q", "now · shell (demo) · quit"],
-  ["RUN", ""], ["enter", "agent screen, or the cause if failed"], ["L  i", "log · items"], ["F  c", "rerun from here · cancel"], ["za", "expand an each node"],
-  ["EDITOR", ""], ["a c enter", "add · connect · inspect"], ["]e ga R", "problems · fix · dry run"], ["?", "every editor key, in the editor"],
-  ["BADGES", ""], ["▴2× ▴4× ▴8×", "running longer than usual"], ["82% $", "a running run's budget used"], ["p u", "project / user pipeline"], ["↯  ⊗", "crashed · cancelled"], ["◌  ⊘  ○", "not trusted · disabled · never run"]];
-function rHelp(g) {
-  const two = W >= 96, w = two ? ow() : ow(), x0 = ox(w), y0 = 1, maxRows = H - 7;
-  let L = HELP_L, R = HELP_R, cut = false;
-  const drop = (arr, grp) => { const i = arr.findIndex(([k, v]) => k === grp && !v); if (i < 0) return arr; let j = i + 1; while (j < arr.length && arr[j][1]) j++; cut = true; return arr.slice(0, i).concat(arr.slice(j)); };
-  if (!two) { let one = L.concat(R); if (one.length > maxRows) one = drop(one, "BADGES"); if (one.length > maxRows) one = drop(one, "MOUSE"); if (one.length > maxRows) { one = one.slice(0, maxRows); cut = true; } L = one; R = []; }
-  const h = Math.max(L.length, R.length) + 5;
-  overlayBox(g, x0, y0, w, h, [["?", "mark"], [" help", "b"]]);
-  const cw = two ? Math.floor((w - 6) / 2) : w - 6;
-  const col = (items, X) => items.forEach(([k, v], i) => { const y = y0 + 2 + i; if (!v && k) g.put(X, y, k, "hd"); else { g.put(X, y, k, "amb"); g.put(X + 17, y, trunc(v, cw - 18), ""); } });
-  col(L, x0 + 3); if (two) col(R, x0 + 3 + cw);
-  g.segs(x0 + 3, y0 + h - 2, [["esc", "b"], [" or ", "dim"], ["?", "b"], [" closes", "dim"], [cut ? "   (truncated, enlarge terminal)" : "", "dim3"]]);
-}
 function rConfirm(g) {
   const c = S.confirm, w = Math.min(W - 4, Math.max(50, len(c.text) + 8)), x0 = ox(w), y0 = 12;
   overlayBox(g, x0, y0, w, 6, [["confirm", "b"]]);
@@ -4695,6 +4753,153 @@ function setupKey(k) {
 const scr = document.getElementById("scr");
 const dimAll = g => { HITS = []; for (let y = 0; y < H; y++) g.setcls(0, W - 1, y, "dim3"); };
 function modeLine(g, mode, left, right = []) { const y = H - 2; g.clear(0, y, W, 1); statusLine(g, mode, "inv", left, right); }
+/* ================================================================== pages (§18.1.1, ADR-055): settings, help and new pipeline take the whole terminal
+   one frame: ` ≋ mill › <page>` header · divider · panes split by │ (the list ≤ 24 columns) · ┴ divider · [inspector] · status line · help bar.
+   The last row still takes `:` and `/`. Under 60 columns the list folds into a ‹ strip › under the header. */
+const PG_NARROW = 60;
+function leaveAgent() { if (S.popup === "agent") { S.popup = "run"; S.run.agent = null; } }   // never over an agent (§18.1.1)
+function pageFrame(g, o) {
+  const narrow = W < PG_NARROW, insp = o.insp || 0;
+  const x = g.segs(1, 0, [["≋", "mark"], [" mill", "b"], [" › ", "dim3"], [o.page, "b"]]);
+  const mx = W >= 100 ? Math.max(x + 4, 26) : x + 6, midLen = o.mid ? o.mid.reduce((a, [t]) => a + len(t), 0) : 0;
+  const rt = !o.right ? "" : W >= 100 && mx + midLen + len(o.right[0]) + 3 <= W - 1 ? o.right[0] : o.right[1];
+  if (rt) g.rput(W - 2, 0, trunc(rt, Math.max(4, W - x - 3)), "dim");
+  if (o.mid && midLen) { const room = W - 2 - (rt ? len(rt) + 2 : 0) - mx; if (room > 3) g.segs(mx, 0, segsTrunc(o.mid, room)); }
+  let top = 2;
+  if (narrow) { if (o.strip) g.segs(1, 1, segsTrunc(o.strip, W - 2)); g.hl(0, W - 1, 2, "dim3"); top = 3; } else g.hl(0, W - 1, 1, "dim3");
+  const dv = H - 3 - insp, sep = narrow ? -1 : o.leftW, sep2 = narrow ? 0 : o.sep2 || 0;
+  g.hl(0, W - 1, dv, "dim3");
+  if (!narrow) for (const s of [sep, sep2]) if (s > 0) { g.vl(s, top, dv - 1, "dim3"); g.put(s, dv, "┴", "dim3"); }
+  return { top, bot: dv - 1, dv, sep, sep2, narrow, X: narrow ? 1 : sep + 2, R: (sep2 || W - 1) - 2, inspY: dv + 1 };
+}
+function pageList(g, F, title, items, cur, focused, onClick) {   // the left pane: sections, groups (a click selects one)
+  if (F.narrow) return;
+  g.put(1, F.top, title, "hd");
+  items.forEach((it, i) => {
+    const y = F.top + 1 + i, on = i === cur; if (y > F.bot) return;
+    if (on) g.put(1, y, "▸", "b");
+    g.put(3, y, trunc(it.label, F.sep - 4 - (it.badge ? len(String(it.badge)) + 1 : 0)), on ? "b" : it.dim ? "dim3" : "");
+    if (it.badge) g.rput(F.sep - 2, y, String(it.badge), "dim");
+    selRow(g, 0, F.sep - 1, y, on, focused); hit(0, y, F.sep - 1, y, () => onClick(i));
+  });
+}
+const pageStrip = (label, extra) => [["‹ ", "dim"], [label, "b"], [extra || "", "dim"], [" ›", "dim"]];
+
+/* the help page (§18.5.1): eight groups on the left, the selected group's rows at full height, `/` filters every group at once */
+const HELP_GROUPS = ["Navigation", "Actions", "Mouse", "Modes", "Commands", "Run", "Editor", "Badges"];
+const helpKeyText = r => typeof r.k === "string" ? r.k : r.k.map(([t]) => t).join("");
+const helpMatch = (r, words) => { const t = (helpKeyText(r) + " " + r.d).toLowerCase(); return words.every(x => t.includes(x)); };
+const helpWd = () => W < PG_NARROW ? W - 3 : W - 21;
+function helpRows(gi) {
+  const K = (k, d, o) => ({ k, d, ...(o || {}) }), Hd = head => ({ head }), mouseOff = !setting("mouse_enabled"), soundOff = setting("sound.set") === "off";
+  if (gi === 0) return [K("j k ↓ ↑", "move the selection"), K("g G", "first / last row"), K("1 2 3", "jump to Failed / Running / Ready; on a long Ready, 3 shows and hides it"), K("tab", "next failed pipeline (wraps)"),
+    K("/", "search names, descriptions and tags; state:failed tag:code trigger:cron uses:linear ok:<90"), K("t", "cycle the tag filter"), K("s -", "cycle the sort inside each section / reverse it"), K("V", "cycle saved views"),
+    K("v", "simple / detailed rows"), K("p", "preview line under the selected row: description, trigger, budget, last outputs"), K(":", "command line on the last row; :help commands lists every command")];
+  if (gi === 1) return [K("enter", "open the latest run"), K("R", "run now (a dry run if it has never run)"), K("F", "rerun the latest failed run from the node that failed"), K("e", "open in the editor"), K("n", "new pipeline page"),
+    K("x", "disable / enable the pipeline's triggers (asks first)"), K("dd", "delete the pipeline (asks first; the file goes to .mill/trash/)"), K("S", "settings page"), K("?", "this help page, on the screen's group"), K("q ctrl+c", "quit (asks first; :q)")];
+  if (gi === 2) return [K("click", "select a row, a section, a group or a step"), K("double-click", "open the run"), K("wheel", "move the selection; on a page, scroll the focused pane"), K("click a chip", "set the tag filter"),
+    K("last row", "a click opens the command line (not while a confirm waits)"), K("option / shift", "hold to select text natively (Option: iTerm2, Terminal.app · Shift: Ghostty, kitty)")].map(r => ({ ...r, off: mouseOff }));
+  if (gi === 3) return [K("NORMAL", "move and act; the mode shows bottom left"), K("INSERT", "typing in a field; esc keeps the text, ctrl+c drops it, : types a colon"), K("VISUAL CONNECT", "editor modes (Editor group)"),
+    K("CONFIRM", "a pending y/n takes only y, n and esc"), K("esc", "leaves the innermost thing, then the page or popup, back to the board"),
+    Hd("NEW PIPELINE"), K("j k", "next / previous row"), K("h l", "change a ◂ value ▸; on start, the source list ↔ its pane"), K("i a enter", "edit a text field (INSERT)"), K("cc", "clear a field and edit it"),
+    K("space", "turn a step or a switch on / off"), K("tab shift+tab", "next / previous step (the rail follows)"), K("1 2 3 4", "jump to a step"), K("Y", "graph ↔ yaml preview; under 110 columns it swaps the step pane"),
+    K("o u", "browse files · upload (browser)"), K("/", "filter the gallery or the list"), K("gx", "explain the error code"), K(":", "command line (:w creates, :q leaves, :new! starts over)"), K("esc", "leave · the draft is kept for the next n"),
+    Hd("NEW PIPELINE · INSERT"), K("type backspace", "edit"), K("ctrl+w ctrl+u", "delete a word · clear"), K("tab", "complete a path, a name or a cron preset"), K("enter", "done (and act: draft, load, check)"),
+    Hd("SETTINGS"), K("j k", "next / previous setting (on the left pane: section)"), K("tab shift+tab", "switch pane"), K("1-9 [ ]", "jump to a section · previous / next section"), K("h l", "previous / next value, or − / + for numbers"),
+    K("enter space", "toggle, or open a text value for editing"), K("i", "edit a text value in place; ctrl+u clears"), K("p", "preview: plays the sound, renders a sample row"), K("u", "reset to the default"),
+    K("gd", "go to where the value is set"), K("K", "the full help text of the setting"), K("/", "search every setting by name, id, section or help"), K("c", "Drafter: check Ollama again now"), K("esc q", "back (esc clears a search first)"),
+    Hd("HELP"), K("j k", "scroll"), K("1-8 [ ]", "pick a group · previous / next"), K("tab", "groups ↔ rows"), K("ctrl+d ctrl+u", "half a page"), K("/", "filter every group at once"), K("esc q", "back (esc clears the filter first)")];
+  if (gi === 4) { const out = []; for (const [ctx, lab] of [["global", "EVERYWHERE"], ["board", "BOARD"], ["editor", "EDITOR"], ["wizard", "NEW PIPELINE"], ["run", "RUN"], ["plugins", "PLUGINS"], ["settings", "SETTINGS"]]) { out.push(Hd(lab)); for (const c of CMDS.filter(x => x[2] === ctx)) out.push(K(":" + c[0] + (c[1].length ? " :" + c[1].join(" :") : ""), `${c[5]} · ${c[4]}`, { cmd: c[0], off: soundOff && c[0] === "sound" })); } return out; }
+  if (gi === 5) return [K("j k", "move between nodes"), K("enter", "the agent screen, or the cause if it failed"), K("L", "the run's log"), K("i gi", "the selected node's items"), K("F", "rerun from the selected node"), K("c", "cancel the run (asks first)"),
+    K("za zo zc", "expand / collapse a node in each mode"), K("esc q", "back to the board"), Hd("LOG"), K("/", "search the log"), K("gg", "first line"), K("za", "fold / unfold"), K("gx", "explain the code on the line"), Hd("AGENT SCREEN"), K("esc ctrl+] qq", "back to the run"), K("L", "the log")];
+  if (gi === 6) return [...ED_HELP_L, ...ED_HELP_R].filter(([k]) => k).map(([k, v]) => v ? K(k, v) : Hd(k));
+  return [K([[STATE_GL.failed[0], "red"], [" " + STATE_GL.crashed[0], "red"]], "failed · crashed"), K([[spin(), "blu"]], "running (the spinner turns only on running work; still with reduce_motion)"), K([["↻", "amb"]], "retrying"),
+    K([["✓", "grn"]], "ok"), K([["⊗", "dim"]], "cancelled by you"), K([["○", "dim"]], "never run"), K([["◌", "dim"], [" ⊘", "dim"]], "not trusted · disabled"),
+    K([["■■■", "grn"], ["■", "red"], ["■", "grn"]], "the runs strip: one square per run, newest on the right"), K([["▴2×", "dim"], [" ▴4×", "amb"], [" ▴8×", "red"]], "running longer than usual (× its typical time)"),
+    K([["82% $", "amb"]], "a running run's budget used (over 80%)"), K([["p", "dim3"], [" u", "dim3"]], "project / user pipeline"), K([["✗", "red"], [" !", "amb"], [" ✓", "grn"]], "lint: error · warning · clean"),
+    K([["•", ""]], "a setting that differs from its default"), K([["(off)", "dim3"]], "a key behind a setting that is off")];
+}
+function helpLines(h, wd) {
+  const out = [], words = h.q ? h.q.toLowerCase().split(/\s+/).filter(Boolean) : null;
+  const head = (name, gi) => out.push({ segs: [["── ", "dim3"], [name, "hd"], [" " + "─".repeat(Math.max(0, wd - len(name) - 4)), "dim3"]], gi, gh: true });
+  const kwOf = rows => Math.min(20, Math.max(12, ...rows.filter(r => !r.head).map(r => len(helpKeyText(r)) + 2)));
+  const rowLines = (rows, gi, kw0) => {
+    const kw = kw0 || kwOf(rows);
+    rows.forEach(r => {
+      if (r.head) { if (out.length && !out[out.length - 1].blank && !out[out.length - 1].gh) out.push({ blank: true }); out.push({ segs: [[r.head, "hd"]], gi, sub: r.head }); return; }
+      const kt = helpKeyText(r), ks = typeof r.k === "string" ? [[r.k, r.off ? "dim3" : "b"]] : r.k, dc = r.off ? "dim3" : "";
+      wrapText(r.d + (r.off ? " (off)" : ""), Math.max(10, wd - kw)).forEach((l, i) => out.push({ segs: i ? [[" ".repeat(kw), ""], [l, dc]] : [...ks, [" ".repeat(Math.max(1, kw - len(kt))), ""], [l, dc]], gi, row: r, first: !i }));
+      if (h.cmd && r.cmd === h.cmd) { const c = CMDS.find(x => x[0] === h.cmd); for (const l of [`works ${c[2] === "global" ? "on every screen" : "in the " + (c[2] === "wizard" ? "new pipeline page" : c[2])} · argument: ${c[3] || "none"}`, `CLI: ${c[4]}`]) out.push({ segs: [[" ".repeat(kw), ""], [trunc(l, wd - kw), "dim"]], gi, row: r }); }
+    });
+  };
+  if (h.code) { head(h.code, -1); wrapText(EXPLAIN[h.code] || "no page for this code in the prototype", wd).forEach(l => out.push({ segs: [[l, ""]] })); out.push({ blank: true }, { segs: [["the same text as ", "dim"], ["mill explain " + h.code, "b"], [" (§29.5)", "dim"]] }); return out; }
+  if (words) {
+    const hits = HELP_GROUPS.map((_, gi) => helpRows(gi).filter(r => !r.head && helpMatch(r, words))), n = hits.reduce((a, x) => a + x.length, 0);
+    out.push({ segs: [[n ? `${n} row${n === 1 ? "" : "s"} match “${h.q}”` : `no match for “${h.q}”`, n ? "dim" : ""]] });
+    const kw = kwOf(hits.flat()); hits.forEach((x, gi) => { if (x.length) { head(HELP_GROUPS[gi], gi); rowLines(x, gi, kw); } });
+    return out;
+  }
+  head(HELP_GROUPS[h.grp], h.grp); rowLines(helpRows(h.grp), h.grp); return out;
+}
+function helpGroupFor() { return S.overlay === "settings" || (S.wiz && !S.overlay) ? 3 : S.popup ? 5 : S.screen === "editor" && !S.overlay ? 6 : 0; }
+function openHelp(gi = null, o = {}) {
+  const h = S.help, from = S.overlay === "help" ? h.back : S.overlay;
+  const head = o.head || (gi == null ? (S.wiz && !S.overlay ? "NEW PIPELINE" : S.overlay === "settings" ? "SETTINGS" : null) : null), g0 = gi == null ? helpGroupFor() : gi;
+  leaveAgent();
+  Object.assign(h, { grp: g0, top: 0, q: null, qEdit: false, code: o.code || null, cmd: o.cmd || null, focus: "rows", back: from });
+  S.overlay = "help";
+  const L = helpLines(h, helpWd()), idx = head ? L.findIndex(l => l.sub === head) : o.cmd ? L.findIndex(l => l.row && l.row.cmd === o.cmd && l.first) : -1;
+  if (idx > 0) h.top = Math.max(0, idx - (o.cmd ? 2 : 0));
+  play("open");
+}
+function closeHelp() { const h = S.help; S.overlay = h.back || null; Object.assign(h, { back: null, q: null, qEdit: false }); play("back"); }   // rule 1: back to the screen it was opened on
+function helpGo(i) {
+  const h = S.help; Object.assign(h, { grp: i, top: 0, code: null, cmd: null });
+  if (h.q) { const idx = helpLines(h, helpWd()).findIndex(l => l.gh && l.gi === i); if (idx >= 0) h.top = idx; }
+  play("toggle");
+}
+function keyHelp(k) {
+  const h = S.help, n = HELP_GROUPS.length, ht = H - 3 - (W < PG_NARROW ? 3 : 2);
+  if (h.qEdit) { if (k === "Escape") { h.q = null; h.qEdit = false; if (h.qFrom) { h.grp = h.qFrom.grp; h.top = h.qFrom.top; } } else if (k === "Enter") { h.qEdit = false; if (!h.q) h.q = null; } else if (k === "Backspace") { h.q = h.q.slice(0, -1); h.top = 0; } else if (k.length === 1) { h.q += k; h.top = 0; } return; }
+  if (/^[1-8]$/.test(k)) return helpGo(+k - 1);
+  switch (k) {
+    case "]": return helpGo((h.grp + 1) % n);
+    case "[": return helpGo((h.grp + n - 1) % n);
+    case "Tab": case "S-Tab": if (W >= PG_NARROW) { h.focus = h.focus === "list" ? "rows" : "list"; play("tick"); } return;
+    case "/": h.qFrom = { grp: h.grp, top: h.top }; Object.assign(h, { q: "", qEdit: true, code: null, top: 0 }); return;
+    case "Escape": if (h.q != null) { h.q = null; if (h.qFrom) { h.grp = h.qFrom.grp; h.top = h.qFrom.top; } play("back"); return; } return closeHelp();
+    case "q": return closeHelp();
+    case "?": return;
+  }
+  if (h.focus === "list") { if (k === "j" || k === "ArrowDown") { if (h.grp < n - 1) helpGo(h.grp + 1); } else if (k === "k" || k === "ArrowUp") { if (h.grp > 0) helpGo(h.grp - 1); } else if (k === "l" || k === "Enter" || k === "ArrowRight") { h.focus = "rows"; play("tick"); } return; }
+  const half = Math.max(1, Math.floor(ht / 2));
+  if (k === "j" || k === "ArrowDown") h.top++; else if (k === "k" || k === "ArrowUp") h.top = Math.max(0, h.top - 1);
+  else if (k === "C-d" || k === "PageDown") h.top += half; else if (k === "C-u" || k === "PageUp") h.top = Math.max(0, h.top - half);
+  else if (k === "g" || k === "Home") h.top = 0; else if (k === "G" || k === "End") h.top = 1e6;
+}
+function rHelpPage(g) {
+  const h = S.help, words = h.q ? h.q.toLowerCase().split(/\s+/).filter(Boolean) : null, filt = h.q != null && (!!h.q || h.qEdit);
+  const hitN = words ? HELP_GROUPS.map((_, i) => helpRows(i).filter(r => !r.head && helpMatch(r, words)).length) : null, total = hitN ? hitN.reduce((a, b) => a + b, 0) : 0;
+  const mid = filt ? [["/" + h.q, "b"], [` · ${total} hit${total === 1 ? "" : "s"}`, "dim"]] : h.code ? [[h.code, "b"], [" · mill explain", "dim"]] : h.cmd ? [[":" + h.cmd, "b"]] : null;
+  const F = pageFrame(g, { page: "help", mid, right: ["mill 0.3.0", "mill 0.3.0"], leftW: 17, strip: pageStrip(h.code || HELP_GROUPS[h.grp]) });
+  const wd = F.R - F.X + 1, lines = helpLines(h, wd), ht = F.bot - F.top + 1;
+  h.top = Math.max(0, Math.min(h.top, lines.length - ht));
+  const cur = h.code ? -1 : words ? ((lines.slice(h.top).find(l => l.gh) || lines.find(l => l.gh) || { gi: h.grp }).gi) : h.grp;   // filtering: the group at the top of the rows
+  pageList(g, F, "GROUPS", HELP_GROUPS.map((n, i) => ({ label: n, dim: hitN && !hitN[i] })), cur, h.focus === "list", i => helpGo(i));
+  lines.slice(h.top, h.top + ht).forEach((l, j) => {
+    const y = F.top + j; if (l.segs) g.segs(F.X, y, segsTrunc(l.segs, wd));
+    if (l.row && h.cmd && l.row.cmd === h.cmd) g.bg(F.X - 1, F.R + 1, y, "sel");
+    if (l.row && l.row.cmd) { const c = l.row.cmd; hit(F.X - 1, y, F.R + 1, y, () => { h.cmd = c; play("tick"); }); }
+  });
+  if (h.top > 0) g.rput(F.R, F.top, " ↑ more", "dim3");
+  if (h.top + ht < lines.length) g.rput(F.R, F.bot, " ↓ more", "dim3");
+  const nk = helpRows(h.grp).filter(r => !r.head).length, unit = h.grp === 4 ? "commands" : h.grp === 7 ? "badges" : "keys";
+  statusLine(g, filt ? "HELP · FILTER" : "HELP", "inv", filt ? [] : h.code ? [[h.code, "b"], [" · the same page as mill explain " + h.code, "dim"]] : [[`${HELP_GROUPS[h.grp]} · ${nk} ${unit}`, ""]],
+    filt ? [[` ${hitN ? hitN.filter(Boolean).length : HELP_GROUPS.length} of ${HELP_GROUPS.length} groups `, "dim"]] : W >= 70 ? [[" :help <topic|command|code> ", "dim"]] : []);
+  helpBar(g, [["j/k", "scroll"], ["1-8", "group"], ["tab", "groups"], ["/", "filter"], ["esc", "back"]]);
+}
+
+function rOverlay(g) { if (S.overlay === "plugins") rPluginsOverlay(g); else if (S.overlay === "stats") rStatsOverlay(g); else if (S.overlay === "runs") rRunsOverlay(g); else if (S.overlay === "messages") rMessages(g); else if (S.overlay === "digest") rDigestOverlay(g); else if (S.overlay === "doctor") rDoctorOverlay(g); }
 function render() {
   let g = new G(W, H);
   HITS = [];
@@ -4705,17 +4910,21 @@ function render() {
     else if (S.screen === "setup") { rBoard(g); dimAll(g); rSetup(g); modeLine(g, "SETUP", [[SETUP_STEPS[S.setup.step], ""]]); }
     else if (S.saver) rSaver(g);
     else {
+      const page = S.overlay === "help" ? "help" : S.overlay === "settings" ? "settings" : S.wiz ? "new" : null;   // §18.1.1: a page takes the whole terminal; the board isn't drawn behind it
+      if (page) {
+        if (page === "help") rHelpPage(g); else if (page === "settings") rSettingsPage(g); else rNewPage(g);
+        if (page === "new" && S.overlay) { dimAll(g); rOverlay(g); const ov = S.overlay.toUpperCase(); modeLine(g, ov, [["", "dim"]]); }   // a popup (:plugins, :messages…) over the page
+        if (S.confirm) { dimAll(g); rConfirm(g); modeLine(g, "CONFIRM", []); }
+      } else {
       if (S.screen === "editor") rEditor(g); else rBoard(g);
-      if (S.popup || S.overlay || S.wiz || S.confirm) dimAll(g);
+      if (S.popup || S.overlay || S.confirm) dimAll(g);
       if (S.popup === "run") rRunPopup(g); else if (S.popup === "agent") rAgentPopup(g); else if (S.popup === "log") rLogPopup(g); else if (S.popup === "cause") rCausePopup(g); else if (S.popup === "items") rItemsPopup(g);
-      if (S.overlay === "plugins") rPluginsOverlay(g); else if (S.overlay === "settings") rSettingsOverlay(g); else if (S.overlay === "stats") rStatsOverlay(g); else if (S.overlay === "runs") rRunsOverlay(g); else if (S.overlay === "messages") rMessages(g); else if (S.overlay === "cmds") rCmdsOverlay(g); else if (S.overlay === "digest") rDigestOverlay(g); else if (S.overlay === "doctor") rDoctorOverlay(g);
-      if (S.wiz) rWizard(g);
-      if (S.overlay === "help") rHelp(g);
+      rOverlay(g);
       if (S.confirm) rConfirm(g);
       if (S.screen !== "editor" || S.popup || S.overlay) {
-        const mode = S.confirm ? "CONFIRM" : S.overlay === "help" ? "HELP" : S.wiz ? "NEW" : S.overlay ? S.overlay.toUpperCase() : S.popup === "agent" ? "AGENT" : S.popup === "log" ? "LOG" : S.popup ? "RUN" : null;
-        if (mode === "SETTINGS") { const r = settingsRows()[S.settings.row]; modeLine(g, mode, [[r && r.id ? r.id : "preview", "b"]], [[" → ~/.config/mill/settings.lua ", "dim"]]); }
-        else if (mode && mode !== "NEW") modeLine(g, mode, [[S.popup ? S.run.pipe : "", "dim"]]);   // the wizard draws its own (NEW · NORMAL / INSERT)
+        const mode = S.confirm ? "CONFIRM" : S.overlay ? S.overlay.toUpperCase() : S.popup === "agent" ? "AGENT" : S.popup === "log" ? "LOG" : S.popup ? "RUN" : null;
+        if (mode) modeLine(g, mode, [[S.popup ? S.run.pipe : "", "dim"]]);
+      }
       }
     }
     drawCmdline(g);
@@ -4739,14 +4948,14 @@ function command(text) {
   if (c === "q" || c === "quit") { S.confirm = { text: "quit mill? runs keep going in milld", keys: [["y", "quit"], ["n", "stay"]], y: () => { S.shell = true; syncBtns(); SH.lines.push([...PROMPT(), ["mill", "b"]]); shOut([["≋ detached from milld · runs keep going · mill reopens the board", "dim2"]]); }, n: () => {} }; return; }
   if (c === "w") { toast("nothing to save here", "dim"); return; }
   if (c === "new") { wizNew(); return; }
-  if (c === "settings") { S.overlay = "settings"; S.settings.pick = null; play("open"); return; }
+  if (c === "settings") return openSettings();
   if (c === "plugins") { S.overlay = "plugins"; S.plugins.detail = false; play("open"); return; }
   if (c === "stats") { if (arg && !/^--health$/.test(arg)) return errorToast("M1305", `:stats takes --health, not "${arg}"`, ":stats --health"); S.overlay = "stats"; S.statsTab = arg ? "health" : "runs"; play("open"); return; }
   if (c === "digest") { S.overlay = "digest"; S.digestTop = 0; play("open"); return; }
   if (c === "doctor") { S.overlay = "doctor"; S.doctorTop = 0; play("open"); return; }
   if (c === "runs") { S.overlay = "runs"; S.runs.cur = 0; play("open"); return; }
   if (c === "messages" || c === "mes") { S.overlay = "messages"; play("open"); return; }
-  if (c === "help") { S.overlay = "help"; return; }
+  if (c === "help") return openHelp();
   if (c === "screensaver") { S.saver = true; return; }
   if (c === "sh") { S.shell = true; syncBtns(); return; }
   if (c === "bg" || c === "detach") { S.shell = true; syncBtns(); SH.lines.push([...PROMPT(), ["mill", "b"]]); shOut([["≋ detached · milld and every run keep going · the next mill restores this view once", "dim2"]]); return; }
@@ -4819,33 +5028,47 @@ function keyRun(k) {
   }
 }
 const SETTING_DEFAULTS = {}; for (const id in SETTING) SETTING_DEFAULTS[id] = SETTING[id].def;
-function keySettings(k) {
+function keySettings(k) {   // §18.10 editing keys; §18.1.1 panes: tab switches pane, 1–9 and [ ] pick a section
   const st = S.settings;
-  if (st.edit) { const r = settingsRows()[st.row]; if (k === "Escape") { st.edit = null; play("back"); } else if (k === "Enter") { const t = st.edit.text; st.edit = null; commitSettingText(r, t); } else if (k === "Backspace") st.edit.text = st.edit.text.slice(0, -1); else if (k.length === 1) st.edit.text += k; return; }
-  if (st.qEdit) { if (k === "Escape") { st.q = null; st.qEdit = false; } else if (k === "Enter") st.qEdit = false; else if (k === "Backspace") st.q = st.q.slice(0, -1); else if (k.length === 1) { st.q += k; st.row = 0; } return; }
+  if (st.edit) { const r = settingsRows()[st.row]; if (k === "Escape") { st.edit = null; play("back"); } else if (k === "Enter") { const t = st.edit.text; st.edit = null; if (commitSettingText(r, t) === false) st.edit = { text: t }; } else if (k === "C-u") st.edit.text = ""; else if (k === "Backspace") st.edit.text = st.edit.text.slice(0, -1); else if (k.length === 1) st.edit.text += k; return; }
+  if (st.qEdit) { if (k === "Escape") { st.q = null; st.qEdit = false; if (st.qFrom) { st.sec = st.qFrom.sec; st.row = st.qFrom.row; } } else if (k === "Enter") { st.qEdit = false; if (!st.q) st.q = null; } else if (k === "Backspace") { st.q = st.q.slice(0, -1); st.row = 0; st.top = 0; } else if (k.length === 1) { st.q += k; st.row = 0; st.top = 0; } return; }
+  if (st.K) { st.K = false; if (k === "K" || k === "Escape" || k === "q") return; }
   if (st.pick) { const pr = SETTING["drafter.model"], n = pr.vals.length;
     if (k === "j" || k === "ArrowDown") { st.pick.i = Math.min(n - 1, st.pick.i + 1); play("tick"); }
     else if (k === "k" || k === "ArrowUp") { st.pick.i = Math.max(0, st.pick.i - 1); play("tick"); }
     else if (k === "Enter" || k === " ") { const v = pr.vals[st.pick.i]; st.pick = null; if (pr.src) return errorToast("M8203", `${pr.id} is set in ${pr.src}`, "gd"); pr.val = v; play("toggle"); toast(`drafter.model = ${v} · saved to settings.lua`, "grn"); }
     else if (k === "Escape" || k === "q") { st.pick = null; play("back"); }
     return; }
-  const rows = settingsRows(), r = rows[st.row];
+  const rows = settingsRows(), r = rows[st.row], n = SECTIONS.length;
+  const goSec = i => { Object.assign(st, { q: null, sec: (i + n) % n, row: 0, top: 0 }); play("toggle"); };
+  if (/^[1-9]$/.test(k)) return goSec(+k - 1);
+  if (k === "]") return goSec(st.sec + 1);
+  if (k === "[") return goSec(st.sec - 1);
+  if (k === "Tab" || k === "S-Tab") { if (W >= PG_NARROW) { st.focus = st.focus === "list" ? "rows" : "list"; play("tick"); } return; }
+  if (k === "/") { st.qFrom = { sec: st.sec, row: st.row }; Object.assign(st, { q: "", qEdit: true, row: 0, top: 0 }); return; }
+  if (k === "Escape" || k === "q") { if (st.q != null) { st.q = null; if (st.qFrom) { st.sec = st.qFrom.sec; st.row = st.qFrom.row; } play("back"); return; } return closeSettings(); }
+  if (st.focus === "list") {
+    if (k === "j" || k === "ArrowDown") { if (st.sec < n - 1) goSec(st.sec + 1); }
+    else if (k === "k" || k === "ArrowUp") { if (st.sec > 0) goSec(st.sec - 1); }
+    else if (k === "g") goSec(0); else if (k === "G") goSec(n - 1);
+    else if (k === "l" || k === "Enter" || k === "ArrowRight") { st.focus = "rows"; play("tick"); }
+    return;
+  }
   if (r && r.picker && (k === "Enter" || k === " ")) return openModelPicker(r);
   if (k === "c" && r && r.id && r.id.startsWith("drafter.")) { const d = drafterStatus(); if (d.off) toast("drafter.backend is off · describe uses keyword rules", "dim"); else if (d.ok) { play("lint_ok", true); toast("✓ " + d.segs.map(([t]) => t).join(""), "grn", 4000); } else errorToast("M2212", `drafter unavailable: ollama unreachable at ${setting("drafter.base_url")} · describe uses keyword rules`, "ollama serve, or set drafter.backend"); return; }
   switch (k) {
-    case "j": case "ArrowDown": if (st.row < rows.length - 1) { st.row++; play("tick"); } else if (st.q == null && st.sec < SECTIONS.length - 1) { st.sec++; st.row = 0; play("toggle"); } break;
+    case "j": case "ArrowDown": if (st.row < rows.length - 1) { st.row++; play("tick"); } else if (st.q == null && st.sec < n - 1) { st.sec++; st.row = 0; st.top = 0; play("toggle"); } break;
     case "k": case "ArrowUp": if (st.row > 0) { st.row--; play("tick"); } else if (st.q == null && st.sec > 0) { st.sec--; st.row = SECTIONS[st.sec][1].length - 1; play("toggle"); } break;
-    case "]": case "J": case "Tab": st.q = null; st.sec = (st.sec + 1) % SECTIONS.length; st.row = 0; play("toggle"); break;
-    case "[": case "K": st.q = null; st.sec = (st.sec + SECTIONS.length - 1) % SECTIONS.length; st.row = 0; play("toggle"); break;
+    case "g": st.row = 0; break;
+    case "G": st.row = rows.length - 1; break;
+    case "K": if (r && r.h) { st.K = true; play("open"); } break;
     case "h": case "ArrowLeft": if (r && r.kind !== "preview" && r.type !== "text") changeSetting(r, -1); break;
     case "l": case "ArrowRight": if (r && r.kind !== "preview" && r.type !== "text") changeSetting(r, 1); break;
     case "Enter": case " ": if (!r) break; if (r.kind === "preview") previewSound(r.ev); else changeSetting(r, 1); break;
     case "i": if (r && r.type === "text") { if (r.src) { errorToast("M8203", `${r.id} is set in ${r.src}`, "gd"); break; } st.edit = { text: String(r.val) }; play("toggle"); } else toast("i edits text values · h/l changes this one", "dim"); break;
-    case "p": if (!r) break; if (r.kind === "preview") previewSound(r.ev); else if (r.id && r.id.startsWith("sound")) play("run_done", true); else if (r.id === "theme") toast(`theme ${r.val}: ■ accent #74aee0 · ■ ok #8dbb7c · ■ failed #dd7a70 · ■ running long #e5b248`, "dim", 5000); else toast(`sample row: ✓  morning-brief    posted digest to #daily · next 07:30   ■■■■■■■■■■   4h`, "dim", 5000); break;
+    case "p": if (!r) break; if (r.kind === "preview") previewSound(r.ev); else if (r.id && r.id.startsWith("sound")) play("run_done", true); else if (r.id === "theme") toast(`theme ${r.val}: ■ ok #8dbb7c · ■ failed #dd7a70 · ■ running #74aee0 · ■ running long #e5b248 · no accent: color is state only (ADR-056)`, "dim", 5000); else toast(`sample row: ✓  morning-brief    posted digest to #daily · next 07:30   ■■■■■■■■■■   4h`, "dim", 5000); break;
     case "u": if (r && r.id && !r.src) { r.val = SETTING_DEFAULTS[r.id]; if (r.id === "sound.volume") setVolume(); play("toggle"); toast(`${r.id} reset to ${r.val === "" ? "(empty)" : r.val}`, "dim"); } break;
     case "gd": toast(r && r.src ? `opens ~/.config/mill/${r.src.replace(":", " at line ")}` : "this one lives in ~/.config/mill/settings.lua (managed by mill)", "dim"); break;
-    case "/": st.q = ""; st.qEdit = true; st.row = 0; break;
-    case "Escape": case "q": if (st.q != null) { st.q = null; break; } S.overlay = null; play("back"); break;
   }
 }
 function keyPlugins(k) {
@@ -4883,7 +5106,7 @@ function onKey(e) {
   if (e.metaKey || e.altKey) return;
   let k = e.key;
   if (!S.shell && e.ctrlKey && k.length === 1) k = "C-" + k.toLowerCase(); else if (!S.shell && k === "Tab" && e.shiftKey) k = "S-Tab";
-  if (k.length > 1 && !/^(C-.|S-Tab)$/.test(k) && !["Enter", "Escape", "Backspace", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Tab", "Home", "End"].includes(k)) return;
+  if (k.length > 1 && !/^(C-.|S-Tab)$/.test(k) && !["Enter", "Escape", "Backspace", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Tab", "Home", "End", "PageUp", "PageDown"].includes(k)) return;
   if (e.preventDefault) e.preventDefault();
   S.lastInput = performance.now(); S.dirty = true; audioInit();
   if (CL.echo && S.cmd === null) CL.echo = null;
@@ -4896,14 +5119,14 @@ function onKey(e) {
   if (S.screen === "boot") { if (k === "q" || k === "Escape" || k === "C-c") bootQuit(); return; }
   if (S.screen === "setup") return setupKey(k);
   if (S.confirm) { const c = S.confirm; if (k === "y" && c.y) { S.confirm = null; c.y(); } else if (k === "Escape" && c.keys.some(([x]) => x === "esc")) { S.confirm = null; if (c.esc) c.esc(); play("back"); } else if ((k === "n" || k === "Escape") && c.n) { S.confirm = null; c.n(); play("back"); } return; }
-  if (S.overlay === "help") { S.overlay = null; play("back"); return; }
-  if (S.wiz) return wizKey(k);
+  if (S.overlay === "help") return keyHelp(k);   // the help page (§18.5.1); esc goes back to the screen it was opened on
+  if (S.wiz && !S.overlay) return wizKey(k);
   if (S.board.searchEdit && S.screen === "board" && !S.popup && !S.overlay) { const b = S.board; if (k === "Escape") { b.search = ""; b.searchEdit = false; play("back"); } else if (k === "Enter") { b.searchEdit = false; play("toggle"); } else if (k === "Backspace") b.search = b.search.slice(0, -1); else if (k.length === 1) { b.search += k; b.cur = 0; } return; }
   if (S.popup === "log" && S.log.searchEdit) { const L = S.log; if (k === "Escape") { L.search = ""; L.searchEdit = false; } else if (k === "Enter") { L.searchEdit = false; jumpHit(1); } else if (k === "Backspace") L.search = L.search.slice(0, -1); else if (k.length === 1) L.search += k; return; }
   if (S.overlay === "settings" && (S.settings.edit || S.settings.qEdit)) return keySettings(k);
   if (S.overlay === "plugins" && S.plugins.qEdit) return keyPlugins(k);
   if (S.screen === "editor" && !S.popup && !S.overlay && edKey(k)) return;
-  if (k === "?") { S.overlay = "help"; play("open"); return; }
+  if (k === "?") return openHelp();
   if (S.popup === "run") { const s = seq(k, ["za", "zo", "zc", "gi"]); if (s === "") return; return keyRun(s || k); }
   if (S.popup === "agent") { const s = seq(k, ["qq"]); if (s === "") return; if (k === "Escape" || k === "C-]" || s === "qq") { S.popup = "run"; S.run.agent = null; play("back"); } else if (k === "L") { S.popup = "log"; play("open"); } return; }
   if (S.popup === "cause") { const s = seq(k, ["gx"]); if (s === "") return; if (k === "Escape" || k === "q") { S.popup = "run"; play("back"); } else if (k === "L") { S.popup = "log"; play("open"); } else if (k === "F") { S.popup = "run"; keyRun("F"); } else if (s === "gx") { const info = runRows(S.run.pipe), code = (JSON.stringify(info.cause || {}).match(/M\d{4}/) || ["M6201"])[0]; toast(`mill explain ${code} · ${{ M4301: "crashed during daemon restart: rerun from the node", M4101: "budget exceeded: rerun with a larger budget", M6201: "rate limited: retried automatically as a new attempt" }[code] || "see mill explain"}`, "amb", 5000); } return; }
@@ -4911,12 +5134,11 @@ function onKey(e) {
   if (S.popup === "log") { const s = seq(k, ["gg", "za", "zo", "zc", "gx"]); if (s === "") return; return keyLog(s || k); }
   if (S.overlay === "plugins") { const s = seq(k, ["gd", "gx"]); if (s === "") return; return keyPlugins(s || k); }
   if (S.overlay === "settings") { const s = seq(k, ["gd"]); if (s === "") return; return keySettings(s || k); }
-  if (S.overlay === "cmds") { if (k === "j" || k === "ArrowDown") S.cmdsTop = (S.cmdsTop || 0) + 1; else if (k === "k" || k === "ArrowUp") S.cmdsTop = Math.max(0, (S.cmdsTop || 0) - 1); else if (k === "Escape" || k === "q") { S.overlay = null; play("back"); } return; }
   if (S.overlay === "stats" && k === "Tab") { S.statsTab = S.statsTab === "health" ? "runs" : "health"; play("tick"); return; }
   if (S.overlay === "digest" || S.overlay === "doctor") { const t = S.overlay + "Top"; if (k === "j" || k === "ArrowDown") S[t] = (S[t] || 0) + 1; else if (k === "k" || k === "ArrowUp") S[t] = Math.max(0, (S[t] || 0) - 1); else if (k === "Escape" || k === "q") { S.overlay = null; play("back"); } return; }
   if (S.overlay === "stats" || S.overlay === "messages") { if (k === "Escape" || k === "q") { S.overlay = null; play("back"); } return; }
   if (S.overlay === "runs") { const rows = runList(); if (k === "j" || k === "ArrowDown") { S.runs.cur = Math.min(rows.length - 1, S.runs.cur + 1); play("tick"); } else if (k === "k" || k === "ArrowUp") { S.runs.cur = Math.max(0, S.runs.cur - 1); play("tick"); } else if (k === "Enter" && rows[S.runs.cur]) openRunFromList(rows[S.runs.cur]); else if (k === "Escape" || k === "q") { S.overlay = null; play("back"); } return; }
-  if (k === "S") { S.overlay = "settings"; play("open"); return; }
+  if (k === "S") return openSettings();
   if (S.screen === "editor") return;
   const s = seq(k, ["dd", "gx"]); if (s === "") return;
   keyBoard(s || k);
@@ -4940,7 +5162,6 @@ scr.addEventListener("mousedown", ev => {
   if (S.screen === "boot" || S.screen === "setup") return;
   if (S.saver) { S.saver = false; S.pending = ""; return; }     // waking never does anything else
   if (S.shell || !setting("mouse_enabled")) return;
-  if (S.overlay === "help") { S.overlay = null; return; }
   const [x, y] = cellAt(ev), h = findHit(x, y), now = performance.now();
   const dbl = S.lastClick && now - S.lastClick.t < 400 && S.lastClick.x === x && S.lastClick.y === y;
   S.lastClick = { t: now, x, y };
@@ -4974,7 +5195,7 @@ function edDrag(d, x, y) {
 scr.addEventListener("wheel", ev => {
   if (S.shell || S.saver || S.screen !== "board" && S.screen !== "editor" || !setting("mouse_enabled")) return;
   ev.preventDefault();
-  if (S.screen === "editor" && !S.popup && !S.overlay && !ED.pal && !ED.pick && !ED.diff && !ED.help) { const dd = ev.deltaY > 0 ? 2 : -2; if (ev.shiftKey) ED.vx = Math.max(0, ED.vx + dd * 2); else ED.vy = Math.max(0, ED.vy + dd); render(); return; }
+  if (S.screen === "editor" && !S.popup && !S.overlay && !S.wiz && !ED.pal && !ED.pick && !ED.diff && !ED.help) { const dd = ev.deltaY > 0 ? 2 : -2; if (ev.shiftKey) ED.vx = Math.max(0, ED.vx + dd * 2); else ED.vy = Math.max(0, ED.vy + dd); render(); return; }
   onKey({ key: ev.deltaY > 0 ? "j" : "k", code: "", preventDefault() {}, metaKey: false, altKey: false });
 }, { passive: false });
 function syncBtns() {
@@ -4988,7 +5209,7 @@ document.getElementById("b-tui").onclick = e => { audioInit(); S.shell = false; 
 document.getElementById("b-sh").onclick = e => { audioInit(); S.shell = true; syncBtns(); e.currentTarget.blur(); scr.focus(); };
 document.getElementById("b-snd").onclick = e => { audioInit(); AU.muted = !AU.muted; setVolume(); syncBtns(); e.currentTarget.blur(); scr.focus(); };
 document.getElementById("b-saver").onclick = e => { if (S.screen !== "board") return; S.shell = false; S.saver = true; syncBtns(); e.currentTarget.blur(); scr.focus(); };
-document.getElementById("b-w").onclick = e => { const ws = [124, 100, 80]; W = ws[(ws.indexOf(W) + 1) % ws.length]; if (typeof ED !== "undefined") ED.lastSel = null; fit(); syncBtns(); toast(`terminal is ${W} columns · columns give way in a fixed order (§18.3)`, "dim"); render(); e.currentTarget.blur(); scr.focus(); };
+document.getElementById("b-w").onclick = e => { const ws = [124, 100, 80, 58]; W = ws[(ws.indexOf(W) + 1) % ws.length]; if (typeof ED !== "undefined") ED.lastSel = null; fit(); syncBtns(); toast(`terminal is ${W} columns · columns give way in a fixed order (§18.3)`, "dim"); render(); e.currentTarget.blur(); scr.focus(); };
 const wizFileEl = document.getElementById("wiz-file");
 if (wizFileEl) wizFileEl.onchange = async () => { const f = wizFileEl.files && wizFileEl.files[0]; if (f) await wizLoadFile(f); wizFileEl.value = ""; scr.focus(); };
 document.getElementById("b-imp").onclick = e => { audioInit(); e.currentTarget.blur(); if (S.screen !== "board" && S.screen !== "editor") return; if (!S.wiz) wizNew({ fresh: true }); const w = S.wiz; w.src = WSRC.findIndex(s => s.id === "import"); w.step = 0; w.focus = "pane"; render(); wizUpload(); scr.focus(); };
